@@ -704,10 +704,20 @@ export const getUnbilledSummary = onRequest(
       return;
     }
 
-    const [entries, lastInvoice] = await Promise.all([
-      getUnbilledEntries(),
-      getLastInvoice().catch(() => null),
-    ]);
+    let entries: Awaited<ReturnType<typeof getUnbilledEntries>> = [];
+    let lastInvoice: Awaited<ReturnType<typeof getLastInvoice>> = null;
+
+    try {
+      entries = await getUnbilledEntries();
+    } catch (err) {
+      console.error("[getUnbilledSummary] getUnbilledEntries failed:", err);
+    }
+    try {
+      lastInvoice = await getLastInvoice();
+    } catch (err) {
+      console.error("[getUnbilledSummary] getLastInvoice failed:", err);
+    }
+
     const totalHours = entries.reduce((sum, e) => sum + e.durationHours, 0);
     res.json({
       totalHours: Math.round(totalHours * 100) / 100,
