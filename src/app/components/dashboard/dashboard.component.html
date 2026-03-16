@@ -1,12 +1,12 @@
 <div class="dashboard">
   <!-- Header -->
   <header class="header">
-    <h1>Jax Assistant</h1>
+    <h1>Maisie</h1>
     <div class="header-actions">
-      <select [(ngModel)]="voice" class="voice-select">
+      <select [(ngModel)]="voice" (ngModelChange)="onVoiceChange($event)" class="voice-select">
+        <option value="female-british">Maisie (UK)</option>
         <option value="female-american">Sophia (US)</option>
         <option value="male-american">Ethan (US)</option>
-        <option value="female-british">Maisie (UK)</option>
         <option value="male-british">Daniel (UK)</option>
       </select>
       <button class="btn-icon" (click)="logout()" title="Sign out">

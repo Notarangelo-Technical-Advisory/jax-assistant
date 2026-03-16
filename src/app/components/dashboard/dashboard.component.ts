@@ -36,7 +36,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   chatInput = '';
   newTaskTitle = '';
   newTaskCategory: Task['category'] = 'general';
-  voice = 'female-american';
+  voice = localStorage.getItem('maisie-voice') || 'female-british';
   greetingPlaying = signal(false);
 
   private greetingAudio: HTMLAudioElement | null = null;
@@ -129,6 +129,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   async dismissAlert(alert: Alert): Promise<void> {
     if (alert.id) await this.alertService.dismissAlert(alert.id);
+  }
+
+  onVoiceChange(voice: string): void {
+    localStorage.setItem('maisie-voice', voice);
   }
 
   logout(): void {
