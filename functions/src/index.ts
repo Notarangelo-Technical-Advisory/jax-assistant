@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import {onRequest} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
-import {getUnbilledEntries, getLastInvoice, getTimeEntriesForRange} from "./fta-client";
+import {getUnbilledEntries, getLastInvoice, getTimeEntriesForRange, getCustomers, getInvoices, Customer} from "./fta-client";
 import Anthropic from "@anthropic-ai/sdk";
 
 admin.initializeApp();
@@ -128,7 +128,7 @@ export const chat = onRequest(
     chatTomorrowEnd.setDate(chatTomorrowEnd.getDate() + 2);
     chatTomorrowEnd.setHours(0, 0, 0, 0);
 
-    const [unbilledEntries, lastInvoice, todayBriefing, alerts, tasks, sessionHistory, customCategories, chatCalendarEvents] =
+    const [unbilledEntries, lastInvoice, todayBriefing, alerts, tasks, sessionHistory, customCategories, chatCalendarEvents, customers] =
       await Promise.all([
         getUnbilledEntries().catch(() => []),
         getLastInvoice().catch(() => null),
@@ -163,12 +163,21 @@ export const chat = onRequest(
           .catch(() => []),
         // Calendar events for today + tomorrow
         getCalendarEvents(chatTodayStart, chatTomorrowEnd).catch(() => []),
+        // Active customers from fta-time-tracker (for name/rate lookups in tools)
+        getCustomers().catch(() => [] as Customer[]),
       ]);
 
     const totalUnbilled = unbilledEntries.reduce(
       (sum, e) => sum + e.durationHours, 0
     );
     const unbilledAmount = totalUnbilled * 150;
+
+    const customerMap = new Map<string, {name: string; rate: number}>(
+      customers.map((c) => [c.customerId, {
+        name: c.companyName,
+        rate: c.hourlyRate ?? 150,
+      }])
+    );
 
     const defaultCategoryKeys = ["ihrdc", "solomon", "dial", "ppk", "church", "general"];
     const allCategories: Array<{key: string; label: string}> = [
@@ -190,6 +199,9 @@ Jack's top priority: Glorify God and Enjoy Him Forever.
 Current context:
 - Unbilled hours: ${totalUnbilled.toFixed(1)}h ($${unbilledAmount.toFixed(0)}) at $150/hr
 - Last invoice: ${lastInvoice ? `${lastInvoice.issueDate} for $${lastInvoice.total}` : "None found"}
+- For detailed unbilled breakdown (by customer/project/description), use get_unbilled_detail
+- For time log questions (what did I work on this week?), use get_time_entries
+- For invoice status or which clients need invoicing, use get_invoice_status
 - Active tasks: ${tasks.length > 0 ? tasks.map((t: Record<string, unknown>) => {
   const due = t["dueDate"] ? ` (due: ${t["dueDate"]})` : "";
   return `[${t["id"]}][${t["category"]}] ${t["title"]}${due}`;
@@ -270,6 +282,65 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             },
           },
           required: ["key", "label"],
+        },
+      },
+      {
+        name: "get_unbilled_detail",
+        description: "Get detailed breakdown of all unbilled time entries, grouped by customer and project, with descriptions and amounts. Use when Jack asks what unbilled work he has, what he owes a client an invoice for, or needs detail beyond the total summary.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            customer_id: {
+              type: "string",
+              description: "Optional: filter to a specific customer (e.g. 'ihrdc'). Omit to get all customers.",
+            },
+          },
+          required: [],
+        },
+      },
+      {
+        name: "get_time_entries",
+        description: "Get time entries for a date range (all statuses: unbilled, billed, paid). Use when Jack asks what he worked on this week/month, needs context on project work, or wants a time log for a period.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            days_back: {
+              type: "number",
+              description: "Number of days back from today (default 7). Ignored if start_date is provided.",
+            },
+            start_date: {
+              type: "string",
+              description: "Start date in YYYY-MM-DD format.",
+            },
+            end_date: {
+              type: "string",
+              description: "End date in YYYY-MM-DD format. Defaults to today if omitted.",
+            },
+            customer_id: {
+              type: "string",
+              description: "Optional: filter to a specific customer.",
+            },
+          },
+          required: [],
+        },
+      },
+      {
+        name: "get_invoice_status",
+        description: "Get recent invoices with status, and show which customers have unbilled hours ready to invoice. Use when Jack asks about outstanding invoices, payment status, or whether a client needs to be invoiced.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            customer_id: {
+              type: "string",
+              description: "Optional: filter to a specific customer.",
+            },
+            status_filter: {
+              type: "string",
+              enum: ["all", "unpaid", "paid"],
+              description: "'unpaid' = sent+overdue, 'paid' = paid only, 'all' = everything. Defaults to 'all'.",
+            },
+          },
+          required: [],
         },
       },
     ];
@@ -388,6 +459,167 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
                 content: JSON.stringify({success: true, key: sanitizedKey, label: input.label}),
               });
             }
+          } else if (block.name === "get_unbilled_detail") {
+            const input = block.input as {customer_id?: string};
+            const entries = await getUnbilledEntries(input.customer_id).catch(() => []);
+
+            // Group by customerId → projectId
+            const grouped: Record<string, {
+              customerName: string;
+              projects: Record<string, {hours: number; amount: number; entries: Array<{date: string; hours: number; description: string}>}>;
+              totalHours: number;
+              totalAmount: number;
+            }> = {};
+
+            for (const entry of entries) {
+              const custInfo = customerMap.get(entry.customerId);
+              if (!grouped[entry.customerId]) {
+                grouped[entry.customerId] = {
+                  customerName: custInfo?.name || entry.customerId,
+                  projects: {},
+                  totalHours: 0,
+                  totalAmount: 0,
+                };
+              }
+              const cust = grouped[entry.customerId];
+              const rate = custInfo?.rate ?? 150;
+              if (!cust.projects[entry.projectId]) {
+                cust.projects[entry.projectId] = {hours: 0, amount: 0, entries: []};
+              }
+              cust.projects[entry.projectId].hours += entry.durationHours;
+              cust.projects[entry.projectId].amount += entry.durationHours * rate;
+              cust.projects[entry.projectId].entries.push({
+                date: entry.date,
+                hours: entry.durationHours,
+                description: entry.description || "(no description)",
+              });
+              cust.totalHours += entry.durationHours;
+              cust.totalAmount += entry.durationHours * rate;
+            }
+
+            const totalHours = entries.reduce((sum, e) => sum + e.durationHours, 0);
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({
+                totalUnbilledHours: totalHours,
+                totalUnbilledAmount: totalHours * 150,
+                entryCount: entries.length,
+                customers: grouped,
+              }),
+            });
+          } else if (block.name === "get_time_entries") {
+            const input = block.input as {
+              days_back?: number;
+              start_date?: string;
+              end_date?: string;
+              customer_id?: string;
+            };
+
+            const todayStr = new Date().toISOString().split("T")[0];
+            let startDate: string;
+            let endDate: string;
+
+            if (input.start_date) {
+              startDate = input.start_date;
+              endDate = input.end_date || todayStr;
+            } else {
+              const daysBack = input.days_back ?? 7;
+              const start = new Date();
+              start.setDate(start.getDate() - daysBack);
+              startDate = start.toISOString().split("T")[0];
+              endDate = todayStr;
+            }
+
+            const entries = await getTimeEntriesForRange(startDate, endDate, input.customer_id).catch(() => []);
+
+            const grouped: Record<string, {
+              customerName: string;
+              projects: Record<string, {hours: number; entries: Array<{date: string; hours: number; description: string; status: string}>}>;
+              totalHours: number;
+            }> = {};
+
+            for (const entry of entries) {
+              const custInfo = customerMap.get(entry.customerId);
+              if (!grouped[entry.customerId]) {
+                grouped[entry.customerId] = {
+                  customerName: custInfo?.name || entry.customerId,
+                  projects: {},
+                  totalHours: 0,
+                };
+              }
+              const cust = grouped[entry.customerId];
+              if (!cust.projects[entry.projectId]) {
+                cust.projects[entry.projectId] = {hours: 0, entries: []};
+              }
+              cust.projects[entry.projectId].hours += entry.durationHours;
+              cust.projects[entry.projectId].entries.push({
+                date: entry.date,
+                hours: entry.durationHours,
+                description: entry.description || "(no description)",
+                status: entry.status,
+              });
+              cust.totalHours += entry.durationHours;
+            }
+
+            const totalHours = entries.reduce((sum, e) => sum + e.durationHours, 0);
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({
+                dateRange: {startDate, endDate},
+                totalHours,
+                entryCount: entries.length,
+                customers: grouped,
+              }),
+            });
+          } else if (block.name === "get_invoice_status") {
+            const input = block.input as {customer_id?: string; status_filter?: "all" | "unpaid" | "paid"};
+            const statusFilter = input.status_filter || "all";
+            const invoiceStatusOpt = statusFilter === "all" ? undefined :
+              statusFilter === "paid" ? "paid" as const : "unpaid" as const;
+
+            const [invoices, unbilledForStatus] = await Promise.all([
+              getInvoices({customerId: input.customer_id, status: invoiceStatusOpt, limit: 20}).catch(() => []),
+              statusFilter !== "paid"
+                ? getUnbilledEntries(input.customer_id).catch(() => [])
+                : Promise.resolve([]),
+            ]);
+
+            // Build "ready to invoice" summary per customer
+            const readyToInvoice: Record<string, {customerName: string; hours: number; amount: number}> = {};
+            for (const entry of unbilledForStatus) {
+              const custInfo = customerMap.get(entry.customerId);
+              if (!readyToInvoice[entry.customerId]) {
+                readyToInvoice[entry.customerId] = {
+                  customerName: custInfo?.name || entry.customerId,
+                  hours: 0,
+                  amount: 0,
+                };
+              }
+              const rate = custInfo?.rate ?? 150;
+              readyToInvoice[entry.customerId].hours += entry.durationHours;
+              readyToInvoice[entry.customerId].amount += entry.durationHours * rate;
+            }
+
+            const formattedInvoices = invoices.map((inv) => ({
+              invoiceNumber: inv.invoiceNumber,
+              customer: inv.customerName || customerMap.get(inv.customerId)?.name || inv.customerId,
+              issueDate: inv.issueDate,
+              dueDate: inv.dueDate,
+              total: inv.total,
+              status: inv.status,
+            }));
+
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({
+                invoices: formattedInvoices,
+                invoiceCount: invoices.length,
+                readyToInvoice: Object.keys(readyToInvoice).length > 0 ? readyToInvoice : null,
+              }),
+            });
           }
         }
 

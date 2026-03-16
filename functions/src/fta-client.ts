@@ -41,6 +41,14 @@ export interface Invoice {
   updatedAt: FirebaseFirestore.Timestamp;
 }
 
+export interface Customer {
+  id: string;
+  customerId: string;
+  companyName: string;
+  hourlyRate?: number;
+  isActive: boolean;
+}
+
 /** Get unbilled time entries for a given customer */
 export async function getUnbilledEntries(
   customerId?: string
@@ -74,6 +82,44 @@ export async function getLastInvoice(
   if (snapshot.empty) return null;
   const doc = snapshot.docs[0];
   return {id: doc.id, ...doc.data()} as Invoice;
+}
+
+/** Get all active customers */
+export async function getCustomers(): Promise<Customer[]> {
+  const snapshot = await ftaFirestore
+    .collection("customers")
+    .where("isActive", "==", true)
+    .get();
+  return snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()} as Customer));
+}
+
+/** Get invoices with optional filters */
+export async function getInvoices(options?: {
+  customerId?: string;
+  status?: "draft" | "sent" | "paid" | "overdue" | "cancelled" | "unpaid";
+  limit?: number;
+}): Promise<Invoice[]> {
+  let query: FirebaseFirestore.Query = ftaFirestore
+    .collection("invoices")
+    .orderBy("issueDate", "desc");
+
+  if (options?.customerId) {
+    query = query.where("customerId", "==", options.customerId);
+  }
+
+  // "unpaid" is synthetic (sent + overdue) — filter client-side to avoid compound index
+  if (options?.status && options.status !== "unpaid") {
+    query = query.where("status", "==", options.status);
+  }
+
+  const snapshot = await query.limit(options?.limit ?? 20).get();
+  let results = snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()} as Invoice));
+
+  if (options?.status === "unpaid") {
+    results = results.filter((inv) => inv.status === "sent" || inv.status === "overdue");
+  }
+
+  return results;
 }
 
 /** Get time entries for a date range */
