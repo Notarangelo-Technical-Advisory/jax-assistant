@@ -46,6 +46,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   sessions = signal<ChatSession[]>([]);
   activeSession = signal<ChatSession | null>(null);
   sessionsOpen = signal(false);
+  inConversation = signal(false);
+  private audioContextPrimed = false;
 
   renamingSessionId: string | null = null;
   renameValue = '';
@@ -121,6 +123,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.subs.forEach((s) => s.unsubscribe());
     this.ttsService.stop();
+    this.sttService.stopListening();
     this.chatService.stopWatching();
   }
 
@@ -201,7 +204,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.chatInput = '';
       try {
         const response = await this.chatService.sendMessage(text, id);
-        this.ttsService.primeAudioContext();
+        if (!this.audioContextPrimed) {
+          this.ttsService.primeAudioContext();
+          this.audioContextPrimed = true;
+        }
         this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
       } catch (err) {
         console.error('[sendChat] error:', err);
@@ -212,28 +218,44 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.chatInput = '';
     try {
       const response = await this.chatService.sendMessage(text, session.id);
-      this.ttsService.primeAudioContext();
+      if (!this.audioContextPrimed) {
+        this.ttsService.primeAudioContext();
+        this.audioContextPrimed = true;
+      }
       this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
     } catch (err) {
       console.error('[sendChat] error:', err);
     }
   }
 
-  // ── Push-to-talk ─────────────────────────────────────────
+  // ── Voice conversation ────────────────────────────────────
+
+  callMaisie(): void {
+    if (!this.audioContextPrimed) {
+      this.ttsService.primeAudioContext();
+      this.audioContextPrimed = true;
+    }
+    this.ttsService.stop();
+    this.inConversation.set(true);
+    const greetingAudio = new Audio('/greeting.mp3');
+    const startListening = () => this.sttService.startListening();
+    greetingAudio.onended = startListening;
+    greetingAudio.onerror = startListening;
+    greetingAudio.play().catch(startListening);
+  }
+
+  endCall(): void {
+    this.sttService.stopListening();
+    this.ttsService.stop();
+    this.inConversation.set(false);
+  }
 
   toggleMic(): void {
     if (this.sttService.isListening()) {
       this.sttService.stopListening();
     } else {
-      // Stop any playing TTS before recording
       this.ttsService.stop();
-      this.ttsService.primeAudioContext();
-      // Play greeting chime, then start the mic when it finishes
-      const greetingAudio = new Audio('/greeting.mp3');
-      const startListening = () => this.sttService.startListening();
-      greetingAudio.onended = startListening;
-      greetingAudio.onerror = startListening; // fallback if file can't load
-      greetingAudio.play().catch(startListening); // fallback for autoplay policy
+      this.sttService.startListening();
     }
   }
 

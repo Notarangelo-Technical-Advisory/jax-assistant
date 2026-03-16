@@ -725,6 +725,38 @@ $border: #334155;
   50% { box-shadow: 0 0 0 8px rgba($danger, 0); }
 }
 
+.btn-call {
+  background: none;
+  border: 2px solid $success;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $success;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+
+  &:hover { background: rgba($success, 0.1); }
+
+  &.in-conversation {
+    background: $danger;
+    border-color: $danger;
+    color: #fff;
+    animation: pulse-call 2s infinite;
+    &:hover { background: rgba($danger, 0.8); }
+  }
+
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+}
+
+@keyframes pulse-call {
+  0%, 100% { box-shadow: 0 0 0 0 rgba($danger, 0.5); }
+  50%       { box-shadow: 0 0 0 6px rgba($danger, 0); }
+}
+
 // Responsive — stack panels on mobile
 @media (max-width: 768px) {
   :host {
