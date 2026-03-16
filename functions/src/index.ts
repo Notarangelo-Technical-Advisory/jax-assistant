@@ -262,7 +262,7 @@ Current context:
 
 Be concise and direct. Never use emojis in any response. Use a warm, professional tone — like a trusted assistant who knows Jack well. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it. When Jack asks you to create a new task category, use the create_task_category tool. Use create_calendar_event when Jack asks to schedule something — always confirm title, date, and time before creating. Use move_calendar_event to reschedule existing events. Calendar changes are applied via a local bridge sync and appear within ~1 minute.
 
-When Jack asks you to fix a bug or make a code change, follow this exact workflow: (1) use get_file_content to read the relevant file(s) first — always read before editing, (2) use create_branch to create a branch named 'fix/short-description' for bugs or 'feat/short-description' for features, (3) use push_file_change for each file that needs updating — always provide the complete file content, never a partial diff, (4) use create_pull_request to open a PR targeting main with a clear description of what you changed and why, (5) tell Jack the PR URL so he can review and approve it in GitHub. Never push to main directly. Never claim to have made a code change without actually calling the tools. After opening the PR, remind Jack that CI/CD will auto-deploy once he approves and merges.
+When Jack asks to fix a bug, add a feature, or change any code, use the code_with_github tool with a clear task description. A local coding agent running on Jack's machine will handle reading files, making changes, and opening a PR. You do not need to call get_file_content, create_branch, push_file_change, or create_pull_request yourself. Once the agent returns, tell Jack the PR URL and remind him CI/CD will auto-deploy once he approves and merges.
 Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numeric", month: "long", day: "numeric"})}.`;
 
     const buildTools = (cats: Array<{key: string; label: string}>): Anthropic.Messages.Tool[] => [
@@ -459,83 +459,17 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
         },
       },
       {
-        name: "get_file_content",
-        description: "Read the current content of a file from the jax-assistant GitHub repo. Use this to understand code before proposing a fix. Always read the relevant file before making changes.",
+        name: "code_with_github",
+        description: "Delegate ANY coding task — bug fix, feature, refactor, or file change — to a local coding agent running on Jack's machine. Use this whenever Jack asks to fix a bug, add a feature, or change any code. The agent has full repo access, creates a branch, makes the changes, and opens a PR. Returns the PR URL when done.",
         input_schema: {
           type: "object" as const,
           properties: {
-            file_path: {
+            task: {
               type: "string",
-              description: "Path to the file relative to the repo root, e.g. 'functions/src/index.ts' or 'src/app/app.component.ts'",
-            },
-            ref: {
-              type: "string",
-              description: "Branch or commit SHA to read from. Defaults to 'main'. Use a feature branch name if you've already created one.",
+              description: "Complete description of what needs to be done. Include: the bug/feature, expected behavior, and all relevant context Jack provided.",
             },
           },
-          required: ["file_path"],
-        },
-      },
-      {
-        name: "create_branch",
-        description: "Create a new feature branch from main in the jax-assistant repo. Always create a branch before making any file changes. Use 'fix/description' for bugs or 'feat/description' for features.",
-        input_schema: {
-          type: "object" as const,
-          properties: {
-            branch_name: {
-              type: "string",
-              description: "Branch name following the convention 'fix/short-description' or 'feat/short-description'. Use kebab-case, e.g. 'fix/calendar-tomorrow-events'.",
-            },
-          },
-          required: ["branch_name"],
-        },
-      },
-      {
-        name: "push_file_change",
-        description: "Update the content of a file on a feature branch in the jax-assistant repo. This commits the change directly to the branch. Do NOT use this to push to main. Always call create_branch first.",
-        input_schema: {
-          type: "object" as const,
-          properties: {
-            branch_name: {
-              type: "string",
-              description: "The feature branch to push to (must already exist, created via create_branch).",
-            },
-            file_path: {
-              type: "string",
-              description: "Path to the file relative to the repo root, e.g. 'functions/src/index.ts'.",
-            },
-            new_content: {
-              type: "string",
-              description: "The complete new file content as a string. This replaces the entire file — do not provide a diff or partial content.",
-            },
-            commit_message: {
-              type: "string",
-              description: "Git commit message. Follow conventional commit format: 'fix: description' or 'feat: description'.",
-            },
-          },
-          required: ["branch_name", "file_path", "new_content", "commit_message"],
-        },
-      },
-      {
-        name: "create_pull_request",
-        description: "Open a pull request on GitHub targeting main. Always call this after pushing all file changes. Jack must review and approve before the PR can be merged — it will not merge automatically.",
-        input_schema: {
-          type: "object" as const,
-          properties: {
-            branch_name: {
-              type: "string",
-              description: "The feature branch that contains your changes.",
-            },
-            title: {
-              type: "string",
-              description: "PR title. Keep it under 72 characters. Use conventional commit style: 'fix: calendar not showing tomorrow events'.",
-            },
-            body: {
-              type: "string",
-              description: "PR description in markdown. Explain: (1) what the bug was, (2) what you changed and why, (3) what Jack should verify after merging. Be specific.",
-            },
-          },
-          required: ["branch_name", "title", "body"],
+          required: ["task"],
         },
       },
     ];
@@ -557,7 +491,7 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
 
       let response = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 1024,
+        max_tokens: 4096,
         system: systemPrompt,
         tools,
         messages,
@@ -578,10 +512,7 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
           case "get_invoice_status": return "Checking invoice status...";
           case "create_calendar_event": return `Scheduling "${input["title"]}"...`;
           case "move_calendar_event": return `Rescheduling "${input["event_title"]}"...`;
-          case "get_file_content": return `Reading ${input["file_path"]}...`;
-          case "create_branch": return `Creating branch ${input["branch_name"]}...`;
-          case "push_file_change": return `Committing changes to ${input["file_path"]}...`;
-          case "create_pull_request": return `Opening pull request: "${input["title"]}"...`;
+          case "code_with_github": return "Sending task to coding agent...";
           default: return `Running ${name}...`;
         }
       };
@@ -931,124 +862,51 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
                 message: `"${input.event_title}" has been queued to move from ${input.original_date} to ${input.new_date} at ${input.new_start_time}–${input.new_end_time}. The change will appear within ~1 minute once the bridge syncs.`,
               }),
             });
-          } else if (block.name === "get_file_content") {
-            const input = block.input as {file_path: string; ref?: string};
-            const ref = input.ref || "main";
-            try {
-              const encodedPath = input.file_path.split("/").map(encodeURIComponent).join("/");
-              const data = await githubApi(
-                `/repos/${GITHUB_REPO}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
-                "GET"
-              ) as {content: string; encoding: string; sha: string; size: number};
-              const content = Buffer.from(data.content, "base64").toString("utf-8");
-              toolResults.push({
-                type: "tool_result",
-                tool_use_id: block.id,
-                content: JSON.stringify({file_path: input.file_path, ref, sha: data.sha, size: data.size, content}),
-              });
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : "get_file_content failed";
-              toolResults.push({type: "tool_result", tool_use_id: block.id, content: JSON.stringify({error: msg})});
-            }
-          } else if (block.name === "create_branch") {
-            const input = block.input as {branch_name: string};
-            if (!input.branch_name.match(/^(fix|feat)\/.+/)) {
-              toolResults.push({
-                type: "tool_result",
-                tool_use_id: block.id,
-                content: JSON.stringify({error: "Branch name must start with 'fix/' or 'feat/'. Example: 'fix/calendar-tomorrow-events'"}),
-              });
-            } else {
-              try {
-                const mainRef = await githubApi(
-                  `/repos/${GITHUB_REPO}/git/ref/heads/main`,
-                  "GET"
-                ) as {object: {sha: string}};
-                const mainSha = mainRef.object.sha;
-                await githubApi(`/repos/${GITHUB_REPO}/git/refs`, "POST", {
-                  ref: `refs/heads/${input.branch_name}`,
-                  sha: mainSha,
-                });
-                toolResults.push({
-                  type: "tool_result",
-                  tool_use_id: block.id,
-                  content: JSON.stringify({
-                    success: true,
-                    branch_name: input.branch_name,
-                    branched_from_sha: mainSha,
-                    message: `Branch '${input.branch_name}' created from main (${mainSha.substring(0, 7)}).`,
-                  }),
-                });
-              } catch (err: unknown) {
-                const msg = err instanceof Error ? err.message : "create_branch failed";
-                toolResults.push({type: "tool_result", tool_use_id: block.id, content: JSON.stringify({error: msg})});
+          } else if (block.name === "code_with_github") {
+            const input = block.input as {task: string};
+
+            // Write task to Firestore queue for the local coding bridge to pick up
+            const taskRef = await db.collection("pendingCodingTasks").add({
+              task: input.task,
+              status: "pending",
+              sessionId,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              completedAt: null,
+              result: null,
+              error: null,
+            });
+
+            // Poll for result — bridge picks it up within ~30s and runs Claude Code locally
+            const POLL_INTERVAL_MS = 3000;
+            const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+            const pollStart = Date.now();
+            let codingResult: {success: boolean; pr_url?: string; pr_number?: number; summary?: string; error?: string} | null = null;
+
+            while (Date.now() - pollStart < TIMEOUT_MS) {
+              await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+              const snap = await db.collection("pendingCodingTasks").doc(taskRef.id).get();
+              const data = snap.data();
+              if (data?.["status"] === "completed" || data?.["status"] === "failed") {
+                codingResult = data?.["result"] ?? {success: false, error: data?.["error"] ?? "Unknown error"};
+                break;
               }
-            }
-          } else if (block.name === "push_file_change") {
-            const input = block.input as {branch_name: string; file_path: string; new_content: string; commit_message: string};
-            if (input.branch_name === "main") {
-              toolResults.push({
-                type: "tool_result",
-                tool_use_id: block.id,
-                content: JSON.stringify({error: "Cannot push directly to main. Use a feature branch created with create_branch."}),
+              const elapsed = Math.round((Date.now() - pollStart) / 1000);
+              await thinkingRef.set({
+                step: `Coding agent working... (${elapsed}s)`,
+                tool: "code_with_github",
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
               });
-            } else {
-              try {
-                const encodedFilePath = input.file_path.split("/").map(encodeURIComponent).join("/");
-                const existing = await githubApi(
-                  `/repos/${GITHUB_REPO}/contents/${encodedFilePath}?ref=${encodeURIComponent(input.branch_name)}`,
-                  "GET"
-                ) as {sha: string};
-                const result = await githubApi(
-                  `/repos/${GITHUB_REPO}/contents/${encodedFilePath}`,
-                  "PUT",
-                  {
-                    message: input.commit_message,
-                    content: Buffer.from(input.new_content, "utf-8").toString("base64"),
-                    sha: existing.sha,
-                    branch: input.branch_name,
-                  }
-                ) as {commit: {sha: string; html_url: string}};
-                toolResults.push({
-                  type: "tool_result",
-                  tool_use_id: block.id,
-                  content: JSON.stringify({
-                    success: true,
-                    commit_sha: result.commit.sha,
-                    commit_url: result.commit.html_url,
-                    file_path: input.file_path,
-                    branch: input.branch_name,
-                  }),
-                });
-              } catch (err: unknown) {
-                const msg = err instanceof Error ? err.message : "push_file_change failed";
-                toolResults.push({type: "tool_result", tool_use_id: block.id, content: JSON.stringify({error: msg})});
-              }
             }
-          } else if (block.name === "create_pull_request") {
-            const input = block.input as {branch_name: string; title: string; body: string};
-            try {
-              const pr = await githubApi(`/repos/${GITHUB_REPO}/pulls`, "POST", {
-                title: input.title,
-                body: input.body,
-                head: input.branch_name,
-                base: "main",
-                draft: false,
-              }) as {number: number; html_url: string; title: string};
-              toolResults.push({
-                type: "tool_result",
-                tool_use_id: block.id,
-                content: JSON.stringify({
-                  success: true,
-                  pr_number: pr.number,
-                  pr_url: pr.html_url,
-                  message: `PR #${pr.number} opened: "${pr.title}". Review and merge at: ${pr.html_url}`,
-                }),
-              });
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : "create_pull_request failed";
-              toolResults.push({type: "tool_result", tool_use_id: block.id, content: JSON.stringify({error: msg})});
+
+            if (!codingResult) {
+              codingResult = {success: false, error: "Coding agent timed out after 5 minutes."};
             }
+
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify(codingResult),
+            });
           }
         }
 
@@ -1057,7 +915,7 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
 
         response = await anthropic.messages.create({
           model: "claude-sonnet-4-6",
-          max_tokens: 1024,
+          max_tokens: 4096,
           system: systemPrompt,
           tools,
           messages,
