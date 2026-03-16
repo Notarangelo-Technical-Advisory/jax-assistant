@@ -27,6 +27,11 @@ service cloud.firestore {
       allow read, create, update, delete: if isAuthenticated();
     }
 
+    // taskCategories — full CRUD for authenticated user
+    match /taskCategories/{categoryId} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
     // chatSessions — full CRUD for authenticated user
     match /chatSessions/{sessionId} {
       allow read, create, update, delete: if isAuthenticated();

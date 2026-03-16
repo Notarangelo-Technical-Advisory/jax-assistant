@@ -266,6 +266,9 @@ $border: #334155;
   text-transform: uppercase;
   font-weight: 600;
   letter-spacing: 0.03em;
+  // Fallback color for dynamically created categories
+  background: rgba(#a78bfa, 0.2);
+  color: #a78bfa;
 }
 
 .task-group-count {

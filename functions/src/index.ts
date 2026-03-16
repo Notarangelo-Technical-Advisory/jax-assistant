@@ -121,7 +121,7 @@ export const chat = onRequest(
     }
 
     // Gather context from Firestore and fta-time-tracker
-    const [unbilledEntries, lastInvoice, todayBriefing, alerts, tasks, sessionHistory] =
+    const [unbilledEntries, lastInvoice, todayBriefing, alerts, tasks, sessionHistory, customCategories] =
       await Promise.all([
         getUnbilledEntries().catch(() => []),
         getLastInvoice().catch(() => null),
@@ -147,12 +147,28 @@ export const chat = onRequest(
           .get()
           .then((s) => s.docs.map((d) => d.data() as {role: string; content: string}))
           .catch(() => []),
+        // Load custom categories (defaults are always available client-side)
+        db.collection("taskCategories")
+          .orderBy("order", "asc").get()
+          .then((s) => s.docs.map((d) => d.data() as {key: string; label: string}))
+          .catch(() => []),
       ]);
 
     const totalUnbilled = unbilledEntries.reduce(
       (sum, e) => sum + e.durationHours, 0
     );
     const unbilledAmount = totalUnbilled * 150;
+
+    const defaultCategoryKeys = ["ihrdc", "solomon", "dial", "ppk", "church", "general"];
+    const allCategories: Array<{key: string; label: string}> = [
+      {key: "ihrdc", label: "IHRDC"},
+      {key: "solomon", label: "Solomon"},
+      {key: "dial", label: "DIAL"},
+      {key: "ppk", label: "PPK"},
+      {key: "church", label: "Church"},
+      {key: "general", label: "General"},
+      ...customCategories.filter((c) => !defaultCategoryKeys.includes(c.key)),
+    ];
 
     const systemPrompt = `You are Maisie, Jack Notarangelo's personal executive assistant. Your name is Maisie. When Jack addresses you by name (e.g., "Maisie, what does my schedule look like?"), treat your name as a natural greeting — do not interpret it as a topic or question. Simply respond to whatever follows your name.
 
@@ -169,11 +185,12 @@ Current context:
 }).join("; ") : "None"}
 - Active alerts: ${alerts.length > 0 ? alerts.map((a: Record<string, unknown>) => `${a["type"]}: ${a["message"]}`).join("; ") : "None"}
 - Today's briefing: ${todayBriefing ? JSON.stringify(todayBriefing) : "Not generated yet"}
+- Task categories: ${allCategories.map((c) => `${c.key} (${c.label})`).join(", ")}
 
-Be concise and direct. Use a warm, professional tone — like a trusted assistant who knows Jack well. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it.
+Be concise and direct. Use a warm, professional tone — like a trusted assistant who knows Jack well. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it. When Jack asks you to create a new task category, use the create_task_category tool.
 Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numeric", month: "long", day: "numeric"})}.`;
 
-    const tools: Anthropic.Messages.Tool[] = [
+    const buildTools = (cats: Array<{key: string; label: string}>): Anthropic.Messages.Tool[] => [
       {
         name: "add_task",
         description: "Add a new task to Jack's task list",
@@ -183,8 +200,8 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             title: {type: "string", description: "The task description"},
             category: {
               type: "string",
-              enum: ["ihrdc", "solomon", "dial", "ppk", "church", "general"],
-              description: "Task category. Use 'church' for Grace Pres church tasks.",
+              enum: cats.map((c) => c.key),
+              description: `Task category. Available: ${cats.map((c) => `${c.key} (${c.label})`).join(", ")}. Use 'church' for Grace Pres church tasks. If a suitable category doesn't exist, create it first with create_task_category.`,
             },
             dueDate: {
               type: "string",
@@ -208,7 +225,27 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
           required: ["taskId"],
         },
       },
+      {
+        name: "create_task_category",
+        description: "Create a new task category. Use this when Jack wants to organize tasks under a new project or area that doesn't have a category yet.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            key: {
+              type: "string",
+              description: "A short lowercase identifier for the category (e.g. 'acme', 'fitness'). No spaces or special characters.",
+            },
+            label: {
+              type: "string",
+              description: "The human-readable display name for the category (e.g. 'Acme Corp', 'Fitness').",
+            },
+          },
+          required: ["key", "label"],
+        },
+      },
     ];
+
+    let tools = buildTools(allCategories);
 
     try {
       const anthropic = new Anthropic({apiKey});
@@ -268,6 +305,38 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
               tool_use_id: block.id,
               content: JSON.stringify({success: true}),
             });
+          } else if (block.name === "create_task_category") {
+            const input = block.input as {key: string; label: string};
+            const sanitizedKey = input.key.toLowerCase().replace(/[^a-z0-9-_]/g, "");
+            const isDefault = ["ihrdc", "solomon", "dial", "ppk", "church", "general"].includes(sanitizedKey);
+            const existingSnap = await db.collection("taskCategories")
+              .where("key", "==", sanitizedKey).limit(1).get();
+            if (isDefault || !existingSnap.empty) {
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({success: false, error: `Category "${sanitizedKey}" already exists.`}),
+              });
+            } else {
+              const orderSnap = await db.collection("taskCategories")
+                .orderBy("order", "desc").limit(1).get();
+              const existingOrders = orderSnap.docs.map((d) => (d.data()["order"] as number) ?? 0);
+              const maxOrder = existingOrders.length > 0 ? Math.max(...existingOrders) + 1 : 100;
+              await db.collection("taskCategories").add({
+                key: sanitizedKey,
+                label: input.label,
+                order: maxOrder,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+              // Update allCategories and rebuild tools so subsequent add_task calls can use the new key
+              allCategories.push({key: sanitizedKey, label: input.label});
+              tools = buildTools(allCategories);
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({success: true, key: sanitizedKey, label: input.label}),
+              });
+            }
           }
         }
 

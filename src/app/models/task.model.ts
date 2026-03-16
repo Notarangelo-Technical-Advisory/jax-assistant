@@ -1,7 +1,7 @@
 export interface Task {
   id?: string;
   title: string;
-  category: 'ihrdc' | 'solomon' | 'dial' | 'ppk' | 'church' | 'general';
+  category: string;
   completed: boolean;
   dueDate?: string;
   createdAt: Date;

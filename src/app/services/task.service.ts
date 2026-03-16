@@ -21,7 +21,7 @@ export class TaskService {
     return collectionData(q, { idField: 'id' }) as Observable<Task[]>;
   }
 
-  async addTask(title: string, category: Task['category'] = 'general', dueDate?: string): Promise<void> {
+  async addTask(title: string, category: string = 'general', dueDate?: string): Promise<void> {
     await addDoc(this.collectionRef, {
       title,
       category,
