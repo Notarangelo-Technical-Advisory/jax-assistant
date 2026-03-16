@@ -163,7 +163,10 @@ Jack's top priority: Glorify God and Enjoy Him Forever.
 Current context:
 - Unbilled hours: ${totalUnbilled.toFixed(1)}h ($${unbilledAmount.toFixed(0)}) at $150/hr
 - Last invoice: ${lastInvoice ? `${lastInvoice.issueDate} for $${lastInvoice.total}` : "None found"}
-- Active tasks: ${tasks.length > 0 ? tasks.map((t: Record<string, unknown>) => `[${t["id"]}][${t["category"]}] ${t["title"]}`).join("; ") : "None"}
+- Active tasks: ${tasks.length > 0 ? tasks.map((t: Record<string, unknown>) => {
+  const due = t["dueDate"] ? ` (due: ${t["dueDate"]})` : "";
+  return `[${t["id"]}][${t["category"]}] ${t["title"]}${due}`;
+}).join("; ") : "None"}
 - Active alerts: ${alerts.length > 0 ? alerts.map((a: Record<string, unknown>) => `${a["type"]}: ${a["message"]}`).join("; ") : "None"}
 - Today's briefing: ${todayBriefing ? JSON.stringify(todayBriefing) : "Not generated yet"}
 
