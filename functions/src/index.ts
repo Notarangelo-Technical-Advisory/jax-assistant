@@ -229,7 +229,7 @@ Current context:
 }).join("; ") : "No upcoming events"}
 - Task categories: ${allCategories.map((c) => `${c.key} (${c.label})`).join(", ")}
 
-Be concise and direct. Never use emojis in any response. Use a warm, professional tone — like a trusted assistant who knows Jack well. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it. When Jack asks you to create a new task category, use the create_task_category tool. Use create_calendar_event when Jack asks to schedule something — always confirm title, date, and time before creating. Use move_calendar_event to reschedule existing events. Calendar changes are applied via a local bridge sync and appear within ~1 minute.
+Be concise and direct. Never use emojis in any response. Use a warm, professional tone — like a trusted assistant who knows Jack well. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it. When Jack asks you to create a new task category, use the create_task_category tool. When Jack asks to delete a category, use delete_task_category — it will block deletion if active tasks exist and will tell you which tasks need to be handled first. Use create_calendar_event when Jack asks to schedule something — always confirm title, date, and time before creating. Use move_calendar_event to reschedule existing events. Calendar changes are applied via a local bridge sync and appear within ~1 minute.
 
 When Jack asks to fix a bug, add a feature, or change any code, use the code_with_github tool with a clear task description. A local coding agent running on Jack's machine will handle reading files, making changes, and opening a PR. You do not need to call get_file_content, create_branch, push_file_change, or create_pull_request yourself. Once the agent returns, tell Jack the PR URL and remind him CI/CD will auto-deploy once he approves and merges.
 Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numeric", month: "long", day: "numeric"})}.`;
@@ -335,6 +335,20 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             },
           },
           required: ["key", "label"],
+        },
+      },
+      {
+        name: "delete_task_category",
+        description: "Delete a custom task category. Cannot delete built-in categories (ihrdc, solomon, dial, ppk, church, general). Will fail if there are active tasks under that category — those must be completed or reassigned first.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            key: {
+              type: "string",
+              description: "The category key to delete (e.g. 'acme'). Must be a custom category, not a built-in one.",
+            },
+          },
+          required: ["key"],
         },
       },
       {
@@ -476,6 +490,7 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
           case "reopen_task": return "Reopening task...";
           case "update_task": return "Updating task...";
           case "create_task_category": return `Creating category "${input["label"]}"...`;
+          case "delete_task_category": return `Deleting category "${input["key"]}"...`;
           case "get_unbilled_detail": return "Fetching unbilled time entries...";
           case "get_time_entries": return "Loading time log...";
           case "get_invoice_status": return "Checking invoice status...";
@@ -605,6 +620,54 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
                 tool_use_id: block.id,
                 content: JSON.stringify({success: true, key: sanitizedKey, label: input.label}),
               });
+            }
+          } else if (block.name === "delete_task_category") {
+            const input = block.input as {key: string};
+            const defaultKeys = ["ihrdc", "solomon", "dial", "ppk", "church", "general"];
+            if (defaultKeys.includes(input.key)) {
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({success: false, error: `"${input.key}" is a built-in category and cannot be deleted.`}),
+              });
+            } else {
+              // Check for active tasks under this category
+              const activeTasksSnap = await db.collection("tasks")
+                .where("category", "==", input.key)
+                .where("completed", "==", false)
+                .get();
+              if (!activeTasksSnap.empty) {
+                toolResults.push({
+                  type: "tool_result",
+                  tool_use_id: block.id,
+                  content: JSON.stringify({
+                    success: false,
+                    error: `Cannot delete category "${input.key}" — it has ${activeTasksSnap.size} active task(s). Complete or reassign those tasks first.`,
+                    activeTasks: activeTasksSnap.docs.map((d) => ({id: d.id, title: d.data()["title"]})),
+                  }),
+                });
+              } else {
+                const catSnap = await db.collection("taskCategories")
+                  .where("key", "==", input.key).limit(1).get();
+                if (catSnap.empty) {
+                  toolResults.push({
+                    type: "tool_result",
+                    tool_use_id: block.id,
+                    content: JSON.stringify({success: false, error: `Category "${input.key}" not found.`}),
+                  });
+                } else {
+                  await catSnap.docs[0].ref.delete();
+                  // Update in-memory list and rebuild tools
+                  const idx = allCategories.findIndex((c) => c.key === input.key);
+                  if (idx !== -1) allCategories.splice(idx, 1);
+                  tools = buildTools(allCategories);
+                  toolResults.push({
+                    type: "tool_result",
+                    tool_use_id: block.id,
+                    content: JSON.stringify({success: true, key: input.key}),
+                  });
+                }
+              }
             }
           } else if (block.name === "get_unbilled_detail") {
             const input = block.input as {customer_id?: string};

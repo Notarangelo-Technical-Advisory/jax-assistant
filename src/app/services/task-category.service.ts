@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  Firestore, collection, collectionData, addDoc,
-  query, orderBy, serverTimestamp, getDocs
+  Firestore, collection, collectionData, addDoc, deleteDoc, doc,
+  query, orderBy, serverTimestamp, getDocs, where
 } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -57,5 +57,25 @@ export class TaskCategoryService {
       order: maxOrder,
       createdAt: serverTimestamp(),
     });
+  }
+
+  /**
+   * Deletes a custom category from Firestore by its document ID.
+   * Default categories cannot be deleted — callers must enforce this guard.
+   */
+  async deleteCategory(categoryId: string): Promise<void> {
+    await deleteDoc(doc(this.firestore, 'taskCategories', categoryId));
+  }
+
+  /** Returns the number of active (incomplete) tasks for a given category key. */
+  async getActiveTaskCount(categoryKey: string): Promise<number> {
+    const snap = await getDocs(
+      query(
+        collection(this.firestore, 'tasks'),
+        where('category', '==', categoryKey),
+        where('completed', '==', false),
+      )
+    );
+    return snap.size;
   }
 }

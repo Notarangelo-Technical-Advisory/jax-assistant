@@ -77,13 +77,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const all = this.tasks();
     const cats = this.categories();
     const knownKeys = new Set(cats.map((c) => c.key));
-    const groups: { category: string; label: string; tasks: Task[] }[] = [];
+    const groups: { category: string; label: string; categoryId?: string; tasks: Task[] }[] = [];
 
     // Known categories in order
     for (const cat of cats) {
       const catTasks = all.filter((t) => t.category === cat.key);
       if (catTasks.length > 0) {
-        groups.push({ category: cat.key, label: cat.label, tasks: catTasks });
+        groups.push({ category: cat.key, label: cat.label, categoryId: cat.id, tasks: catTasks });
       }
     }
 
@@ -403,6 +403,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   isCategoryExpanded(category: string): boolean {
     return this.expandedCategories().has(category);
+  }
+
+  async deleteCategory(categoryKey: string, categoryId: string, categoryLabel: string, event: Event): Promise<void> {
+    event.stopPropagation();
+    const activeTasks = this.tasks().filter((t) => t.category === categoryKey);
+    if (activeTasks.length > 0) {
+      alert(`"${categoryLabel}" has ${activeTasks.length} active task${activeTasks.length !== 1 ? 's' : ''}. Complete or reassign those tasks before deleting this category.`);
+      return;
+    }
+    const confirmed = confirm(`Delete category "${categoryLabel}"? This cannot be undone.`);
+    if (!confirmed) return;
+    await this.taskCategoryService.deleteCategory(categoryId);
   }
 
   formatSessionDate(session: ChatSession): string {

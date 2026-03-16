@@ -379,6 +379,14 @@ $border: #334155;
   margin-bottom: 0.25rem;
 }
 
+.task-group-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+
+  .task-group-header { flex: 1; }
+}
+
 .task-group-header {
   display: flex;
   align-items: center;
@@ -394,6 +402,24 @@ $border: #334155;
   font-weight: 600;
 
   &:hover { background: rgba($bg-dark, 0.8); }
+}
+
+.btn-delete-category {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: $text-secondary;
+  cursor: pointer;
+  padding: 0.4rem;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+
+  .task-group-row:hover & { opacity: 1; }
+  &:hover { color: #e05252; background: rgba(#e05252, 0.12); }
 }
 
 .chevron {
