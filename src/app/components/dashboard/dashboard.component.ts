@@ -156,6 +156,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // ── Session management ─────────────────────────────────────
 
   selectSession(session: ChatSession): void {
+    if (session.id === '__pending__') return;
     this.activeSession.set(session);
     this.sessionsOpen.set(false);
     this.chatService.watchSession(session.id!);

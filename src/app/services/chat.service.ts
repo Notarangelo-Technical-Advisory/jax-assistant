@@ -17,10 +17,12 @@ export class ChatService {
   loading = signal(false);
 
   private unsubMessages: (() => void) | null = null;
+  private activeSessionId: string | null = null;
 
   /** Subscribe to real-time messages for a session. */
   watchSession(sessionId: string): void {
     this.unsubMessages?.();
+    this.activeSessionId = sessionId;
     this.messages.set([]);
 
     const q = query(
@@ -31,8 +33,11 @@ export class ChatService {
 
     this.unsubMessages = onSnapshot(q,
       (snap) => {
+        // Guard: discard snapshot if the session has changed since this listener was set up
+        if (this.activeSessionId !== sessionId) return;
         const msgs = snap.docs
           .map((d) => ({ id: d.id, ...d.data() } as ChatMessage))
+          .filter((m) => (m as any).sessionId === sessionId)
           .sort((a, b) => {
             // Primary: sequence (integer) — deterministic ordering
             const aSeq = (a as any).sequence;
@@ -56,6 +61,7 @@ export class ChatService {
   stopWatching(): void {
     this.unsubMessages?.();
     this.unsubMessages = null;
+    this.activeSessionId = null;
     this.messages.set([]);
   }
 
