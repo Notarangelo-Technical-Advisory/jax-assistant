@@ -454,6 +454,7 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
 
       res.json({response: text});
     } catch (err: unknown) {
+      console.error("[chat] error:", err);
       const errMessage = err instanceof Error ? err.message : "Chat failed";
       res.status(500).json({error: errMessage});
     }
