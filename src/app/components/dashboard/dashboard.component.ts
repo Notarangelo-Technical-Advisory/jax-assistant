@@ -56,16 +56,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   newTaskDueDate = '';
   voice = localStorage.getItem('maisie-voice') || 'female-british';
 
-  expandedCategories = signal<Set<string>>(new Set(['ihrdc', 'solomon', 'dial', 'ppk', 'church', 'general']));
-
-  private expandNewCategoriesEffect = effect(() => {
-    const cats = this.categories();
-    const current = this.expandedCategories();
-    const newKeys = cats.map((c) => c.key).filter((k) => !current.has(k));
-    if (newKeys.length > 0) {
-      this.expandedCategories.set(new Set([...current, ...newKeys]));
-    }
-  });
+  expandedCategories = signal<Set<string>>(new Set());
 
   groupedTasks = computed(() => {
     const all = this.tasks();
@@ -91,6 +82,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
 
     return groups;
+  });
+
+  groupedAndExpandedTasks = computed(() => {
+    const groups = this.groupedTasks();
+    const expanded = this.expandedCategories();
+    return groups.map((g) => ({ ...g, expanded: expanded.has(g.category) }));
   });
 
   private subs: Subscription[] = [];
@@ -202,16 +199,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.activeSession.set(newSession);
       this.chatService.watchSession(id);
       this.chatInput = '';
-      const response = await this.chatService.sendMessage(text, id);
-      this.ttsService.primeAudioContext();
-      this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
+      try {
+        const response = await this.chatService.sendMessage(text, id);
+        this.ttsService.primeAudioContext();
+        this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
+      } catch (err) {
+        console.error('[sendChat] error:', err);
+      }
       return;
     }
 
     this.chatInput = '';
-    const response = await this.chatService.sendMessage(text, session.id);
-    this.ttsService.primeAudioContext();
-    this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
+    try {
+      const response = await this.chatService.sendMessage(text, session.id);
+      this.ttsService.primeAudioContext();
+      this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
+    } catch (err) {
+      console.error('[sendChat] error:', err);
+    }
   }
 
   // ── Push-to-talk ─────────────────────────────────────────
@@ -223,7 +228,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
       // Stop any playing TTS before recording
       this.ttsService.stop();
       this.ttsService.primeAudioContext();
-      this.sttService.startListening();
+      // Play greeting chime, then start the mic when it finishes
+      const greetingAudio = new Audio('/greeting.mp3');
+      const startListening = () => this.sttService.startListening();
+      greetingAudio.onended = startListening;
+      greetingAudio.onerror = startListening; // fallback if file can't load
+      greetingAudio.play().catch(startListening); // fallback for autoplay policy
     }
   }
 
@@ -239,11 +249,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const b = this.briefing();
     if (!b) return;
 
-    const calPart = this.calendarEvents().length > 0
-      ? ` You have ${this.calendarEvents().length} event${this.calendarEvents().length > 1 ? 's' : ''} today: ${this.calendarEvents().map((e) => `${this.formatEventTime(e.startTime)}, ${e.summary}`).join('. ')}.`
-      : ' No calendar events today.';
-
-    const text = `Good morning. You have ${b.unbilledHours} unbilled hours, worth $${b.unbilledAmount}. This week you've logged ${b.weekHours} hours.${calPart} ${b.alerts.map((a) => a.message).join('. ')}`;
+    // Use AI narrative if available, fall back to hardcoded template
+    let text: string;
+    if (b.narrativeSummary) {
+      text = b.narrativeSummary;
+    } else {
+      const calPart = this.calendarEvents().length > 0
+        ? ` You have ${this.calendarEvents().length} event${this.calendarEvents().length > 1 ? 's' : ''} today: ${this.calendarEvents().map((e) => `${this.formatEventTime(e.startTime)}, ${e.summary}`).join('. ')}.`
+        : ' No calendar events today.';
+      text = `Good morning. You have ${b.unbilledHours} unbilled hours, worth $${b.unbilledAmount}. This week you've logged ${b.weekHours} hours.${calPart} ${b.alerts.map((a) => a.message).join('. ')}`;
+    }
     this.ttsService.primeAudioContext();
     this.ttsService.speak(text, this.voice, `briefing-${b.date}`);
   }
