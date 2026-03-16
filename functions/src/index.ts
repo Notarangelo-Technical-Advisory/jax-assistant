@@ -182,7 +182,14 @@ export const chat = onRequest(
           .where("completed", "==", true)
           .orderBy("completedAt", "desc").limit(20).get()
           .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()})))
-          .catch(() => []),
+          .catch(() =>
+            // Fallback: index may not be ready yet — order by createdAt instead
+            db.collection("tasks")
+              .where("completed", "==", true)
+              .orderBy("createdAt", "desc").limit(20).get()
+              .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()})))
+              .catch(() => [])
+          ),
         // Load last 40 messages for this session as conversation history
         // Order by sequence (integer) for deterministic ordering — serverTimestamp
         // is not reliable within the same batch commit (both msgs get same timestamp)
