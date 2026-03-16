@@ -1,14 +1,23 @@
 import * as admin from "firebase-admin";
 
-// Initialize a secondary Firebase Admin app for cross-project reads
-// to fta-invoice-tracking Firestore. The jax-assistant service account
-// must have roles/datastore.viewer on the fta-invoice-tracking project.
-const ftaApp = admin.initializeApp(
-  {projectId: "fta-invoice-tracking"},
-  "fta-invoice-tracking"
-);
+// Secondary app is initialized lazily after the default app is ready,
+// so that admin.credential.applicationDefault() resolves to the correct
+// Firebase Admin SDK service account rather than the raw compute SA.
+let _ftaFirestore: FirebaseFirestore.Firestore | null = null;
 
-export const ftaFirestore = admin.firestore(ftaApp);
+export function getFtaFirestore(): FirebaseFirestore.Firestore {
+  if (!_ftaFirestore) {
+    const ftaApp = admin.initializeApp(
+      {
+        projectId: "fta-invoice-tracking",
+        credential: admin.credential.applicationDefault(),
+      },
+      "fta-invoice-tracking"
+    );
+    _ftaFirestore = admin.firestore(ftaApp);
+  }
+  return _ftaFirestore;
+}
 
 export interface TimeEntry {
   id: string;
@@ -53,7 +62,7 @@ export interface Customer {
 export async function getUnbilledEntries(
   customerId?: string
 ): Promise<TimeEntry[]> {
-  let query: FirebaseFirestore.Query = ftaFirestore
+  let query: FirebaseFirestore.Query = getFtaFirestore()
     .collection("timeEntries")
     .where("status", "==", "unbilled");
 
@@ -69,7 +78,7 @@ export async function getUnbilledEntries(
 export async function getLastInvoice(
   customerId?: string
 ): Promise<Invoice | null> {
-  let query: FirebaseFirestore.Query = ftaFirestore
+  let query: FirebaseFirestore.Query = getFtaFirestore()
     .collection("invoices")
     .orderBy("issueDate", "desc")
     .limit(1);
@@ -86,7 +95,7 @@ export async function getLastInvoice(
 
 /** Get all active customers */
 export async function getCustomers(): Promise<Customer[]> {
-  const snapshot = await ftaFirestore
+  const snapshot = await getFtaFirestore()
     .collection("customers")
     .where("isActive", "==", true)
     .get();
@@ -99,7 +108,7 @@ export async function getInvoices(options?: {
   status?: "draft" | "sent" | "paid" | "overdue" | "cancelled" | "unpaid";
   limit?: number;
 }): Promise<Invoice[]> {
-  let query: FirebaseFirestore.Query = ftaFirestore
+  let query: FirebaseFirestore.Query = getFtaFirestore()
     .collection("invoices")
     .orderBy("issueDate", "desc");
 
@@ -128,7 +137,7 @@ export async function getTimeEntriesForRange(
   endDate: string,
   customerId?: string
 ): Promise<TimeEntry[]> {
-  let query: FirebaseFirestore.Query = ftaFirestore
+  let query: FirebaseFirestore.Query = getFtaFirestore()
     .collection("timeEntries")
     .where("date", ">=", startDate)
     .where("date", "<=", endDate);
