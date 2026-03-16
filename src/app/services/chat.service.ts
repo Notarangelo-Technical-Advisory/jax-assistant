@@ -26,12 +26,25 @@ export class ChatService {
     const q = query(
       collection(this.firestore, 'chatMessages'),
       where('sessionId', '==', sessionId),
-      orderBy('createdAt', 'asc'),
+      orderBy('sequence', 'asc'),
     );
 
     this.unsubMessages = onSnapshot(q,
       (snap) => {
-        const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage));
+        const msgs = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as ChatMessage))
+          .sort((a, b) => {
+            // Primary: sequence (integer) — deterministic ordering
+            const aSeq = (a as any).sequence;
+            const bSeq = (b as any).sequence;
+            if (aSeq != null && bSeq != null) return aSeq - bSeq;
+            if (aSeq != null) return -1;
+            if (bSeq != null) return 1;
+            // Fallback for legacy messages without sequence
+            const aT = (a.createdAt as any)?.toMillis?.() ?? 0;
+            const bT = (b.createdAt as any)?.toMillis?.() ?? 0;
+            return aT - bT;
+          });
         this.messages.set(msgs);
       },
       (err) => {

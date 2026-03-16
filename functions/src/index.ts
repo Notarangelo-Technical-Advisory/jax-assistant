@@ -147,9 +147,11 @@ export const chat = onRequest(
           .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()})))
           .catch(() => []),
         // Load last 40 messages for this session as conversation history
+        // Order by sequence (integer) for deterministic ordering — serverTimestamp
+        // is not reliable within the same batch commit (both msgs get same timestamp)
         db.collection("chatMessages")
           .where("sessionId", "==", sessionId)
-          .orderBy("createdAt", "asc")
+          .orderBy("sequence", "asc")
           .limitToLast(40)
           .get()
           .then((s) => s.docs.map((d) => d.data() as {role: string; content: string}))
@@ -410,6 +412,16 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
         .join("");
 
       // Store user message and assistant reply in the session
+      // Use integer sequence for deterministic ordering (same approach as Solomon).
+      // serverTimestamp resolves to the same value for both docs in a batch,
+      // so timestamp-based ordering is unreliable.
+      const seqSnap = await db.collection("chatMessages")
+        .where("sessionId", "==", sessionId)
+        .orderBy("sequence", "desc")
+        .limit(1)
+        .get();
+      const baseSeq = seqSnap.empty ? 0 : ((seqSnap.docs[0].data()["sequence"] as number) + 1);
+
       const now = admin.firestore.FieldValue.serverTimestamp();
       const batch = db.batch();
 
@@ -418,6 +430,7 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
         sessionId,
         role: "user",
         content: message,
+        sequence: baseSeq,
         createdAt: now,
       });
 
@@ -426,7 +439,8 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
         sessionId,
         role: "assistant",
         content: text,
-        createdAt: admin.firestore.Timestamp.fromMillis(Date.now() + 1), // ensure order
+        sequence: baseSeq + 1,
+        createdAt: now,
       });
 
       // Update session metadata

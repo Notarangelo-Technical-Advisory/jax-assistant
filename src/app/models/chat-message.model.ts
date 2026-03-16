@@ -3,5 +3,6 @@ export interface ChatMessage {
   sessionId: string;
   role: 'user' | 'assistant';
   content: string;
+  sequence: number;
   createdAt: Date;
 }
