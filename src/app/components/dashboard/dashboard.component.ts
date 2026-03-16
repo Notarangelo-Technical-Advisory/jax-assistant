@@ -136,7 +136,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.alertService.getActiveAlerts().subscribe((a) => this.alerts.set(a)),
       this.chatSessionService.getSessions().subscribe((s) => {
         this.sessions.set(s);
-        // Auto-select the most recent session on first load
+        // Auto-select the most recent session on first load only.
+        // Skip if activeSession is already set (including the __pending__ placeholder
+        // used while a new session is being created).
         if (!this.activeSession() && s.length > 0) {
           this.selectSession(s[0]);
         }
@@ -160,18 +162,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   async newSession(): Promise<void> {
-    // Clear messages immediately so the UI shows empty before the new session loads
+    // Stop watching and clear messages immediately.
+    // Keep a non-null placeholder in activeSession so the getSessions() subscriber
+    // guard (!this.activeSession()) doesn't fire and re-load the previous session.
     this.chatService.stopWatching();
-    this.activeSession.set(null);
-    const id = await this.chatSessionService.createSession('New conversation');
-    const newSession: ChatSession = {
-      id,
-      title: 'New conversation',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    this.activeSession.set(newSession);
+    const placeholder: ChatSession = { id: '__pending__', title: 'New conversation', createdAt: new Date(), updatedAt: new Date() };
+    this.activeSession.set(placeholder);
     this.sessionsOpen.set(false);
+    const id = await this.chatSessionService.createSession('New conversation');
+    const newSession: ChatSession = { id, title: 'New conversation', createdAt: new Date(), updatedAt: new Date() };
+    this.activeSession.set(newSession);
     this.chatService.watchSession(id);
   }
 
