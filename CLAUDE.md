@@ -85,6 +85,33 @@ Memory + context files + decision log = your assistant gets smarter over time wi
 - Add reference files to `references/` as needed
 - Build skills in `.claude/skills/` when you notice recurring requests
 
+## Deployment Policy
+
+**All deployments must go through GitHub Actions. Never deploy locally.**
+
+The workflow at `.github/workflows/deploy-and-release.yml` triggers automatically on every push to `main`. It builds the Angular app, deploys hosting, Firestore rules/indexes, and Cloud Functions to Firebase project `jax-assistant-cb47f`.
+
+**Never run `firebase deploy` manually.** Do not run `firebase login --reauth` or attempt interactive authentication. All credentials are handled by the CI workflow via service account secrets.
+
+### To trigger a deployment
+
+```bash
+git add <files>
+git commit -m "feat: description of change"
+git push origin main
+```
+
+Monitor at: `https://github.com/Notarangelo-Technical-Advisory/jax-assistant/actions`
+
+### Commit message conventions (controls version bump)
+
+| Prefix | Version bump |
+|--------|-------------|
+| `feat:` | Minor (0.x.0) |
+| `fix:` | Patch (0.0.x) |
+| `BREAKING CHANGE` | Major (x.0.0) |
+| `docs:`, `chore:`, `refactor:` | No bump |
+
 ## Archives
 
 Never delete — move completed or outdated material to `archives/`.
