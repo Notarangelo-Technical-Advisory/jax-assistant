@@ -156,10 +156,70 @@ $border: #334155;
   &:hover { color: $text-primary; background: rgba(255, 255, 255, 0.1); }
 }
 
+// Narrative Summary
+.narrative-summary {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-left: 3px solid $accent;
+  background: rgba($accent, 0.06);
+  border-radius: 0 8px 8px 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: $text-primary;
+  font-style: normal;
+}
+
+// Task Callouts (overdue / due today in briefing)
+.task-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-top: 0.75rem;
+
+  .callout-icon {
+    font-weight: 700;
+    font-size: 1.1rem;
+    min-width: 1.5rem;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .callout-body {
+    flex: 1;
+    font-size: 0.85rem;
+
+    strong { display: block; margin-bottom: 0.25rem; }
+    p { margin: 0.15rem 0; }
+  }
+
+  .callout-meta {
+    color: $text-secondary;
+    font-size: 0.75rem;
+  }
+
+  &.overdue {
+    background: rgba($danger, 0.1);
+    border-left: 3px solid $danger;
+
+    .callout-icon { color: $danger; }
+    strong { color: $danger; }
+  }
+
+  &.due-today {
+    background: rgba($warning, 0.1);
+    border-left: 3px solid $warning;
+
+    .callout-icon { color: $warning; }
+    strong { color: $warning; }
+  }
+}
+
 // Briefing Grid
 .briefing-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 1rem;
 }
 
@@ -209,6 +269,20 @@ $border: #334155;
     border-left-color: $warning;
     background: rgba($warning, 0.05);
   }
+}
+
+.event-date {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: $text-secondary;
+  text-transform: uppercase;
+  white-space: nowrap;
+  min-width: 80px;
+}
+
+.calendar-event.lookahead {
+  border-left-color: rgba($accent, 0.5);
+  background: rgba($accent, 0.03);
 }
 
 .event-time {

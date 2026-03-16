@@ -171,6 +171,13 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
   }
 
   await batch.commit();
+
+  // Write sync metadata so the briefing function can detect staleness
+  await db.collection("metadata").doc("calendarSync").set({
+    lastRun: Timestamp.now(),
+    eventCount: events.length,
+  });
+
   console.log(
     `Sync complete: ${added} added, ${updated} updated, ${deleted} deleted. Total: ${events.length} events.`
   );

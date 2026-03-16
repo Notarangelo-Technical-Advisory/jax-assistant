@@ -508,13 +508,14 @@ function formatEventTime(date: Date): string {
   });
 }
 
-// ─── Scheduled: Morning Briefing (weekdays 7am ET) ─────────────
+// ─── Scheduled: Briefing (weekdays 7am & 1pm ET) ────────────────
 export const morningBriefing = onSchedule(
   {
-    schedule: "0 7 * * 1-5",
+    schedule: "0 7,13 * * 1-5",
     timeZone: "America/New_York",
     region: "us-central1",
-    memory: "256MiB",
+    memory: "512MiB",
+    timeoutSeconds: 120,
   },
   async () => {
     const today = new Date();
@@ -522,18 +523,39 @@ export const morningBriefing = onSchedule(
     const dayOfMonth = today.getDate();
     const isFriday = dayOfWeek === 5;
     const isFirstWeek = dayOfMonth <= 7;
+    const etHour = parseInt(
+      today.toLocaleString("en-US", {hour: "numeric", hour12: false, timeZone: "America/New_York"})
+    );
+    const isAfternoon = etHour >= 12;
+    const timeOfDay = isAfternoon ? "afternoon" : "morning";
+    const todayStr = today.toISOString().split("T")[0];
 
-    // Get today's calendar events
+    // Get today's calendar events — afternoon run only shows remaining events
     const todayStart = new Date(today);
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(today);
     todayEnd.setHours(23, 59, 59, 999);
+    const calendarWindowStart = isAfternoon ? today : todayStart;
 
-    const [unbilledEntries, lastInvoice, calendarEvents] = await Promise.all([
-      getUnbilledEntries().catch(() => []),
-      getLastInvoice().catch(() => null),
-      getCalendarEvents(todayStart, todayEnd).catch(() => []),
-    ]);
+    const [unbilledEntries, lastInvoice, calendarEvents, activeTasks, lastSyncDoc, existingTodayAlerts] =
+      await Promise.all([
+        getUnbilledEntries().catch(() => []),
+        getLastInvoice().catch(() => null),
+        getCalendarEvents(calendarWindowStart, todayEnd).catch(() => []),
+        db.collection("tasks")
+          .where("completed", "==", false)
+          .orderBy("createdAt", "desc").get()
+          .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()} as Record<string, unknown>)))
+          .catch(() => [] as Array<Record<string, unknown>>),
+        db.collection("metadata").doc("calendarSync").get()
+          .catch(() => null),
+        // Load alert types already written today to avoid duplicates on 2nd run
+        db.collection("alerts")
+          .where("briefingDate", "==", todayStr)
+          .get()
+          .then((s) => new Set(s.docs.map((d) => d.data()["type"] as string)))
+          .catch(() => new Set<string>()),
+      ]);
 
     const totalUnbilled = unbilledEntries.reduce(
       (sum, e) => sum + e.durationHours, 0
@@ -543,7 +565,6 @@ export const morningBriefing = onSchedule(
     const weekStart = new Date(today);
     weekStart.setDate(today.getDate() - today.getDay() + 1);
     const weekStartStr = weekStart.toISOString().split("T")[0];
-    const todayStr = today.toISOString().split("T")[0];
 
     const weekEntries = await getTimeEntriesForRange(
       weekStartStr, todayStr
@@ -552,43 +573,123 @@ export const morningBriefing = onSchedule(
       (sum, e) => sum + e.durationHours, 0
     );
 
-    const alerts: Array<{type: string; message: string}> = [];
+    // ── Task filtering ──────────────────────────────────────────
+    const overdueTasks = activeTasks.filter((t) => {
+      const due = t["dueDate"] as string | undefined;
+      return due && due < todayStr;
+    }).map((t) => ({
+      title: t["title"] as string,
+      category: t["category"] as string,
+      dueDate: t["dueDate"] as string,
+    }));
 
-    if (isFriday) {
-      alerts.push({
-        type: "status-report",
-        message: `Weekly status report due. This week: ${weekHours.toFixed(1)}h logged.`,
-      });
+    const dueTodayTasks = activeTasks.filter((t) => {
+      const due = t["dueDate"] as string | undefined;
+      return due && due === todayStr;
+    }).map((t) => ({
+      title: t["title"] as string,
+      category: t["category"] as string,
+      dueDate: t["dueDate"] as string,
+    }));
+
+    // ── Calendar sync staleness ─────────────────────────────────
+    let calendarSyncAge: number | null = null;
+    if (lastSyncDoc && lastSyncDoc.exists) {
+      const lastRun = lastSyncDoc.data()?.lastRun?.toDate?.();
+      if (lastRun) {
+        calendarSyncAge = Math.round(
+          (today.getTime() - lastRun.getTime()) / 60000
+        );
+      }
     }
 
-    // Flag early morning calendar events (before 9am ET)
-    const earlyEvents = calendarEvents.filter((e) => {
-      const etHour = new Date(e.startTime.toLocaleString("en-US", {timeZone: "America/New_York"}));
-      return etHour.getHours() <= 9;
-    });
-    for (const e of earlyEvents) {
-      alerts.push({
-        type: "calendar",
-        message: `Early meeting: ${formatEventTime(e.startTime)} — ${e.summary}`,
+    // ── Friday lookahead ────────────────────────────────────────
+    let nextWeekEvents: Array<{
+      summary: string; startTime: string; endTime: string;
+      date: string; location: string | null;
+    }> = [];
+    if (isFriday) {
+      const nextMonday = new Date(today);
+      nextMonday.setDate(today.getDate() + (8 - today.getDay()));
+      nextMonday.setHours(0, 0, 0, 0);
+      const nextFridayEnd = new Date(nextMonday);
+      nextFridayEnd.setDate(nextMonday.getDate() + 4);
+      nextFridayEnd.setHours(23, 59, 59, 999);
+      const rawNextWeek = await getCalendarEvents(nextMonday, nextFridayEnd)
+        .catch(() => []);
+      nextWeekEvents = rawNextWeek.map((e) => ({
+        summary: e.summary,
+        startTime: formatEventTime(e.startTime),
+        endTime: formatEventTime(e.endTime),
+        date: e.startTime.toLocaleDateString("en-US", {
+          weekday: "short", month: "short", day: "numeric",
+          timeZone: "America/New_York",
+        }),
+        location: e.location || null,
+      }));
+    }
+
+    // ── Alerts ──────────────────────────────────────────────────
+    // Helper: only add an alert if that type hasn't already been written today
+    const alerts: Array<{type: string; message: string}> = [];
+    const addAlert = (type: string, message: string) => {
+      if (!existingTodayAlerts.has(type)) {
+        alerts.push({type, message});
+      }
+    };
+
+    // Friday alerts — morning run only (already sent by afternoon)
+    if (isFriday && !isAfternoon) {
+      addAlert("status-report", `Weekly status report due. This week: ${weekHours.toFixed(1)}h logged.`);
+      if (nextWeekEvents.length > 0) {
+        const uniqueDays = new Set(nextWeekEvents.map((e) => e.date));
+        addAlert("lookahead", `Next week: ${nextWeekEvents.length} meeting${nextWeekEvents.length > 1 ? "s" : ""} across ${uniqueDays.size} day${uniqueDays.size > 1 ? "s" : ""}. `);
+      }
+    }
+
+    // Early meeting alerts — morning run only
+    if (!isAfternoon) {
+      const earlyEvents = calendarEvents.filter((e) => {
+        const etH = new Date(e.startTime.toLocaleString("en-US", {timeZone: "America/New_York"}));
+        return etH.getHours() <= 9;
       });
+      for (const e of earlyEvents) {
+        // Each early event gets its own type key to avoid suppressing multiple events
+        const key = `calendar-early-${e.summary.substring(0, 20)}`;
+        if (!existingTodayAlerts.has(key)) {
+          alerts.push({
+            type: key,
+            message: `Early meeting: ${formatEventTime(e.startTime)} — ${e.summary}`,
+          });
+        }
+      }
     }
 
     if (isFirstWeek) {
       const lastMonth = new Date(today);
       lastMonth.setMonth(lastMonth.getMonth() - 1);
       const lastMonthName = lastMonth.toLocaleString("en-US", {month: "long"});
-
-      if (!lastInvoice ||
-          new Date(lastInvoice.issueDate) < lastMonth) {
-        alerts.push({
-          type: "invoice",
-          message: `${lastMonthName} invoice may be due. Unbilled: ${totalUnbilled.toFixed(1)}h ($${(totalUnbilled * 150).toFixed(0)}).`,
-        });
+      if (!lastInvoice || new Date(lastInvoice.issueDate) < lastMonth) {
+        addAlert("invoice", `${lastMonthName} invoice may be due. Unbilled: ${totalUnbilled.toFixed(1)}h ($${(totalUnbilled * 150).toFixed(0)}).`);
       }
     }
 
-    const briefing = {
+    if (overdueTasks.length > 0) {
+      const titles = overdueTasks.slice(0, 3).map((t) => t.title).join(", ");
+      addAlert("overdue-tasks", `${overdueTasks.length} overdue task${overdueTasks.length > 1 ? "s" : ""}: ${titles}${overdueTasks.length > 3 ? "…" : ""}. `);
+    }
+
+    if (calendarSyncAge !== null && calendarSyncAge > 30) {
+      addAlert("calendar-stale", "Calendar data may be outdated. Mac sync hasn't run recently.");
+    } else if (calendarSyncAge === null) {
+      addAlert("calendar-stale", "Calendar sync status unknown. Bridge may not be running.");
+    }
+
+    // ── Build briefing ──────────────────────────────────────────
+    const briefingData = {
       date: todayStr,
+      dayOfWeek: today.toLocaleDateString("en-US", {weekday: "long"}),
+      timeOfDay,
       unbilledHours: Math.round(totalUnbilled * 100) / 100,
       unbilledAmount: Math.round(totalUnbilled * 150 * 100) / 100,
       weekHours: Math.round(weekHours * 100) / 100,
@@ -600,13 +701,48 @@ export const morningBriefing = onSchedule(
         endTime: formatEventTime(e.endTime),
         location: e.location || null,
       })),
+      overdueTasks,
+      dueTodayTasks,
+      totalActiveTasks: activeTasks.length,
+      nextWeekEvents: isFriday ? nextWeekEvents : [],
+      calendarSyncAge,
       alerts,
+    };
+
+    // ── AI narrative summary ────────────────────────────────────
+    let narrativeSummary: string | null = null;
+    try {
+      const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
+      const systemMsg = isAfternoon
+        ? `You are Maisie, Jack Notarangelo's executive assistant. Write a concise afternoon check-in (3-5 sentences). Be warm but direct. Focus on what's left for the rest of the day — remaining meetings, any overdue tasks still open, and current unbilled hours. Do not repeat things Jack already knows from the morning. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech.`
+        : `You are Maisie, Jack Notarangelo's executive assistant. Write a concise morning briefing (3-5 sentences). Be warm but direct. Contextualize the numbers — mention trends, what to focus on, and any urgent items. If there are overdue tasks or early meetings, highlight them. On Fridays, mention the week ahead. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech.`;
+      const aiResponse = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 300,
+        system: systemMsg,
+        messages: [{
+          role: "user",
+          content: JSON.stringify({...briefingData, timeOfDay}),
+        }],
+      });
+      const block = aiResponse.content[0];
+      if (block.type === "text") {
+        narrativeSummary = block.text;
+      }
+    } catch (err) {
+      console.error("AI narrative generation failed:", err);
+    }
+
+    const briefing = {
+      ...briefingData,
+      narrativeSummary,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    await db.collection("briefings").doc(todayStr).set(briefing);
+    const briefingDocId = isAfternoon ? `${todayStr}-afternoon` : todayStr;
+    await db.collection("briefings").doc(briefingDocId).set(briefing);
 
-    // Write any alerts to the alerts collection
+    // Write new alerts to the alerts collection (deduplication was handled above)
     for (const alert of alerts) {
       await db.collection("alerts").add({
         ...alert,
