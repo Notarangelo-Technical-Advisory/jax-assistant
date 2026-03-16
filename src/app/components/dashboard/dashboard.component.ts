@@ -106,11 +106,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   });
 
-  ngOnInit(): void {
-    this.billingService.getSummary()
-      .then((s) => this.billingSummary.set(s))
-      .catch((err) => console.error('[billing] getSummary error:', err));
+  private billingLoaded = false;
+  private billingEffect = effect(() => {
+    // Wait for Firebase Auth to restore session before calling the authenticated endpoint
+    if (!this.authService.loading() && this.authService.currentUser() && !this.billingLoaded) {
+      this.billingLoaded = true;
+      this.billingService.getSummary()
+        .then((s) => this.billingSummary.set(s))
+        .catch((err) => console.error('[billing] getSummary error:', err));
+    }
+  });
 
+  ngOnInit(): void {
     this.subs.push(
       this.briefingService.getLatestBriefing().subscribe((b) => this.briefing.set(b)),
       this.calendarService.getTodayEvents().subscribe((e) => this.calendarEvents.set(e)),
