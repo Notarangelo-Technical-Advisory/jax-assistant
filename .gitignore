@@ -42,6 +42,11 @@ testem.log
 /functions/node_modules
 /functions/.env
 
+# Calendar Bridge
+/bridge/node_modules
+/bridge/dist
+/bridge/service-account.json
+
 # Claude
 CLAUDE.local.md
 

@@ -80,6 +80,28 @@
         }
       </section>
 
+      <!-- Calendar -->
+      <section class="section">
+        <h2>Today's Schedule</h2>
+        @if (calendarEvents().length > 0) {
+          <div class="calendar-list">
+            @for (event of calendarEvents(); track event.id) {
+              <div class="calendar-event" [class.early]="isEarlyEvent(event)">
+                <span class="event-time">
+                  {{ formatEventTime(event.startTime) }} – {{ formatEventTime(event.endTime) }}
+                </span>
+                <span class="event-summary">{{ event.summary }}</span>
+                @if (event.location) {
+                  <span class="event-location">{{ event.location }}</span>
+                }
+              </div>
+            }
+          </div>
+        } @else {
+          <p class="empty-state">No events today.</p>
+        }
+      </section>
+
       <!-- Tasks -->
       <section class="section">
         <h2>Tasks</h2>

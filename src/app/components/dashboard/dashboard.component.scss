@@ -189,6 +189,49 @@ $border: #334155;
   color: $success;
 }
 
+// Calendar
+.calendar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.calendar-event {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  background: $bg-dark;
+  border-left: 3px solid $accent;
+
+  &.early {
+    border-left-color: $warning;
+    background: rgba($warning, 0.05);
+  }
+}
+
+.event-time {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: $accent;
+  white-space: nowrap;
+  min-width: 130px;
+
+  .early & { color: $warning; }
+}
+
+.event-summary {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.event-location {
+  font-size: 0.75rem;
+  color: $text-secondary;
+  white-space: nowrap;
+}
+
 // Tasks
 .add-task {
   display: flex;

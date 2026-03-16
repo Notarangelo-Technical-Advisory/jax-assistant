@@ -9,6 +9,7 @@ import { TaskCategoryService } from '../../services/task-category.service';
 import { AlertService } from '../../services/alert.service';
 import { ChatService } from '../../services/chat.service';
 import { ChatSessionService } from '../../services/chat-session.service';
+import { CalendarService } from '../../services/calendar.service';
 import { TtsService } from '../../services/tts.service';
 import { SttService } from '../../services/stt.service';
 import { Briefing } from '../../models/briefing.model';
@@ -16,6 +17,7 @@ import { Task } from '../../models/task.model';
 import { TaskCategory } from '../../models/task-category.model';
 import { Alert } from '../../models/alert.model';
 import { ChatSession } from '../../models/chat-session.model';
+import { CalendarEvent } from '../../models/calendar-event.model';
 
 @Component({
   selector: 'app-dashboard',
@@ -32,10 +34,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   alertService = inject(AlertService);
   chatService = inject(ChatService);
   chatSessionService = inject(ChatSessionService);
+  calendarService = inject(CalendarService);
   ttsService = inject(TtsService);
   sttService = inject(SttService);
 
   briefing = signal<Briefing | null>(null);
+  calendarEvents = signal<CalendarEvent[]>([]);
   tasks = signal<Task[]>([]);
   categories = signal<TaskCategory[]>([]);
   alerts = signal<Alert[]>([]);
@@ -141,6 +145,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.subs.push(
       this.briefingService.getLatestBriefing().subscribe((b) => this.briefing.set(b)),
+      this.calendarService.getTodayEvents().subscribe((e) => this.calendarEvents.set(e)),
       this.taskService.getActiveTasks().subscribe((t) => this.tasks.set(t)),
       this.taskCategoryService.getCategories().subscribe((c) => this.categories.set(c)),
       this.alertService.getActiveAlerts().subscribe((a) => this.alerts.set(a)),
@@ -287,11 +292,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
+  formatEventTime(date: Date): string {
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+
+  isEarlyEvent(event: CalendarEvent): boolean {
+    return event.startTime.getHours() < 9;
+  }
+
   speakBriefing(): void {
     const b = this.briefing();
     if (!b) return;
 
-    const text = `Good morning. You have ${b.unbilledHours} unbilled hours, worth $${b.unbilledAmount}. This week you've logged ${b.weekHours} hours. ${b.alerts.map((a) => a.message).join('. ')}`;
+    const calPart = this.calendarEvents().length > 0
+      ? ` You have ${this.calendarEvents().length} event${this.calendarEvents().length > 1 ? 's' : ''} today: ${this.calendarEvents().map((e) => `${this.formatEventTime(e.startTime)}, ${e.summary}`).join('. ')}.`
+      : ' No calendar events today.';
+
+    const text = `Good morning. You have ${b.unbilledHours} unbilled hours, worth $${b.unbilledAmount}. This week you've logged ${b.weekHours} hours.${calPart} ${b.alerts.map((a) => a.message).join('. ')}`;
     this.ttsService.primeAudioContext();
     this.ttsService.speak(text, this.voice, `briefing-${b.date}`);
   }

@@ -121,7 +121,14 @@ export const chat = onRequest(
     }
 
     // Gather context from Firestore and fta-time-tracker
-    const [unbilledEntries, lastInvoice, todayBriefing, alerts, tasks, sessionHistory, customCategories] =
+    const chatNow = new Date();
+    const chatTodayStart = new Date(chatNow);
+    chatTodayStart.setHours(0, 0, 0, 0);
+    const chatTomorrowEnd = new Date(chatNow);
+    chatTomorrowEnd.setDate(chatTomorrowEnd.getDate() + 2);
+    chatTomorrowEnd.setHours(0, 0, 0, 0);
+
+    const [unbilledEntries, lastInvoice, todayBriefing, alerts, tasks, sessionHistory, customCategories, chatCalendarEvents] =
       await Promise.all([
         getUnbilledEntries().catch(() => []),
         getLastInvoice().catch(() => null),
@@ -152,6 +159,8 @@ export const chat = onRequest(
           .orderBy("order", "asc").get()
           .then((s) => s.docs.map((d) => d.data() as {key: string; label: string}))
           .catch(() => []),
+        // Calendar events for today + tomorrow
+        getCalendarEvents(chatTodayStart, chatTomorrowEnd).catch(() => []),
       ]);
 
     const totalUnbilled = unbilledEntries.reduce(
@@ -185,12 +194,30 @@ Current context:
 }).join("; ") : "None"}
 - Active alerts: ${alerts.length > 0 ? alerts.map((a: Record<string, unknown>) => `${a["type"]}: ${a["message"]}`).join("; ") : "None"}
 - Today's briefing: ${todayBriefing ? JSON.stringify(todayBriefing) : "Not generated yet"}
+- Calendar (today & tomorrow): ${chatCalendarEvents.length > 0 ? chatCalendarEvents.map((e) => {
+  const day = e.startTime.toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York"});
+  return `${day} ${formatEventTime(e.startTime)}–${formatEventTime(e.endTime)}: ${e.summary}${e.location ? ` (${e.location})` : ""}`;
+}).join("; ") : "No upcoming events"}
 - Task categories: ${allCategories.map((c) => `${c.key} (${c.label})`).join(", ")}
 
 Be concise and direct. Use a warm, professional tone — like a trusted assistant who knows Jack well. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it. When Jack asks you to create a new task category, use the create_task_category tool.
 Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numeric", month: "long", day: "numeric"})}.`;
 
     const buildTools = (cats: Array<{key: string; label: string}>): Anthropic.Messages.Tool[] => [
+      {
+        name: "get_calendar",
+        description: "Get Jack's calendar events for a date range. Use this when Jack asks about his schedule, meetings, or availability.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            days_ahead: {
+              type: "number",
+              description: "Number of days ahead to look (default 1 = today only, 2 = today + tomorrow, 7 = this week)",
+            },
+          },
+          required: [],
+        },
+      },
       {
         name: "add_task",
         description: "Add a new task to Jack's task list",
@@ -276,7 +303,29 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
         const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
 
         for (const block of toolUseBlocks) {
-          if (block.name === "add_task") {
+          if (block.name === "get_calendar") {
+            const input = block.input as {days_ahead?: number};
+            const daysAhead = input.days_ahead || 1;
+            const calStart = new Date();
+            calStart.setHours(0, 0, 0, 0);
+            const calEnd = new Date(calStart);
+            calEnd.setDate(calEnd.getDate() + daysAhead);
+            const events = await getCalendarEvents(calStart, calEnd).catch(() => []);
+            const formatted = events.map((e) => {
+              const day = e.startTime.toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York"});
+              const time = `${formatEventTime(e.startTime)}–${formatEventTime(e.endTime)}`;
+              return `${day} ${time}: ${e.summary}${e.location ? ` (${e.location})` : ""}`;
+            });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({
+                events: formatted,
+                count: events.length,
+                range: `Next ${daysAhead} day(s)`,
+              }),
+            });
+          } else if (block.name === "add_task") {
             const input = block.input as {
               title: string;
               category: string;
@@ -419,6 +468,32 @@ export const getUnbilledSummary = onRequest(
   }
 );
 
+// ─── Helper: Get today's calendar events from Firestore ─────────
+async function getCalendarEvents(
+  startOfDay: Date, endOfDay: Date
+): Promise<Array<{summary: string; startTime: Date; endTime: Date; location?: string}>> {
+  const snap = await db.collection("calendarEvents")
+    .where("startTime", ">=", admin.firestore.Timestamp.fromDate(startOfDay))
+    .where("startTime", "<", admin.firestore.Timestamp.fromDate(endOfDay))
+    .orderBy("startTime", "asc")
+    .get();
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      summary: data.summary,
+      startTime: data.startTime.toDate(),
+      endTime: data.endTime.toDate(),
+      location: data.location || undefined,
+    };
+  });
+}
+
+function formatEventTime(date: Date): string {
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
+  });
+}
+
 // ─── Scheduled: Morning Briefing (weekdays 7am ET) ─────────────
 export const morningBriefing = onSchedule(
   {
@@ -434,9 +509,16 @@ export const morningBriefing = onSchedule(
     const isFriday = dayOfWeek === 5;
     const isFirstWeek = dayOfMonth <= 7;
 
-    const [unbilledEntries, lastInvoice] = await Promise.all([
+    // Get today's calendar events
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const [unbilledEntries, lastInvoice, calendarEvents] = await Promise.all([
       getUnbilledEntries().catch(() => []),
       getLastInvoice().catch(() => null),
+      getCalendarEvents(todayStart, todayEnd).catch(() => []),
     ]);
 
     const totalUnbilled = unbilledEntries.reduce(
@@ -465,6 +547,18 @@ export const morningBriefing = onSchedule(
       });
     }
 
+    // Flag early morning calendar events (before 9am ET)
+    const earlyEvents = calendarEvents.filter((e) => {
+      const etHour = new Date(e.startTime.toLocaleString("en-US", {timeZone: "America/New_York"}));
+      return etHour.getHours() <= 9;
+    });
+    for (const e of earlyEvents) {
+      alerts.push({
+        type: "calendar",
+        message: `Early meeting: ${formatEventTime(e.startTime)} — ${e.summary}`,
+      });
+    }
+
     if (isFirstWeek) {
       const lastMonth = new Date(today);
       lastMonth.setMonth(lastMonth.getMonth() - 1);
@@ -486,6 +580,12 @@ export const morningBriefing = onSchedule(
       weekHours: Math.round(weekHours * 100) / 100,
       lastInvoiceDate: lastInvoice?.issueDate || null,
       lastInvoiceAmount: lastInvoice?.total || null,
+      calendarEvents: calendarEvents.map((e) => ({
+        summary: e.summary,
+        startTime: formatEventTime(e.startTime),
+        endTime: formatEventTime(e.endTime),
+        location: e.location || null,
+      })),
       alerts,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
