@@ -12,16 +12,19 @@ When Jack mentions a task, asks what's next, or says to add/complete/move a task
 
 When Jack mentions something he needs to do:
 1. Read `tasks.md`
-2. Add the task to the appropriate section:
-   - **Priority / Today** — needs to happen today
-   - **This Week** — needs to happen this week
-   - **Upcoming** — future tasks, no immediate deadline
-   - **Recurring** — repeating tasks
+2. Add the task to the appropriate group:
+   - **Grace Pres** — Church elder responsibilities
+   - **IHRDC** — Consulting client work
+   - **PPK Ministries** — Prophet-Priest-King product
+   - **Solomon** — Solomon product
+   - **DIAL** — DIAL product
+   - **General** — Personal and miscellaneous
+   - **Recurring** — Repeating tasks with cadence noted
 3. Write the updated file
 
-Format: `- [ ] [Task description] *(added [date])*`
+Format: `- [ ] [Task description]`
 
-If a deadline is mentioned: `- [ ] [Task description] — due [date] *(added [date])*`
+If a deadline is mentioned: `- [ ] [Task description] — due [date]`
 
 ### Completing Tasks
 
