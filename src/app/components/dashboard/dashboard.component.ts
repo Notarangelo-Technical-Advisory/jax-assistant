@@ -65,6 +65,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return groups;
   });
 
+  conversationMode = signal(false);
+  private wasSpeaking = false;
   private greetingAudio: HTMLAudioElement | null = null;
   private subs: Subscription[] = [];
 
@@ -74,6 +76,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (transcript && !this.sttService.isListening()) {
       this.chatInput = transcript;
       this.sendChat();
+    }
+  });
+
+  // After TTS finishes a response, auto-restart the mic in conversation mode
+  private conversationEffect = effect(() => {
+    const speakingId = this.ttsService.speakingId();
+    const inConversation = this.conversationMode();
+
+    if (speakingId !== null) {
+      this.wasSpeaking = true;
+    } else if (this.wasSpeaking && inConversation) {
+      this.wasSpeaking = false;
+      setTimeout(() => {
+        if (this.conversationMode() && !this.chatService.loading() && !this.sttService.isListening()) {
+          this.sttService.startListening();
+        }
+      }, 600);
     }
   });
 
@@ -102,23 +121,32 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   startConversation(): void {
+    if (this.conversationMode()) {
+      this.stopConversation();
+      return;
+    }
+
+    this.conversationMode.set(true);
     this.ttsService.primeAudioContext();
     this.greetingPlaying.set(true);
 
     this.greetingAudio = new Audio('/greeting.mp3');
-    this.greetingAudio.onended = () => {
+    const afterGreeting = () => {
       this.greetingPlaying.set(false);
-      // Auto-start listening after greeting finishes
-      if (this.sttService.isSupported) {
+      if (this.sttService.isSupported && this.conversationMode()) {
         this.sttService.startListening();
       }
     };
-    this.greetingAudio.onerror = () => {
-      this.greetingPlaying.set(false);
-    };
-    this.greetingAudio.play().catch(() => {
-      this.greetingPlaying.set(false);
-    });
+    this.greetingAudio.onended = afterGreeting;
+    this.greetingAudio.onerror = afterGreeting;
+    this.greetingAudio.play().catch(afterGreeting);
+  }
+
+  stopConversation(): void {
+    this.conversationMode.set(false);
+    this.wasSpeaking = false;
+    this.sttService.stopListening();
+    this.ttsService.stop();
   }
 
   toggleMic(): void {
