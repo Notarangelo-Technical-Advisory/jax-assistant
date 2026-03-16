@@ -935,8 +935,9 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             const input = block.input as {file_path: string; ref?: string};
             const ref = input.ref || "main";
             try {
+              const encodedPath = input.file_path.split("/").map(encodeURIComponent).join("/");
               const data = await githubApi(
-                `/repos/${GITHUB_REPO}/contents/${encodeURIComponent(input.file_path)}?ref=${encodeURIComponent(ref)}`,
+                `/repos/${GITHUB_REPO}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
                 "GET"
               ) as {content: string; encoding: string; sha: string; size: number};
               const content = Buffer.from(data.content, "base64").toString("utf-8");
@@ -993,12 +994,13 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
               });
             } else {
               try {
+                const encodedFilePath = input.file_path.split("/").map(encodeURIComponent).join("/");
                 const existing = await githubApi(
-                  `/repos/${GITHUB_REPO}/contents/${encodeURIComponent(input.file_path)}?ref=${encodeURIComponent(input.branch_name)}`,
+                  `/repos/${GITHUB_REPO}/contents/${encodedFilePath}?ref=${encodeURIComponent(input.branch_name)}`,
                   "GET"
                 ) as {sha: string};
                 const result = await githubApi(
-                  `/repos/${GITHUB_REPO}/contents/${encodeURIComponent(input.file_path)}`,
+                  `/repos/${GITHUB_REPO}/contents/${encodedFilePath}`,
                   "PUT",
                   {
                     message: input.commit_message,
