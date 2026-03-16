@@ -42,10 +42,34 @@ $border: #334155;
   }
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.btn-call-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.9rem;
+  background: $success;
+  border: none;
+  border-radius: 20px;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover { background: #1aab50; }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 
 .voice-select {
