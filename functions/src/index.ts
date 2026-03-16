@@ -764,13 +764,19 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
         });
       }
 
-      const text = response.content
+      const rawText = response.content
         .filter((b) => b.type === "text")
         .map((b) => {
           if (b.type === "text") return b.text;
           return "";
         })
         .join("");
+
+      // Strip all emoji characters regardless of system prompt compliance
+      const text = rawText.replace(
+        /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu,
+        ""
+      ).replace(/\s{2,}/g, " ").trim();
 
       // Store user message and assistant reply in the session
       // Use integer sequence for deterministic ordering (same approach as Solomon).
