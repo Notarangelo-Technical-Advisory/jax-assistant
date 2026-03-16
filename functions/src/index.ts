@@ -172,8 +172,9 @@ export const chat = onRequest(
     );
     const unbilledAmount = totalUnbilled * 150;
 
+    // fta-time-tracker stores Firestore doc ID (c.id) as customerId on time entries
     const customerMap = new Map<string, {name: string; rate: number}>(
-      customers.map((c) => [c.customerId, {
+      customers.map((c) => [c.id, {
         name: c.companyName,
         rate: c.hourlyRate ?? 150,
       }])
@@ -261,6 +262,28 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             taskId: {
               type: "string",
               description: "The Firestore document ID of the task to complete",
+            },
+          },
+          required: ["taskId"],
+        },
+      },
+      {
+        name: "update_task",
+        description: "Update an existing task's due date, title, or category. Use the task ID from the active tasks list. Use this when Jack asks to change or set a due date on an existing task.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            taskId: {
+              type: "string",
+              description: "The Firestore document ID of the task to update",
+            },
+            dueDate: {
+              type: "string",
+              description: "New due date in YYYY-MM-DD format. Omit to leave unchanged. Pass null to clear the due date.",
+            },
+            title: {
+              type: "string",
+              description: "New title for the task. Omit to leave unchanged.",
             },
           },
           required: ["taskId"],
@@ -453,6 +476,17 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
               completed: true,
               completedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({success: true}),
+            });
+          } else if (block.name === "update_task") {
+            const input = block.input as {taskId: string; dueDate?: string | null; title?: string};
+            const updates: Record<string, unknown> = {};
+            if (input.title !== undefined) updates["title"] = input.title;
+            if (input.dueDate !== undefined) updates["dueDate"] = input.dueDate ?? null;
+            await db.collection("tasks").doc(input.taskId).update(updates);
             toolResults.push({
               type: "tool_result",
               tool_use_id: block.id,
@@ -820,7 +854,8 @@ export const getUnbilledSummary = onRequest(
     } catch (err) {
       console.error("[getUnbilledSummary] getCustomers failed:", err);
     }
-    const custNameMap = new Map(customers.map((c) => [c.customerId, c.companyName]));
+    // fta-time-tracker stores Firestore doc ID (c.id) as customerId on time entries
+    const custNameMap = new Map(customers.map((c) => [c.id, c.companyName]));
 
     const totalHours = entries.reduce((sum, e) => sum + e.durationHours, 0);
     const entryItems = entries.map((e) => ({
