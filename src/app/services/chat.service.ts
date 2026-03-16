@@ -29,10 +29,15 @@ export class ChatService {
       orderBy('createdAt', 'asc'),
     );
 
-    this.unsubMessages = onSnapshot(q, (snap) => {
-      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage));
-      this.messages.set(msgs);
-    });
+    this.unsubMessages = onSnapshot(q,
+      (snap) => {
+        const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage));
+        this.messages.set(msgs);
+      },
+      (err) => {
+        console.error('[ChatService] watchSession error:', err);
+      }
+    );
   }
 
   stopWatching(): void {
