@@ -1,0 +1,270 @@
+name: Deploy and Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "20"
+  FIREBASE_PROJECT: "jax-assistant-cb47f"
+
+jobs:
+  version:
+    name: Calculate Version
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    outputs:
+      new_version:  ${{ steps.calc.outputs.new_version }}
+      new_tag:      ${{ steps.calc.outputs.new_tag }}
+      previous_tag: ${{ steps.calc.outputs.previous_tag }}
+      commit_log:   ${{ steps.calc.outputs.commit_log }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next version
+        id: calc
+        run: |
+          git fetch --tags
+
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LATEST_TAG" ]; then
+            PREVIOUS="v0.0.0"
+            MAJOR=0; MINOR=0; PATCH=0
+          else
+            PREVIOUS="$LATEST_TAG"
+            VERSION="${LATEST_TAG#v}"
+            MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            MINOR=$(echo "$VERSION" | cut -d. -f2)
+            PATCH=$(echo "$VERSION" | cut -d. -f3)
+          fi
+
+          if [ "$PREVIOUS" = "v0.0.0" ]; then
+            COMMITS=$(git log --pretty=format:"%s" 2>/dev/null)
+          else
+            COMMITS=$(git log "${PREVIOUS}..HEAD" --pretty=format:"%s" 2>/dev/null)
+          fi
+
+          BUMP="patch"
+          if echo "$COMMITS" | grep -qiE "BREAKING CHANGE|\[major\]"; then
+            BUMP="major"
+          elif echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:|\[minor\]"; then
+            BUMP="minor"
+          fi
+
+          case "$BUMP" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          NEW_TAG="v${NEW_VERSION}"
+
+          if [ "$PREVIOUS" = "v0.0.0" ]; then
+            COMMIT_LOG=$(git log --pretty=format:"%h - %s" 2>/dev/null | head -50)
+          else
+            COMMIT_LOG=$(git log "${PREVIOUS}..HEAD" --pretty=format:"%h - %s" 2>/dev/null | head -50)
+          fi
+
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "new_tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=${PREVIOUS}" >> "$GITHUB_OUTPUT"
+
+          EOF_MARKER=$(openssl rand -hex 16)
+          echo "commit_log<<${EOF_MARKER}" >> "$GITHUB_OUTPUT"
+          echo "$COMMIT_LOG" >> "$GITHUB_OUTPUT"
+          echo "${EOF_MARKER}" >> "$GITHUB_OUTPUT"
+
+          echo "### Version: ${NEW_TAG} (${BUMP} bump from ${PREVIOUS})" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Inject version
+        run: echo "export const appVersion = '${{ needs.version.outputs.new_version }}';" > src/environments/version.ts
+
+      - run: npm install
+
+      - run: npm run build:prod
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/jax-assistant-app/browser
+          retention-days: 1
+
+  deploy:
+    name: Deploy to Firebase
+    runs-on: ubuntu-latest
+    needs: [build, version]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: dist/jax-assistant-app/browser
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install and build functions
+        run: cd functions && npm install && npm run build
+
+      - run: npm install -g firebase-tools@13.15.2
+
+      - name: Authenticate to Google Cloud via Workload Identity
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          token_format: 'access_token'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Write functions env vars
+        run: |
+          echo "ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}" > functions/.env
+          echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> functions/.env
+
+      - name: Deploy to Firebase
+        env:
+          NODE_TLS_REJECT_UNAUTHORIZED: '0'
+          FIREBASE_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: firebase deploy --only hosting,firestore,functions --project "$FIREBASE_PROJECT" --force
+
+      - name: Deployment summary
+        run: |
+          echo "### Deployed to https://jax-assistant-cb47f.web.app" >> "$GITHUB_STEP_SUMMARY"
+
+  release-notes:
+    name: Generate Release Notes
+    runs-on: ubuntu-latest
+    needs: [deploy, version]
+    outputs:
+      notes: ${{ steps.generate.outputs.notes }}
+    steps:
+      - name: Generate AI release notes
+        id: generate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NEW_VERSION: ${{ needs.version.outputs.new_tag }}
+          COMMIT_LOG: ${{ needs.version.outputs.commit_log }}
+        run: |
+          PROMPT="Generate concise, professional release notes for ${NEW_VERSION} of Jax Assistant — a personal executive assistant app with voice AI, built with Angular 19 and Firebase.
+
+          Commits in this release:
+          ${COMMIT_LOG}
+
+          Categorize each commit by its conventional commit prefix and format as markdown using these sections (omit any section with no matching commits):
+
+          ## Features
+          - [commits starting with feat:]
+
+          ## Bug Fixes
+          - [commits starting with fix:]
+
+          ## Performance Improvements
+          - [commits starting with perf:]
+
+          ## Documentation
+          - [commits starting with docs:]
+
+          ## Code Refactoring
+          - [commits starting with refactor:]
+
+          Commits with chore: or no recognized prefix should be omitted unless they contain meaningful user-facing changes, in which case place them in the most relevant section.
+
+          Keep it brief and focused on impact. Do not include a heading with the version number. Strip the prefix from each bullet point."
+
+          ESCAPED_PROMPT=$(jq -Rs '.' <<< "$PROMPT")
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "{
+              \"model\": \"claude-sonnet-4-6\",
+              \"max_tokens\": 1024,
+              \"messages\": [{\"role\": \"user\", \"content\": ${ESCAPED_PROMPT}}]
+            }")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            NOTES=$(echo "$BODY" | jq -r '.content[0].text')
+          else
+            echo "::warning::AI release notes failed (HTTP ${HTTP_CODE}), falling back to commit log"
+
+            FEATS=$(echo "$COMMIT_LOG" | grep -E "^[a-f0-9]+ - feat(\(.+\))?:" | sed 's/^[a-f0-9]* - feat\([^)]*\)\?: /- /' || true)
+            FIXES=$(echo "$COMMIT_LOG" | grep -E "^[a-f0-9]+ - fix(\(.+\))?:" | sed 's/^[a-f0-9]* - fix\([^)]*\)\?: /- /' || true)
+            OTHER=$(echo "$COMMIT_LOG" | grep -vE "^[a-f0-9]+ - (feat|fix|perf|docs|refactor|chore)(\(.+\))?:" | sed 's/^[a-f0-9]* - /- /' || true)
+
+            NOTES=""
+            [ -n "$FEATS" ] && NOTES="${NOTES}## Features\n${FEATS}\n\n"
+            [ -n "$FIXES" ] && NOTES="${NOTES}## Bug Fixes\n${FIXES}\n\n"
+            [ -n "$OTHER" ] && NOTES="${NOTES}## Other Changes\n${OTHER}\n\n"
+
+            [ -z "$NOTES" ] && NOTES=$(printf "## What's Changed\n\n%s" "$COMMIT_LOG")
+            NOTES=$(printf "%b" "$NOTES")
+          fi
+
+          EOF_MARKER=$(openssl rand -hex 16)
+          echo "notes<<${EOF_MARKER}" >> "$GITHUB_OUTPUT"
+          echo "$NOTES" >> "$GITHUB_OUTPUT"
+          echo "${EOF_MARKER}" >> "$GITHUB_OUTPUT"
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [release-notes, version]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ needs.version.outputs.new_tag }}" -m "Release ${{ needs.version.outputs.new_tag }}"
+          git push origin "${{ needs.version.outputs.new_tag }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTES: ${{ needs.release-notes.outputs.notes }}
+          TAG:   ${{ needs.version.outputs.new_tag }}
+        run: |
+          echo "$NOTES" > release-notes.md
+          gh release create "$TAG" \
+            --title "Release $TAG" \
+            --notes-file release-notes.md
+
+      - name: Summary
+        run: |
+          echo "### Release Created" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Tag**: ${{ needs.version.outputs.new_tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Site**: https://jax-assistant-cb47f.web.app" >> "$GITHUB_STEP_SUMMARY"

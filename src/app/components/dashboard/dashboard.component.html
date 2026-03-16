@@ -1,0 +1,170 @@
+<div class="dashboard">
+  <!-- Header -->
+  <header class="header">
+    <h1>Jax Assistant</h1>
+    <div class="header-actions">
+      <select [(ngModel)]="voice" class="voice-select">
+        <option value="female-american">Sophia (US)</option>
+        <option value="male-american">Ethan (US)</option>
+        <option value="female-british">Maisie (UK)</option>
+        <option value="male-british">Daniel (UK)</option>
+      </select>
+      <button class="btn-icon" (click)="logout()" title="Sign out">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="content">
+    <!-- Alerts -->
+    @if (alerts().length > 0) {
+      <section class="section alerts-section">
+        <h2>Alerts</h2>
+        @for (alert of alerts(); track alert.id) {
+          <div class="alert-card" [class]="'alert-' + alert.type">
+            <span class="alert-icon">
+              @if (alert.type === 'invoice') { $ }
+              @else if (alert.type === 'status-report') { * }
+              @else { ! }
+            </span>
+            <p>{{ alert.message }}</p>
+            <button class="btn-dismiss" (click)="dismissAlert(alert)" title="Dismiss">x</button>
+          </div>
+        }
+      </section>
+    }
+
+    <!-- Briefing -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Morning Briefing</h2>
+        @if (briefing()) {
+          <button class="btn-icon" (click)="speakBriefing()" title="Read briefing aloud">
+            @if (ttsService.speakingId() && ttsService.speakingId()!.startsWith('briefing-')) {
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            } @else {
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/>
+              </svg>
+            }
+          </button>
+        }
+      </div>
+
+      @if (briefing(); as b) {
+        <div class="briefing-grid">
+          <div class="stat-card">
+            <span class="stat-label">Unbilled Hours</span>
+            <span class="stat-value">{{ b.unbilledHours | number:'1.1-1' }}h</span>
+            <span class="stat-sub">${{ b.unbilledAmount | number:'1.0-0' }}</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">This Week</span>
+            <span class="stat-value">{{ b.weekHours | number:'1.1-1' }}h</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Last Invoice</span>
+            <span class="stat-value">{{ b.lastInvoiceDate || 'None' }}</span>
+            @if (b.lastInvoiceAmount) {
+              <span class="stat-sub">${{ b.lastInvoiceAmount | number:'1.0-0' }}</span>
+            }
+          </div>
+        </div>
+      } @else {
+        <p class="empty-state">No briefing yet today. Check back after 7 AM ET.</p>
+      }
+    </section>
+
+    <!-- Tasks -->
+    <section class="section">
+      <h2>Tasks</h2>
+      <div class="add-task">
+        <input
+          type="text"
+          [(ngModel)]="newTaskTitle"
+          placeholder="Add a task..."
+          (keyup.enter)="addTask()"
+        />
+        <select [(ngModel)]="newTaskCategory" class="category-select">
+          <option value="general">General</option>
+          <option value="ihrdc">IHRDC</option>
+          <option value="solomon">Solomon</option>
+          <option value="dial">DIAL</option>
+          <option value="ppk">PPK</option>
+          <option value="church">Church</option>
+        </select>
+        <button class="btn-add" (click)="addTask()">Add</button>
+      </div>
+
+      @if (tasks().length > 0) {
+        <div class="task-list">
+          @for (task of tasks(); track task.id) {
+            <div class="task-item">
+              <button class="task-check" (click)="completeTask(task)" title="Complete task">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                </svg>
+              </button>
+              <span class="task-title">{{ task.title }}</span>
+              <span class="task-category badge-{{ task.category }}">{{ task.category }}</span>
+              @if (task.dueDate) {
+                <span class="task-due">{{ task.dueDate }}</span>
+              }
+            </div>
+          }
+        </div>
+      } @else {
+        <p class="empty-state">No active tasks.</p>
+      }
+    </section>
+
+    <!-- Chat / Voice -->
+    <section class="section chat-section">
+      <h2>Ask Jax</h2>
+
+      <div class="chat-messages">
+        @for (msg of chatService.messages(); track $index) {
+          <div class="chat-msg" [class]="'msg-' + msg.role">
+            <p>{{ msg.content }}</p>
+          </div>
+        }
+        @if (chatService.loading()) {
+          <div class="chat-msg msg-assistant">
+            <p class="typing">Thinking...</p>
+          </div>
+        }
+      </div>
+
+      <div class="chat-input">
+        <button
+          class="btn-mic"
+          [class.listening]="sttService.isListening()"
+          (click)="toggleMic()"
+          [disabled]="!sttService.isSupported"
+          title="Voice input"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+            <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
+          </svg>
+        </button>
+        <input
+          type="text"
+          [(ngModel)]="chatInput"
+          placeholder="Ask anything..."
+          (keyup.enter)="sendChat()"
+          [disabled]="chatService.loading()"
+        />
+        <button class="btn-send" (click)="sendChat()" [disabled]="chatService.loading() || !chatInput.trim()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+    </section>
+  </div>
+</div>
