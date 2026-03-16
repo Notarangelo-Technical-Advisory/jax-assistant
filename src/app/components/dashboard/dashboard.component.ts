@@ -6,7 +6,7 @@ import { Subscription } from 'rxjs';
 import { marked } from 'marked';
 import { AuthService } from '../../services/auth.service';
 import { BriefingService } from '../../services/briefing.service';
-import { BillingService, BillingSummary } from '../../services/billing.service';
+import { BillingService, BillingSummary, BillingEntry } from '../../services/billing.service';
 import { TaskService } from '../../services/task.service';
 import { TaskCategoryService } from '../../services/task-category.service';
 import { AlertService } from '../../services/alert.service';
@@ -47,6 +47,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   briefing = signal<Briefing | null>(null);
   billingSummary = signal<BillingSummary | null>(null);
+  billingEntriesOpen = signal(false);
   calendarEvents = signal<CalendarEvent[]>([]);
   tasks = signal<Task[]>([]);
   categories = signal<TaskCategory[]>([]);
@@ -55,10 +56,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   activeSession = signal<ChatSession | null>(null);
   sessionsOpen = signal(false);
   inConversation = signal(false);
+  chatOpen = signal(false);
   private audioContextPrimed = false;
 
   renamingSessionId: string | null = null;
   renameValue = '';
+
+  editingTaskId: string | null = null;
+  editingTaskDueDate = '';
 
   chatInput = '';
   newTaskTitle = '';
@@ -155,8 +160,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   async newSession(): Promise<void> {
+    // Clear messages immediately so the UI shows empty before the new session loads
+    this.chatService.stopWatching();
+    this.activeSession.set(null);
     const id = await this.chatSessionService.createSession('New conversation');
-    // The sessions stream will update; find the new session and select it
     const newSession: ChatSession = {
       id,
       title: 'New conversation',
@@ -212,8 +219,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const text = this.chatInput.trim();
     const session = this.activeSession();
     if (!text) return;
+    // Stop mic immediately when sending so it doesn't pick up Maisie's response
+    this.sttService.stopListening();
     if (!session?.id) {
       // Auto-create a session if none exists
+      this.chatService.stopWatching();
       const id = await this.chatSessionService.createSession(
         text.length > 40 ? text.substring(0, 40) + '…' : text,
       );
@@ -266,6 +276,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.audioContextPrimed = true;
     }
     this.ttsService.stop();
+    this.chatOpen.set(true);
     this.inConversation.set(true);
     const greetingAudio = new Audio('/greeting.mp3');
     const startListening = () => this.sttService.startListening();
@@ -278,6 +289,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.sttService.stopListening();
     this.ttsService.stop();
     this.inConversation.set(false);
+    this.chatOpen.set(false);
+  }
+
+  openChat(): void {
+    this.chatOpen.set(true);
   }
 
   toggleMic(): void {
@@ -332,6 +348,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.newTaskDueDate = '';
   }
 
+  toggleBillingEntries(): void {
+    this.billingEntriesOpen.update((v) => !v);
+  }
+
   isOverdue(dueDate: string): boolean {
     return new Date(dueDate + 'T23:59:59') < new Date();
   }
@@ -343,6 +363,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   async completeTask(task: Task): Promise<void> {
     if (task.id) await this.taskService.completeTask(task.id);
+  }
+
+  startEditingDueDate(task: Task): void {
+    this.editingTaskId = task.id!;
+    this.editingTaskDueDate = task.dueDate || '';
+  }
+
+  async saveTaskDueDate(task: Task): Promise<void> {
+    if (task.id) {
+      await this.taskService.updateTask(task.id, { dueDate: this.editingTaskDueDate || undefined });
+    }
+    this.editingTaskId = null;
+  }
+
+  cancelEditDueDate(): void {
+    this.editingTaskId = null;
   }
 
   async dismissAlert(alert: Alert): Promise<void> {

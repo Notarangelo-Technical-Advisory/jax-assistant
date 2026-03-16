@@ -3,12 +3,23 @@ import { HttpClient } from '@angular/common/http';
 import { AuthService } from './auth.service';
 import { firstValueFrom } from 'rxjs';
 
+export interface BillingEntry {
+  customerId: string;
+  customerName: string;
+  projectId: string;
+  date: string;
+  hours: number;
+  description: string;
+  status: 'unbilled' | 'billed' | 'paid';
+}
+
 export interface BillingSummary {
   totalHours: number;
   totalAmount: number;
   entryCount: number;
   lastInvoiceDate: string | null;
   lastInvoiceAmount: number | null;
+  entries: BillingEntry[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -24,6 +35,7 @@ export class BillingService {
         totalAmount: number;
         entryCount: number;
         lastInvoice: { issueDate: string; total: number } | null;
+        entries: BillingEntry[];
       }>(
         'https://getunbilledsummary-nxe253ex3a-uc.a.run.app',
         { headers: { Authorization: `Bearer ${token}` } },
@@ -35,6 +47,7 @@ export class BillingService {
       entryCount: data.entryCount,
       lastInvoiceDate: data.lastInvoice?.issueDate ?? null,
       lastInvoiceAmount: data.lastInvoice?.total ?? null,
+      entries: data.entries ?? [],
     };
   }
 }

@@ -75,6 +75,10 @@ $border: #334155;
   flex: 1;
   min-height: 0;
   padding: 1rem 0;
+
+  &:not(.chat-open) .panel-left {
+    max-width: 760px;
+  }
 }
 
 .panel-left {
@@ -461,13 +465,104 @@ $border: #334155;
   }
 }
 
+.stat-card-clickable {
+  cursor: pointer;
+  &:hover { background: rgba($accent, 0.06); }
+}
+
+.stat-expand-hint {
+  font-size: 0.6rem;
+  color: $text-secondary;
+  margin-left: 0.3rem;
+}
+
+.billing-entries {
+  margin-top: 0.75rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid $border;
+}
+
+.billing-entries-empty {
+  padding: 0.75rem;
+  font-size: 0.82rem;
+  color: $text-secondary;
+  text-align: center;
+  margin: 0;
+}
+
+.billing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+
+  th {
+    background: $bg-dark;
+    color: $text-secondary;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    letter-spacing: 0.04em;
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    font-weight: 600;
+  }
+
+  td {
+    padding: 0.4rem 0.6rem;
+    border-top: 1px solid rgba($border, 0.4);
+    vertical-align: top;
+  }
+
+  tr:hover td { background: rgba($bg-dark, 0.4); }
+}
+
+.entry-date { white-space: nowrap; color: $text-secondary; }
+.entry-client { white-space: nowrap; font-weight: 600; }
+.entry-desc { color: $text-secondary; max-width: 200px; }
+.entry-hours { white-space: nowrap; text-align: right; }
+
+.entry-status {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+
+  &.entry-status-unbilled { background: rgba($warning, 0.15); color: $warning; }
+  &.entry-status-billed   { background: rgba($accent, 0.15);  color: $accent; }
+  &.entry-status-paid     { background: rgba($success, 0.15); color: $success; }
+}
+
 .task-due {
   font-size: 0.72rem;
   color: $text-secondary;
   white-space: nowrap;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
 
+  &:hover { background: rgba($accent, 0.1); color: $accent; }
   &.overdue { color: $danger; font-weight: 600; }
   &.due-today { color: $warning; font-weight: 600; }
+  &.no-due { opacity: 0.35; font-style: italic; }
+}
+
+.task-due-edit {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid $accent;
+  border-radius: 6px;
+  background: $bg-input;
+  color: $text-primary;
+  font-size: 0.75rem;
+  width: 120px;
+
+  &:focus { outline: none; }
+
+  &::-webkit-calendar-picker-indicator {
+    filter: invert(0.5);
+    cursor: pointer;
+  }
 }
 
 // Sessions Panel
@@ -823,6 +918,26 @@ $border: #334155;
 @keyframes pulse-call {
   0%, 100% { box-shadow: 0 0 0 0 rgba($danger, 0.5); }
   50%       { box-shadow: 0 0 0 6px rgba($danger, 0); }
+}
+
+.btn-call-fab {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: $success;
+  border: none;
+  border-radius: 32px;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+
+  &:hover { background: #1aab50; transform: translateY(-1px); }
+  &:active { transform: translateY(0); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 }
 
 // Responsive — stack panels on mobile

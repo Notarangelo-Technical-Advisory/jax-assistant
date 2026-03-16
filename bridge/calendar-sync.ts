@@ -43,6 +43,108 @@ interface ParsedEvent {
   notes: string;
 }
 
+// ─── Apply pending calendar actions from Firestore ───────────────
+interface PendingAction {
+  id: string;
+  action: "create" | "move" | "delete";
+  payload: Record<string, string | null>;
+}
+
+function appleScriptDate(dateStr: string, timeStr: string): string {
+  // Converts "2026-03-20" + "14:00" into AppleScript date: "03/20/2026 14:00:00"
+  const [year, month, day] = dateStr.split("-");
+  return `${month}/${day}/${year} ${timeStr}:00`;
+}
+
+function createEventScript(payload: Record<string, string | null>): string {
+  const startStr = appleScriptDate(payload["date"] as string, payload["startTime"] as string);
+  const endStr = appleScriptDate(payload["date"] as string, payload["endTime"] as string);
+  const title = (payload["title"] as string).replace(/"/g, '\\"');
+  const location = payload["location"] ? `set location of newEvent to "${(payload["location"] as string).replace(/"/g, '\\"')}"` : "";
+  const notes = payload["notes"] ? `set description of newEvent to "${(payload["notes"] as string).replace(/"/g, '\\"')}"` : "";
+  return `
+tell application "Calendar"
+  set cal to first calendar whose name is "${CALENDAR_NAME}"
+  set newEvent to make new event at end of events of cal with properties {summary:"${title}", start date:date "${startStr}", end date:date "${endStr}"}
+  ${location}
+  ${notes}
+  save
+end tell
+`.trim();
+}
+
+function moveEventScript(payload: Record<string, string | null>): string {
+  const title = (payload["eventTitle"] as string).replace(/"/g, '\\"');
+  const originalDateStr = payload["originalDate"] as string;
+  const [origYear, origMonth, origDay] = originalDateStr.split("-");
+  const newStartStr = appleScriptDate(payload["newDate"] as string, payload["newStartTime"] as string);
+  const newEndStr = appleScriptDate(payload["newDate"] as string, payload["newEndTime"] as string);
+  return `
+tell application "Calendar"
+  set cal to first calendar whose name is "${CALENDAR_NAME}"
+  set searchStart to date "${origMonth}/${origDay}/${origYear} 00:00:00"
+  set searchEnd to date "${origMonth}/${origDay}/${origYear} 23:59:59"
+  set matchingEvents to (every event of cal whose summary is "${title}" and start date ≥ searchStart and start date ≤ searchEnd)
+  if (count of matchingEvents) > 0 then
+    set targetEvent to item 1 of matchingEvents
+    set start date of targetEvent to date "${newStartStr}"
+    set end date of targetEvent to date "${newEndStr}"
+    save
+    return "ok"
+  else
+    return "not_found"
+  end if
+end tell
+`.trim();
+}
+
+async function applyPendingActions(): Promise<void> {
+  const snap = await db.collection("pendingCalendarActions")
+    .where("status", "==", "pending")
+    .orderBy("createdAt", "asc")
+    .get();
+
+  if (snap.empty) return;
+
+  console.log(`Applying ${snap.docs.length} pending calendar action(s)...`);
+
+  for (const doc of snap.docs) {
+    const data = doc.data() as PendingAction & Record<string, unknown>;
+    const action = data.action as PendingAction["action"];
+    const payload = (data["payload"] ?? {}) as Record<string, string | null>;
+
+    let script: string;
+    try {
+      if (action === "create") {
+        script = createEventScript(payload);
+      } else if (action === "move") {
+        script = moveEventScript(payload);
+      } else {
+        // delete not yet implemented — mark failed
+        await doc.ref.update({status: "failed", error: `Action "${action}" not implemented`, appliedAt: Timestamp.now()});
+        continue;
+      }
+
+      const result = execSync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, {
+        encoding: "utf-8",
+        timeout: 15000,
+      }).trim();
+
+      if (action === "move" && result === "not_found") {
+        await doc.ref.update({status: "failed", error: "Event not found in Apple Calendar", appliedAt: Timestamp.now()});
+        console.warn(`[${action}] Event not found: "${payload["eventTitle"]}" on ${payload["originalDate"]}`);
+      } else {
+        await doc.ref.update({status: "applied", appliedAt: Timestamp.now(), error: null});
+        console.log(`[${action}] Applied: ${action === "create" ? payload["title"] : payload["eventTitle"]}`);
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      await doc.ref.update({status: "failed", error: errMsg.substring(0, 500), appliedAt: Timestamp.now()});
+      console.error(`[${action}] Failed:`, errMsg);
+    }
+  }
+}
+
 // ─── Read Apple Calendar via AppleScript ─────────────────────────
 function readCalendarEvents(): ParsedEvent[] {
   const script = `
@@ -185,6 +287,9 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
 
 // ─── Main ────────────────────────────────────────────────────────
 async function main(): Promise<void> {
+  // Apply any pending calendar write actions before reading
+  await applyPendingActions();
+
   console.log(`Syncing "${CALENDAR_NAME}" calendar (next ${SYNC_DAYS_AHEAD} days)...`);
   const events = readCalendarEvents();
   await syncToFirestore(events);

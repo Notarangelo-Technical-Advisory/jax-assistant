@@ -31,6 +31,12 @@ export class TaskService {
     });
   }
 
+  async updateTask(taskId: string, updates: Partial<Pick<Task, 'title' | 'dueDate' | 'category'>>): Promise<void> {
+    const ref = doc(this.firestore, 'tasks', taskId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await updateDoc(ref, updates as any);
+  }
+
   async completeTask(taskId: string): Promise<void> {
     const ref = doc(this.firestore, 'tasks', taskId);
     await updateDoc(ref, {

@@ -53,6 +53,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // pendingCalendarActions — read by authenticated user, writes via Cloud Functions (Admin SDK)
+    // bridge applies actions and marks them applied/failed (Admin SDK bypasses these rules)
+    match /pendingCalendarActions/{actionId} {
+      allow read: if isAuthenticated();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

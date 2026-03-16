@@ -17,7 +17,7 @@
     </div>
   </header>
 
-  <div class="two-panel">
+  <div class="two-panel" [class.chat-open]="chatOpen()">
     <!-- Left: scrollable content -->
     <div class="panel-left">
       <!-- Alerts -->
@@ -61,8 +61,8 @@
             <blockquote class="narrative-summary">{{ b.narrativeSummary }}</blockquote>
           }
           <div class="briefing-grid">
-            <div class="stat-card">
-              <span class="stat-label">Unbilled Hours</span>
+            <div class="stat-card stat-card-clickable" (click)="toggleBillingEntries()" title="Click to see line items">
+              <span class="stat-label">Unbilled Hours <span class="stat-expand-hint">{{ billingEntriesOpen() ? '▲' : '▼' }}</span></span>
               <span class="stat-value">{{ (billingSummary()?.totalHours ?? b.unbilledHours) | number:'1.1-1' }}h</span>
               <span class="stat-sub">${{ (billingSummary()?.totalAmount ?? b.unbilledAmount) | number:'1.0-0' }}</span>
             </div>
@@ -84,6 +84,37 @@
               </div>
             }
           </div>
+
+          @if (billingEntriesOpen() && billingSummary()) {
+            <div class="billing-entries">
+              @if (billingSummary()!.entries.length === 0) {
+                <p class="billing-entries-empty">No unbilled entries.</p>
+              } @else {
+                <table class="billing-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Client</th>
+                      <th>Description</th>
+                      <th>Hrs</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (entry of billingSummary()!.entries; track entry.date + entry.customerId + entry.description) {
+                      <tr>
+                        <td class="entry-date">{{ entry.date }}</td>
+                        <td class="entry-client">{{ entry.customerName }}</td>
+                        <td class="entry-desc">{{ entry.description || '—' }}</td>
+                        <td class="entry-hours">{{ entry.hours | number:'1.1-1' }}</td>
+                        <td><span class="entry-status entry-status-{{ entry.status }}">{{ entry.status }}</span></td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              }
+            </div>
+          }
 
           @if (b.overdueTasks && b.overdueTasks.length > 0) {
             <div class="task-callout overdue">
@@ -204,11 +235,25 @@
                         </svg>
                       </button>
                       <span class="task-title">{{ task.title }}</span>
-                      @if (task.dueDate) {
+                      @if (editingTaskId === task.id) {
+                        <input
+                          type="date"
+                          class="task-due-edit"
+                          [(ngModel)]="editingTaskDueDate"
+                          (keyup.enter)="saveTaskDueDate(task)"
+                          (keyup.escape)="cancelEditDueDate()"
+                          (blur)="saveTaskDueDate(task)"
+                          (click)="$event.stopPropagation()"
+                          autofocus
+                        />
+                      } @else {
                         <span class="task-due"
-                          [class.overdue]="isOverdue(task.dueDate)"
-                          [class.due-today]="isDueToday(task.dueDate)"
-                        >{{ task.dueDate }}</span>
+                          [class.overdue]="task.dueDate && isOverdue(task.dueDate)"
+                          [class.due-today]="task.dueDate && isDueToday(task.dueDate)"
+                          [class.no-due]="!task.dueDate"
+                          (click)="startEditingDueDate(task)"
+                          title="Click to edit due date"
+                        >{{ task.dueDate || 'no date' }}</span>
                       }
                     </div>
                   }
@@ -220,9 +265,25 @@
           <p class="empty-state">No active tasks.</p>
         }
       </section>
+
+      <!-- Floating call button (shown when chat is closed) -->
+      @if (!chatOpen()) {
+        <button
+          class="btn-call-fab"
+          (click)="callMaisie()"
+          [disabled]="!sttService.isSupported"
+          title="Call Maisie"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+          </svg>
+          Call Maisie
+        </button>
+      }
     </div>
 
-    <!-- Right: sticky chat panel -->
+    <!-- Right: sticky chat panel (hidden until opened) -->
+    @if (chatOpen()) {
     <div class="panel-right">
       <!-- Sessions -->
       <div class="sessions-panel">
@@ -310,29 +371,26 @@
 
         <div class="chat-input">
           <button
-            class="btn-call"
-            [class.in-conversation]="inConversation()"
-            (click)="inConversation() ? endCall() : callMaisie()"
-            [disabled]="!sttService.isSupported"
-            [title]="inConversation() ? 'End call' : 'Call Maisie'"
+            class="btn-call in-conversation"
+            (click)="endCall()"
+            title="End call"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
             </svg>
           </button>
-          @if (inConversation()) {
-            <button
-              class="btn-mic"
-              [class.listening]="sttService.isListening()"
-              (click)="toggleMic()"
-              title="Push to talk"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
-                <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
-              </svg>
-            </button>
-          }
+          <button
+            class="btn-mic"
+            [class.listening]="sttService.isListening()"
+            [disabled]="chatService.loading()"
+            (click)="toggleMic()"
+            title="Push to talk"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+              <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
+            </svg>
+          </button>
           <input
             type="text"
             [(ngModel)]="chatInput"
@@ -349,5 +407,6 @@
         </div>
       </div>
     </div>
+    } <!-- end @if chatOpen -->
   </div>
 </div>

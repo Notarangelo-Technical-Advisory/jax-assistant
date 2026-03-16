@@ -214,7 +214,7 @@ Current context:
 }).join("; ") : "No upcoming events"}
 - Task categories: ${allCategories.map((c) => `${c.key} (${c.label})`).join(", ")}
 
-Be concise and direct. Use a warm, professional tone — like a trusted assistant who knows Jack well. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it. When Jack asks you to create a new task category, use the create_task_category tool.
+Be concise and direct. Use a warm, professional tone — like a trusted assistant who knows Jack well. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it. When Jack asks you to create a new task category, use the create_task_category tool. Use create_calendar_event when Jack asks to schedule something — always confirm title, date, and time before creating. Use move_calendar_event to reschedule existing events. Calendar changes are applied via a local bridge sync and appear within ~1 minute.
 Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numeric", month: "long", day: "numeric"})}.`;
 
     const buildTools = (cats: Array<{key: string; label: string}>): Anthropic.Messages.Tool[] => [
@@ -341,6 +341,37 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             },
           },
           required: [],
+        },
+      },
+      {
+        name: "create_calendar_event",
+        description: "Create a new event on Jack's calendar. Always confirm the title, date, and time before calling this tool. Warn Jack that the event will appear within ~1 minute (bridge sync). If the calendar sync is stale (>30 min), warn that the bridge may need to be run.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            title: {type: "string", description: "Event title/summary"},
+            date: {type: "string", description: "Date in YYYY-MM-DD format"},
+            start_time: {type: "string", description: "Start time in HH:MM format (24-hour, ET), e.g. '14:00'"},
+            end_time: {type: "string", description: "End time in HH:MM format (24-hour, ET), e.g. '15:00'"},
+            location: {type: "string", description: "Optional location"},
+            notes: {type: "string", description: "Optional notes or description"},
+          },
+          required: ["title", "date", "start_time", "end_time"],
+        },
+      },
+      {
+        name: "move_calendar_event",
+        description: "Reschedule an existing calendar event to a new date/time. Always confirm the event title, original date, and new time before calling. Warn Jack that changes will appear within ~1 minute (bridge sync).",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            event_title: {type: "string", description: "Title of the event to move (must match exactly or closely)"},
+            original_date: {type: "string", description: "Original date of the event in YYYY-MM-DD format"},
+            new_date: {type: "string", description: "New date in YYYY-MM-DD format"},
+            new_start_time: {type: "string", description: "New start time in HH:MM format (24-hour, ET)"},
+            new_end_time: {type: "string", description: "New end time in HH:MM format (24-hour, ET)"},
+          },
+          required: ["event_title", "original_date", "new_date", "new_start_time", "new_end_time"],
         },
       },
     ];
@@ -620,6 +651,70 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
                 readyToInvoice: Object.keys(readyToInvoice).length > 0 ? readyToInvoice : null,
               }),
             });
+          } else if (block.name === "create_calendar_event") {
+            const input = block.input as {
+              title: string;
+              date: string;
+              start_time: string;
+              end_time: string;
+              location?: string;
+              notes?: string;
+            };
+            const actionRef = await db.collection("pendingCalendarActions").add({
+              action: "create",
+              status: "pending",
+              payload: {
+                title: input.title,
+                date: input.date,
+                startTime: input.start_time,
+                endTime: input.end_time,
+                location: input.location || null,
+                notes: input.notes || null,
+              },
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              appliedAt: null,
+              error: null,
+            });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({
+                success: true,
+                actionId: actionRef.id,
+                message: `Calendar event "${input.title}" on ${input.date} at ${input.start_time}–${input.end_time} has been queued. It will appear on the calendar within ~1 minute once the bridge syncs.`,
+              }),
+            });
+          } else if (block.name === "move_calendar_event") {
+            const input = block.input as {
+              event_title: string;
+              original_date: string;
+              new_date: string;
+              new_start_time: string;
+              new_end_time: string;
+            };
+            const actionRef = await db.collection("pendingCalendarActions").add({
+              action: "move",
+              status: "pending",
+              payload: {
+                eventTitle: input.event_title,
+                originalDate: input.original_date,
+                newDate: input.new_date,
+                newStartTime: input.new_start_time,
+                newEndTime: input.new_end_time,
+              },
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              appliedAt: null,
+              error: null,
+            });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({
+                success: true,
+                actionId: actionRef.id,
+                message: `"${input.event_title}" has been queued to move from ${input.original_date} to ${input.new_date} at ${input.new_start_time}–${input.new_end_time}. The change will appear within ~1 minute once the bridge syncs.`,
+              }),
+            });
           }
         }
 
@@ -718,7 +813,26 @@ export const getUnbilledSummary = onRequest(
       console.error("[getUnbilledSummary] getLastInvoice failed:", err);
     }
 
+    // Load customers for name lookup
+    let customers: Awaited<ReturnType<typeof getCustomers>> = [];
+    try {
+      customers = await getCustomers();
+    } catch (err) {
+      console.error("[getUnbilledSummary] getCustomers failed:", err);
+    }
+    const custNameMap = new Map(customers.map((c) => [c.customerId, c.companyName]));
+
     const totalHours = entries.reduce((sum, e) => sum + e.durationHours, 0);
+    const entryItems = entries.map((e) => ({
+      customerId: e.customerId,
+      customerName: custNameMap.get(e.customerId) || e.customerId,
+      projectId: e.projectId,
+      date: e.date,
+      hours: e.durationHours,
+      description: e.description || "",
+      status: e.status,
+    }));
+
     res.json({
       totalHours: Math.round(totalHours * 100) / 100,
       totalAmount: Math.round(totalHours * 150 * 100) / 100,
@@ -726,6 +840,7 @@ export const getUnbilledSummary = onRequest(
       lastInvoice: lastInvoice
         ? {issueDate: lastInvoice.issueDate, total: lastInvoice.total}
         : null,
+      entries: entryItems,
     });
   }
 );
