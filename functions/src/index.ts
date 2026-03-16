@@ -18,37 +18,6 @@ async function verifyAuth(
   return admin.auth().verifyIdToken(auth.split("Bearer ")[1]);
 }
 
-// ─── GitHub API helper ──────────────────────────────────────────
-const GITHUB_REPO = "Notarangelo-Technical-Advisory/jax-assistant";
-const GITHUB_API = "https://api.github.com";
-
-async function githubApi(
-  path: string,
-  method: "GET" | "POST" | "PUT" | "PATCH",
-  body?: unknown
-): Promise<unknown> {
-  const pat = process.env.MAISIE_PAT;
-  if (!pat) throw new Error("MAISIE_PAT not configured");
-
-  const resp = await fetch(`${GITHUB_API}${path}`, {
-    method,
-    headers: {
-      "Authorization": `Bearer ${pat}`,
-      "Accept": "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      "Content-Type": "application/json",
-    },
-    ...(body ? {body: JSON.stringify(body)} : {}),
-  });
-
-  const json = await resp.json() as unknown;
-  if (!resp.ok) {
-    const msg = (json as {message?: string})?.message || resp.statusText;
-    throw new Error(`GitHub API ${method} ${path} failed (${resp.status}): ${msg}`);
-  }
-  return json;
-}
-
 // ─── TTS: ElevenLabs proxy (same pattern as Solomon) ───────────
 const ELEVENLABS_VOICE_ID: Record<string, string> = {
   "female-american": "WyFXw4PzMbRnp8iLMJwY",
