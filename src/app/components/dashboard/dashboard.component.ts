@@ -5,6 +5,7 @@ import { Subscription } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { BriefingService } from '../../services/briefing.service';
 import { TaskService } from '../../services/task.service';
+import { TaskCategoryService } from '../../services/task-category.service';
 import { AlertService } from '../../services/alert.service';
 import { ChatService } from '../../services/chat.service';
 import { ChatSessionService } from '../../services/chat-session.service';
@@ -12,6 +13,7 @@ import { TtsService } from '../../services/tts.service';
 import { SttService } from '../../services/stt.service';
 import { Briefing } from '../../models/briefing.model';
 import { Task } from '../../models/task.model';
+import { TaskCategory } from '../../models/task-category.model';
 import { Alert } from '../../models/alert.model';
 import { ChatSession } from '../../models/chat-session.model';
 
@@ -26,6 +28,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   authService = inject(AuthService);
   private briefingService = inject(BriefingService);
   taskService = inject(TaskService);
+  taskCategoryService = inject(TaskCategoryService);
   alertService = inject(AlertService);
   chatService = inject(ChatService);
   chatSessionService = inject(ChatSessionService);
@@ -34,6 +37,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   briefing = signal<Briefing | null>(null);
   tasks = signal<Task[]>([]);
+  categories = signal<TaskCategory[]>([]);
   alerts = signal<Alert[]>([]);
   sessions = signal<ChatSession[]>([]);
   activeSession = signal<ChatSession | null>(null);
@@ -44,33 +48,45 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   chatInput = '';
   newTaskTitle = '';
-  newTaskCategory: Task['category'] = 'general';
+  newTaskCategory = 'general';
   newTaskDueDate = '';
   voice = localStorage.getItem('maisie-voice') || 'female-british';
   greetingPlaying = signal(false);
 
   expandedCategories = signal<Set<string>>(new Set(['ihrdc', 'solomon', 'dial', 'ppk', 'church', 'general']));
 
-  readonly categoryLabels: Record<string, string> = {
-    ihrdc: 'IHRDC',
-    solomon: 'Solomon',
-    dial: 'DIAL',
-    ppk: 'PPK',
-    church: 'Church',
-    general: 'General',
-  };
-
-  readonly categoryOrder: string[] = ['ihrdc', 'solomon', 'dial', 'ppk', 'church', 'general'];
+  private expandNewCategoriesEffect = effect(() => {
+    const cats = this.categories();
+    const current = this.expandedCategories();
+    const newKeys = cats.map((c) => c.key).filter((k) => !current.has(k));
+    if (newKeys.length > 0) {
+      this.expandedCategories.set(new Set([...current, ...newKeys]));
+    }
+  });
 
   groupedTasks = computed(() => {
     const all = this.tasks();
+    const cats = this.categories();
+    const knownKeys = new Set(cats.map((c) => c.key));
     const groups: { category: string; label: string; tasks: Task[] }[] = [];
-    for (const cat of this.categoryOrder) {
-      const catTasks = all.filter((t) => t.category === cat);
+
+    // Known categories in order
+    for (const cat of cats) {
+      const catTasks = all.filter((t) => t.category === cat.key);
       if (catTasks.length > 0) {
-        groups.push({ category: cat, label: this.categoryLabels[cat], tasks: catTasks });
+        groups.push({ category: cat.key, label: cat.label, tasks: catTasks });
       }
     }
+
+    // Unknown categories (tasks with a category not in the loaded list)
+    const unknownKeys = [...new Set(all.map((t) => t.category))].filter(
+      (k) => !knownKeys.has(k)
+    );
+    for (const key of unknownKeys) {
+      const catTasks = all.filter((t) => t.category === key);
+      groups.push({ category: key, label: key, tasks: catTasks });
+    }
+
     return groups;
   });
 
@@ -109,6 +125,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.subs.push(
       this.briefingService.getLatestBriefing().subscribe((b) => this.briefing.set(b)),
       this.taskService.getActiveTasks().subscribe((t) => this.tasks.set(t)),
+      this.taskCategoryService.getCategories().subscribe((c) => this.categories.set(c)),
       this.alertService.getActiveAlerts().subscribe((a) => this.alerts.set(a)),
       this.chatSessionService.getSessions().subscribe((s) => {
         this.sessions.set(s);

@@ -91,12 +91,9 @@
             (keyup.enter)="addTask()"
           />
           <select [(ngModel)]="newTaskCategory" class="category-select">
-            <option value="general">General</option>
-            <option value="ihrdc">IHRDC</option>
-            <option value="solomon">Solomon</option>
-            <option value="dial">DIAL</option>
-            <option value="ppk">PPK</option>
-            <option value="church">Church</option>
+            @for (cat of categories(); track cat.key) {
+              <option [value]="cat.key">{{ cat.label }}</option>
+            }
           </select>
           <input
             type="date"
