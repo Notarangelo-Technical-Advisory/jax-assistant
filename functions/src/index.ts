@@ -126,7 +126,7 @@ export const synthesizeSpeech = onRequest(
 
 // ─── Chat: Conversational AI via Anthropic ─────────────────────
 export const chat = onRequest(
-  {cors: true, region: "us-central1", memory: "256MiB", timeoutSeconds: 60},
+  {cors: true, region: "us-central1", memory: "256MiB", timeoutSeconds: 300},
   async (req, res) => {
     try {
       await verifyAuth(req);
@@ -563,6 +563,29 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
         messages,
       });
 
+      // Helper: human-readable label for each tool call
+      const thinkingRef = db.collection("chatThinking").doc(sessionId);
+      const toolLabel = (name: string, input: Record<string, unknown>): string => {
+        switch (name) {
+          case "get_calendar": return "Checking your calendar...";
+          case "add_task": return `Adding task: "${input["title"]}"`;
+          case "complete_task": return "Marking task complete...";
+          case "reopen_task": return "Reopening task...";
+          case "update_task": return "Updating task...";
+          case "create_task_category": return `Creating category "${input["label"]}"...`;
+          case "get_unbilled_detail": return "Fetching unbilled time entries...";
+          case "get_time_entries": return "Loading time log...";
+          case "get_invoice_status": return "Checking invoice status...";
+          case "create_calendar_event": return `Scheduling "${input["title"]}"...`;
+          case "move_calendar_event": return `Rescheduling "${input["event_title"]}"...`;
+          case "get_file_content": return `Reading ${input["file_path"]}...`;
+          case "create_branch": return `Creating branch ${input["branch_name"]}...`;
+          case "push_file_change": return `Committing changes to ${input["file_path"]}...`;
+          case "create_pull_request": return `Opening pull request: "${input["title"]}"...`;
+          default: return `Running ${name}...`;
+        }
+      };
+
       // Tool use loop — execute any tool calls, then get the final text response
       while (response.stop_reason === "tool_use") {
         const toolUseBlocks = response.content.filter(
@@ -571,6 +594,13 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
         const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
 
         for (const block of toolUseBlocks) {
+          // Broadcast current tool step to Firestore so the frontend can show it
+          await thinkingRef.set({
+            step: toolLabel(block.name, block.input as Record<string, unknown>),
+            tool: block.name,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
           if (block.name === "get_calendar") {
             const input = block.input as {days_ahead?: number};
             const daysAhead = input.days_ahead || 1;
@@ -1032,6 +1062,9 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
         });
       }
 
+      // Clear thinking indicator now that we have a final response
+      await thinkingRef.delete().catch(() => {/* ignore if doesn't exist */});
+
       const rawText = response.content
         .filter((b) => b.type === "text")
         .map((b) => {
@@ -1090,6 +1123,10 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
       res.json({response: text});
     } catch (err: unknown) {
       console.error("[chat] error:", err);
+      // Clear thinking indicator on error too
+      if (sessionId) {
+        await db.collection("chatThinking").doc(sessionId).delete().catch(() => {});
+      }
       const errMessage = err instanceof Error ? err.message : "Chat failed";
       res.status(500).json({error: errMessage});
     }

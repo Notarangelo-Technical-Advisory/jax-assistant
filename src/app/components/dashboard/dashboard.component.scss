@@ -848,6 +848,35 @@ $border: #334155;
   font-style: italic;
 }
 
+.thinking-bubble {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+
+  .thinking-tool-icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: $accent;
+    opacity: 0.85;
+    animation: thinking-pulse 1.4s ease-in-out infinite;
+  }
+
+  .thinking-step {
+    font-style: italic;
+    color: $accent;
+    opacity: 0.9;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
 .chat-input {
   display: flex;
   gap: 0.5rem;

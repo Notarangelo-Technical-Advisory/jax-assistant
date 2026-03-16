@@ -62,6 +62,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // chatThinking — read-only for authenticated user, written/deleted by Cloud Functions (Admin SDK)
+    match /chatThinking/{sessionId} {
+      allow read: if isAuthenticated();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

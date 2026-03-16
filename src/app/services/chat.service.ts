@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import {
-  Firestore, collection, query, where, orderBy, onSnapshot,
+  Firestore, collection, query, where, orderBy, onSnapshot, doc,
 } from '@angular/fire/firestore';
 import { AuthService } from './auth.service';
 import { firstValueFrom } from 'rxjs';
@@ -15,15 +15,30 @@ export class ChatService {
 
   messages = signal<ChatMessage[]>([]);
   loading = signal(false);
+  /** Current tool step Maisie is executing, e.g. "Reading functions/src/index.ts..." */
+  thinkingStep = signal<string | null>(null);
 
   private unsubMessages: (() => void) | null = null;
+  private unsubThinking: (() => void) | null = null;
   private activeSessionId: string | null = null;
 
   /** Subscribe to real-time messages for a session. */
   watchSession(sessionId: string): void {
     this.unsubMessages?.();
+    this.unsubThinking?.();
     this.activeSessionId = sessionId;
     this.messages.set([]);
+    this.thinkingStep.set(null);
+
+    // Subscribe to live tool-step updates written by the Cloud Function
+    this.unsubThinking = onSnapshot(
+      doc(this.firestore, 'chatThinking', sessionId),
+      (snap) => {
+        if (this.activeSessionId !== sessionId) return;
+        this.thinkingStep.set(snap.exists() ? (snap.data()?.['step'] ?? null) : null);
+      },
+      () => { this.thinkingStep.set(null); }
+    );
 
     const q = query(
       collection(this.firestore, 'chatMessages'),
@@ -60,9 +75,12 @@ export class ChatService {
 
   stopWatching(): void {
     this.unsubMessages?.();
+    this.unsubThinking?.();
     this.unsubMessages = null;
+    this.unsubThinking = null;
     this.activeSessionId = null;
     this.messages.set([]);
+    this.thinkingStep.set(null);
   }
 
   async sendMessage(text: string, sessionId: string): Promise<string> {
