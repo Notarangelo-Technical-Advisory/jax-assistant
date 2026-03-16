@@ -98,6 +98,12 @@
             <option value="ppk">PPK</option>
             <option value="church">Church</option>
           </select>
+          <input
+            type="date"
+            [(ngModel)]="newTaskDueDate"
+            class="due-date-input"
+            title="Due date (optional)"
+          />
           <button class="btn-add" (click)="addTask()">Add</button>
         </div>
 
@@ -126,7 +132,10 @@
                       </button>
                       <span class="task-title">{{ task.title }}</span>
                       @if (task.dueDate) {
-                        <span class="task-due">{{ task.dueDate }}</span>
+                        <span class="task-due"
+                          [class.overdue]="isOverdue(task.dueDate)"
+                          [class.due-today]="isDueToday(task.dueDate)"
+                        >{{ task.dueDate }}</span>
                       }
                     </div>
                   }

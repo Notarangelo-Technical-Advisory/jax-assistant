@@ -36,6 +36,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   chatInput = '';
   newTaskTitle = '';
   newTaskCategory: Task['category'] = 'general';
+  newTaskDueDate = '';
   voice = localStorage.getItem('maisie-voice') || 'female-british';
   greetingPlaying = signal(false);
 
@@ -144,8 +145,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   async addTask(): Promise<void> {
     if (!this.newTaskTitle.trim()) return;
-    await this.taskService.addTask(this.newTaskTitle.trim(), this.newTaskCategory);
+    await this.taskService.addTask(
+      this.newTaskTitle.trim(),
+      this.newTaskCategory,
+      this.newTaskDueDate || undefined,
+    );
     this.newTaskTitle = '';
+    this.newTaskDueDate = '';
+  }
+
+  isOverdue(dueDate: string): boolean {
+    return new Date(dueDate + 'T23:59:59') < new Date();
+  }
+
+  isDueToday(dueDate: string): boolean {
+    const today = new Date().toISOString().split('T')[0];
+    return dueDate === today;
   }
 
   async completeTask(task: Task): Promise<void> {

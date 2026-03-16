@@ -323,9 +323,31 @@ $border: #334155;
 .badge-church { background: rgba($success, 0.2); color: $success; }
 .badge-general { background: rgba($text-secondary, 0.2); color: $text-secondary; }
 
+.due-date-input {
+  padding: 0.6rem;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $bg-input;
+  color: $text-secondary;
+  font-size: 0.8rem;
+  width: 130px;
+
+  &:focus { outline: none; border-color: $accent; color: $text-primary; }
+
+  // Hide the default date-picker icon in WebKit
+  &::-webkit-calendar-picker-indicator {
+    filter: invert(0.5);
+    cursor: pointer;
+  }
+}
+
 .task-due {
-  font-size: 0.75rem;
-  color: $warning;
+  font-size: 0.72rem;
+  color: $text-secondary;
+  white-space: nowrap;
+
+  &.overdue { color: $danger; font-weight: 600; }
+  &.due-today { color: $warning; font-weight: 600; }
 }
 
 // Speak Button
