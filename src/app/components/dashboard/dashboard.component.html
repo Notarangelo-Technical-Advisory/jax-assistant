@@ -179,12 +179,72 @@
         }
       </button>
 
+      <!-- Sessions -->
+      <div class="sessions-panel">
+        <div class="sessions-header">
+          <button class="sessions-toggle" (click)="toggleSessions()">
+            <svg class="chevron" [class.expanded]="sessionsOpen()" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+            <span class="session-active-title">{{ activeSession()?.title || 'No session' }}</span>
+          </button>
+          <button class="btn-new-session" (click)="newSession()" title="New conversation">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+        </div>
+
+        @if (sessionsOpen()) {
+          <div class="sessions-list">
+            @for (session of sessions(); track session.id) {
+              <div
+                class="session-item"
+                [class.active]="activeSession()?.id === session.id"
+                (click)="selectSession(session)"
+              >
+                @if (renamingSessionId === session.id) {
+                  <input
+                    class="session-rename-input"
+                    [(ngModel)]="renameValue"
+                    (keyup.enter)="saveRename(session)"
+                    (keyup.escape)="cancelRename()"
+                    (blur)="saveRename(session)"
+                    (click)="$event.stopPropagation()"
+                    autofocus
+                  />
+                } @else {
+                  <div class="session-item-body">
+                    <span class="session-item-title">{{ session.title }}</span>
+                    <span class="session-item-date">{{ formatSessionDate(session) }}</span>
+                  </div>
+                  <div class="session-item-actions">
+                    <button class="btn-session-action" (click)="$event.stopPropagation(); startRenaming(session)" title="Rename">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button class="btn-session-action danger" (click)="deleteSession(session, $event)" title="Delete">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                }
+              </div>
+            }
+            @if (sessions().length === 0) {
+              <p class="empty-state" style="padding: 0.5rem 0.75rem; font-size: 0.8rem;">No sessions yet.</p>
+            }
+          </div>
+        }
+      </div>
+
       <!-- Chat -->
       <div class="chat-panel">
-        <h2>Ask Maisie</h2>
-
         <div class="chat-messages">
-          @for (msg of chatService.messages(); track $index) {
+          @for (msg of chatService.messages(); track msg.id) {
             <div class="chat-msg" [class]="'msg-' + msg.role">
               <p>{{ msg.content }}</p>
             </div>
@@ -193,6 +253,9 @@
             <div class="chat-msg msg-assistant">
               <p class="typing">Thinking...</p>
             </div>
+          }
+          @if (!activeSession() && chatService.messages().length === 0 && !chatService.loading()) {
+            <p class="chat-empty">Start a new conversation or pick one from above.</p>
           }
         </div>
 

@@ -27,7 +27,12 @@ service cloud.firestore {
       allow read, create, update, delete: if isAuthenticated();
     }
 
-    // chatMessages — read-only for authenticated user, writes via Cloud Functions only
+    // chatSessions — full CRUD for authenticated user
+    match /chatSessions/{sessionId} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // chatMessages — read-only for authenticated user, writes/deletes via Cloud Functions only
     match /chatMessages/{messageId} {
       allow read:   if isAuthenticated();
       allow create: if false;

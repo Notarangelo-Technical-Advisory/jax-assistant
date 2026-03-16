@@ -1,55 +1,61 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import {
+  Firestore, collection, query, where, orderBy, onSnapshot,
+} from '@angular/fire/firestore';
 import { AuthService } from './auth.service';
 import { firstValueFrom } from 'rxjs';
-
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
+import { ChatMessage } from '../models/chat-message.model';
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private firestore = inject(Firestore);
 
   messages = signal<ChatMessage[]>([]);
   loading = signal(false);
 
-  async sendMessage(text: string): Promise<string> {
+  private unsubMessages: (() => void) | null = null;
+
+  /** Subscribe to real-time messages for a session. */
+  watchSession(sessionId: string): void {
+    this.unsubMessages?.();
+    this.messages.set([]);
+
+    const q = query(
+      collection(this.firestore, 'chatMessages'),
+      where('sessionId', '==', sessionId),
+      orderBy('createdAt', 'asc'),
+    );
+
+    this.unsubMessages = onSnapshot(q, (snap) => {
+      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage));
+      this.messages.set(msgs);
+    });
+  }
+
+  stopWatching(): void {
+    this.unsubMessages?.();
+    this.unsubMessages = null;
+    this.messages.set([]);
+  }
+
+  async sendMessage(text: string, sessionId: string): Promise<string> {
     const token = await this.authService.getIdToken();
-
-    this.messages.update((msgs) => [
-      ...msgs,
-      { role: 'user', content: text, timestamp: new Date() }
-    ]);
-
     this.loading.set(true);
 
     try {
       const response = await firstValueFrom(
         this.http.post<{ response: string }>(
           'https://chat-nxe253ex3a-uc.a.run.app',
-          { message: text },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { message: text, sessionId },
+          { headers: { Authorization: `Bearer ${token}` } },
         )
       );
-
-      const assistantMessage = response?.response || 'No response received.';
-
-      this.messages.update((msgs) => [
-        ...msgs,
-        { role: 'assistant', content: assistantMessage, timestamp: new Date() }
-      ]);
-
-      return assistantMessage;
+      return response?.response || 'No response received.';
     } finally {
       this.loading.set(false);
     }
-  }
-
-  clearMessages(): void {
-    this.messages.set([]);
   }
 }

@@ -398,6 +398,149 @@ $border: #334155;
   50% { box-shadow: 0 0 0 8px rgba($success, 0); }
 }
 
+// Sessions Panel
+.sessions-panel {
+  background: $bg-card;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sessions-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.sessions-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  color: $text-primary;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+
+  &:hover { color: $accent; }
+
+  .chevron {
+    flex-shrink: 0;
+    color: $text-secondary;
+    transition: transform 0.2s ease;
+    &.expanded { transform: rotate(90deg); }
+  }
+}
+
+.session-active-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-new-session {
+  background: none;
+  border: 1px solid $border;
+  border-radius: 6px;
+  color: $text-secondary;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  &:hover { color: $accent; border-color: $accent; }
+}
+
+.sessions-list {
+  border-top: 1px solid $border;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid rgba($border, 0.4);
+  position: relative;
+
+  &:last-child { border-bottom: none; }
+  &:hover { background: rgba($bg-dark, 0.5); }
+
+  &.active {
+    background: rgba($accent, 0.1);
+    border-left: 2px solid $accent;
+  }
+}
+
+.session-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.session-item-title {
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item-date {
+  font-size: 0.7rem;
+  color: $text-secondary;
+}
+
+.session-item-actions {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+
+  .session-item:hover & { opacity: 1; }
+}
+
+.btn-session-action {
+  background: none;
+  border: none;
+  color: $text-secondary;
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 4px;
+
+  &:hover { color: $text-primary; background: rgba(255,255,255,0.1); }
+  &.danger:hover { color: $danger; }
+}
+
+.session-rename-input {
+  flex: 1;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid $accent;
+  border-radius: 6px;
+  background: $bg-input;
+  color: $text-primary;
+  font-size: 0.82rem;
+
+  &:focus { outline: none; }
+}
+
+.chat-empty {
+  color: $text-secondary;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
 // Chat Panel
 .chat-panel {
   background: $bg-card;
@@ -407,14 +550,6 @@ $border: #334155;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-
-  h2 {
-    font-size: 1rem;
-    color: $text-secondary;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin: 0 0 0.75rem;
-  }
 }
 
 .chat-messages {

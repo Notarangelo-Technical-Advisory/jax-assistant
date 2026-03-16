@@ -104,9 +104,13 @@ export const chat = onRequest(
       return;
     }
 
-    const {message} = req.body as {message?: string};
+    const {message, sessionId} = req.body as {message?: string; sessionId?: string};
     if (!message) {
       res.status(400).json({error: "message is required"});
+      return;
+    }
+    if (!sessionId) {
+      res.status(400).json({error: "sessionId is required"});
       return;
     }
 
@@ -117,7 +121,7 @@ export const chat = onRequest(
     }
 
     // Gather context from Firestore and fta-time-tracker
-    const [unbilledEntries, lastInvoice, todayBriefing, alerts, tasks] =
+    const [unbilledEntries, lastInvoice, todayBriefing, alerts, tasks, sessionHistory] =
       await Promise.all([
         getUnbilledEntries().catch(() => []),
         getLastInvoice().catch(() => null),
@@ -134,6 +138,14 @@ export const chat = onRequest(
           .where("completed", "==", false)
           .orderBy("createdAt", "desc").get()
           .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()})))
+          .catch(() => []),
+        // Load last 40 messages for this session as conversation history
+        db.collection("chatMessages")
+          .where("sessionId", "==", sessionId)
+          .orderBy("createdAt", "asc")
+          .limitToLast(40)
+          .get()
+          .then((s) => s.docs.map((d) => d.data() as {role: string; content: string}))
           .catch(() => []),
       ]);
 
@@ -197,7 +209,14 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
 
     try {
       const anthropic = new Anthropic({apiKey});
+
+      // Build messages: prior session history + current user message
+      const historyMessages: Anthropic.Messages.MessageParam[] = sessionHistory.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
       const messages: Anthropic.Messages.MessageParam[] = [
+        ...historyMessages,
         {role: "user", content: message},
       ];
 
@@ -269,12 +288,34 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
         })
         .join("");
 
-      // Store the chat exchange
-      await db.collection("chatMessages").add({
-        userMessage: message,
-        assistantMessage: text,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      // Store user message and assistant reply in the session
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const batch = db.batch();
+
+      const userMsgRef = db.collection("chatMessages").doc();
+      batch.set(userMsgRef, {
+        sessionId,
+        role: "user",
+        content: message,
+        createdAt: now,
       });
+
+      const assistantMsgRef = db.collection("chatMessages").doc();
+      batch.set(assistantMsgRef, {
+        sessionId,
+        role: "assistant",
+        content: text,
+        createdAt: admin.firestore.Timestamp.fromMillis(Date.now() + 1), // ensure order
+      });
+
+      // Update session metadata
+      const sessionRef = db.collection("chatSessions").doc(sessionId);
+      batch.update(sessionRef, {
+        lastMessage: text.substring(0, 100),
+        updatedAt: now,
+      });
+
+      await batch.commit();
 
       res.json({response: text});
     } catch (err: unknown) {
