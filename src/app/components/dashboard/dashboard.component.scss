@@ -12,15 +12,19 @@ $border: #334155;
 
 :host {
   display: block;
-  min-height: 100vh;
+  height: 100vh;
   background: $bg-dark;
   color: $text-primary;
+  overflow: hidden;
 }
 
 .dashboard {
-  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 0 1rem 2rem;
+  padding: 0 1rem;
 }
 
 // Header
@@ -28,9 +32,9 @@ $border: #334155;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.25rem 0;
+  padding: 1rem 0;
   border-bottom: 1px solid $border;
-  margin-bottom: 1.5rem;
+  flex-shrink: 0;
 
   h1 {
     font-size: 1.5rem;
@@ -62,6 +66,30 @@ $border: #334155;
   border-radius: 6px;
 
   &:hover { color: $text-primary; background: rgba(255, 255, 255, 0.05); }
+}
+
+// Two-panel layout
+.two-panel {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+  padding: 1rem 0;
+}
+
+.panel-left {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.panel-right {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
 }
 
 // Sections
@@ -201,18 +229,65 @@ $border: #334155;
   &:hover { background: $accent-hover; }
 }
 
+// Task Groups (collapsible)
+.task-group {
+  margin-bottom: 0.25rem;
+}
+
+.task-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 0.5rem;
+  background: rgba($bg-dark, 0.5);
+  border: none;
+  border-radius: 8px;
+  color: $text-primary;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+
+  &:hover { background: rgba($bg-dark, 0.8); }
+}
+
+.chevron {
+  transition: transform 0.2s ease;
+  color: $text-secondary;
+  flex-shrink: 0;
+
+  &.expanded { transform: rotate(90deg); }
+}
+
+.task-group-label {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.task-group-count {
+  color: $text-secondary;
+  font-size: 0.75rem;
+  font-weight: 400;
+  margin-left: auto;
+}
+
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.2rem;
+  padding: 0.25rem 0 0.25rem 1.5rem;
 }
 
 .task-item {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid rgba($border, 0.5);
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba($border, 0.3);
 
   &:last-child { border-bottom: none; }
 }
@@ -229,7 +304,7 @@ $border: #334155;
 
 .task-title {
   flex: 1;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .task-category {
@@ -260,16 +335,16 @@ $border: #334155;
   justify-content: center;
   gap: 0.75rem;
   width: 100%;
-  padding: 1rem;
-  margin-bottom: 1rem;
+  padding: 0.75rem;
   border: 2px solid $accent;
   border-radius: 12px;
   background: rgba($accent, 0.1);
   color: $accent;
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 
   &:hover {
     background: rgba($accent, 0.2);
@@ -285,13 +360,27 @@ $border: #334155;
   }
 }
 
-// Chat
-.chat-section {
-  h2 { margin-bottom: 0.5rem; }
+// Chat Panel
+.chat-panel {
+  background: $bg-card;
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+
+  h2 {
+    font-size: 1rem;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 0.75rem;
+  }
 }
 
 .chat-messages {
-  max-height: 300px;
+  flex: 1;
   overflow-y: auto;
   margin-bottom: 0.75rem;
   display: flex;
@@ -302,8 +391,8 @@ $border: #334155;
 .chat-msg {
   padding: 0.6rem 0.9rem;
   border-radius: 12px;
-  max-width: 85%;
-  font-size: 0.9rem;
+  max-width: 95%;
+  font-size: 0.85rem;
 
   p { margin: 0; white-space: pre-wrap; }
 
@@ -331,15 +420,16 @@ $border: #334155;
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  flex-shrink: 0;
 
   input {
     flex: 1;
-    padding: 0.7rem 1rem;
+    padding: 0.6rem 0.85rem;
     border: 1px solid $border;
     border-radius: 24px;
     background: $bg-input;
     color: $text-primary;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
 
     &:focus { outline: none; border-color: $accent; }
     &:disabled { opacity: 0.6; }
@@ -350,8 +440,8 @@ $border: #334155;
   background: none;
   border: 2px solid $border;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -372,8 +462,8 @@ $border: #334155;
   background: $accent;
   border: none;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -390,9 +480,34 @@ $border: #334155;
   50% { box-shadow: 0 0 0 8px rgba($danger, 0); }
 }
 
-// Responsive
-@media (max-width: 640px) {
+// Responsive — stack panels on mobile
+@media (max-width: 768px) {
+  :host {
+    overflow: auto;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .dashboard {
+    height: auto;
+  }
+
+  .two-panel {
+    flex-direction: column;
+  }
+
+  .panel-left {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .panel-right {
+    width: 100%;
+    min-height: 400px;
+  }
+
   .briefing-grid { grid-template-columns: 1fr; }
+
   .add-task {
     flex-wrap: wrap;
     input { min-width: 100%; }

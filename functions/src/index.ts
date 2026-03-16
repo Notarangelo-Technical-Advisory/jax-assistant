@@ -132,7 +132,7 @@ export const chat = onRequest(
           .catch(() => []),
         db.collection("tasks")
           .where("completed", "==", false)
-          .orderBy("createdAt", "desc").limit(20).get()
+          .orderBy("createdAt", "desc").get()
           .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()})))
           .catch(() => []),
       ]);
@@ -151,7 +151,7 @@ Jack's top priority: Glorify God and Enjoy Him Forever.
 Current context:
 - Unbilled hours: ${totalUnbilled.toFixed(1)}h ($${unbilledAmount.toFixed(0)}) at $150/hr
 - Last invoice: ${lastInvoice ? `${lastInvoice.issueDate} for $${lastInvoice.total}` : "None found"}
-- Active tasks: ${tasks.length > 0 ? tasks.map((t: Record<string, unknown>) => `"${t["title"]}"`).join(", ") : "None"}
+- Active tasks: ${tasks.length > 0 ? tasks.map((t: Record<string, unknown>) => `[${t["category"]}] ${t["title"]}`).join("; ") : "None"}
 - Active alerts: ${alerts.length > 0 ? alerts.map((a: Record<string, unknown>) => `${a["type"]}: ${a["message"]}`).join("; ") : "None"}
 - Today's briefing: ${todayBriefing ? JSON.stringify(todayBriefing) : "Not generated yet"}
 

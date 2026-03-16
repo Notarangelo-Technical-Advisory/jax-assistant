@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, effect, computed, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -38,6 +38,31 @@ export class DashboardComponent implements OnInit, OnDestroy {
   newTaskCategory: Task['category'] = 'general';
   voice = localStorage.getItem('maisie-voice') || 'female-british';
   greetingPlaying = signal(false);
+
+  expandedCategories = signal<Set<string>>(new Set(['ihrdc', 'solomon', 'dial', 'ppk', 'church', 'general']));
+
+  readonly categoryLabels: Record<string, string> = {
+    ihrdc: 'IHRDC',
+    solomon: 'Solomon',
+    dial: 'DIAL',
+    ppk: 'PPK',
+    church: 'Church',
+    general: 'General',
+  };
+
+  readonly categoryOrder: string[] = ['ihrdc', 'solomon', 'dial', 'ppk', 'church', 'general'];
+
+  groupedTasks = computed(() => {
+    const all = this.tasks();
+    const groups: { category: string; label: string; tasks: Task[] }[] = [];
+    for (const cat of this.categoryOrder) {
+      const catTasks = all.filter((t) => t.category === cat);
+      if (catTasks.length > 0) {
+        groups.push({ category: cat, label: this.categoryLabels[cat], tasks: catTasks });
+      }
+    }
+    return groups;
+  });
 
   private greetingAudio: HTMLAudioElement | null = null;
   private subs: Subscription[] = [];
@@ -133,6 +158,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   onVoiceChange(voice: string): void {
     localStorage.setItem('maisie-voice', voice);
+  }
+
+  toggleCategory(category: string): void {
+    const current = this.expandedCategories();
+    const next = new Set(current);
+    if (next.has(category)) {
+      next.delete(category);
+    } else {
+      next.add(category);
+    }
+    this.expandedCategories.set(next);
+  }
+
+  isCategoryExpanded(category: string): boolean {
+    return this.expandedCategories().has(category);
   }
 
   logout(): void {
