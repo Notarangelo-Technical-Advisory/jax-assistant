@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, computed, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, effect, computed, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -42,6 +42,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ttsService = inject(TtsService);
   sttService = inject(SttService);
   private sanitizer = inject(DomSanitizer);
+
+  @ViewChild('messagesContainer') private messagesContainer!: ElementRef;
 
   briefing = signal<Briefing | null>(null);
   billingSummary = signal<BillingSummary | null>(null);
@@ -219,6 +221,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.activeSession.set(newSession);
       this.chatService.watchSession(id);
       this.chatInput = '';
+      setTimeout(() => this.scrollToBottom(), 0);
       try {
         const response = await this.chatService.sendMessage(text, id);
         if (!this.audioContextPrimed) {
@@ -226,6 +229,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           this.audioContextPrimed = true;
         }
         this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
+        setTimeout(() => this.scrollToBottom(), 0);
       } catch (err) {
         console.error('[sendChat] error:', err);
       }
@@ -233,6 +237,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
 
     this.chatInput = '';
+    setTimeout(() => this.scrollToBottom(), 0);
     try {
       const response = await this.chatService.sendMessage(text, session.id);
       if (!this.audioContextPrimed) {
@@ -240,9 +245,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.audioContextPrimed = true;
       }
       this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
+      setTimeout(() => this.scrollToBottom(), 0);
     } catch (err) {
       console.error('[sendChat] error:', err);
     }
+  }
+
+  private scrollToBottom(): void {
+    try {
+      this.messagesContainer.nativeElement.scrollTop =
+        this.messagesContainer.nativeElement.scrollHeight;
+    } catch {}
   }
 
   // ── Voice conversation ────────────────────────────────────

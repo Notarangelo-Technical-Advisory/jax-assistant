@@ -288,7 +288,7 @@
 
       <!-- Chat -->
       <div class="chat-panel">
-        <div class="chat-messages">
+        <div class="chat-messages" #messagesContainer>
           @for (msg of chatService.messages(); track msg.id) {
             <div class="chat-msg" [class]="'msg-' + msg.role">
               @if (msg.role === 'assistant') {
