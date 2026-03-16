@@ -18,7 +18,7 @@ Glorify God and Enjoy Him Forever. Everything else supports this.
 
 - **Claude Desktop** — MCP servers connected for extended capabilities
 - **Apple Calendar** — Jack's schedule
-- **OneNote** — Jack's task list
+- **tasks.md** — Jack's task list (managed in this repo)
 - **Microsoft Teams** — Client communication (especially Brad Donohue at IHRDC)
 - **Apple Mail** — Email communication
 - **fta-time-tracker** — Time tracking, weekly status reports, and monthly invoice generation
@@ -38,17 +38,15 @@ Skills live in `.claude/skills/`. Each skill gets its own folder with a `SKILL.m
 .claude/skills/skill-name/SKILL.md
 ```
 
-Skills are built organically as recurring workflows emerge. No skills have been created yet.
+Available skills:
 
-### Skills to Build (Backlog)
-
-- **Calendar review** — Daily/next-day calendar summary with early morning alerts
-- **Weekly status report** — Auto-generate from fta-time-tracker and send to Brad
-- **Monthly invoicing** — Generate IHRDC invoice from fta-time-tracker the first week of each month
-- **Friday demo scheduler** — Schedule and manage weekly IHRDC AI demo sessions
-- **Brad Donohue alert** — Flag incoming emails/Teams messages from Brad
-- **Daily planner** — Plan Jack's day in advance so he doesn't have to think about it
-- **Task list sync** — Keep OneNote task list current and surface what's next
+- **calendar-review** — Daily/next-day calendar summary with early morning alerts
+- **weekly-status-report** — Generate status report for Brad (pending fta-time-tracker integration)
+- **monthly-invoicing** — IHRDC invoice reminders (pending fta-time-tracker integration)
+- **friday-demo-scheduler** — Schedule and manage weekly IHRDC AI demos
+- **brad-alert** — Check for emails/Teams messages from Brad Donohue
+- **daily-planner** — Plan Jack's day: calendar + tasks + messages + priorities
+- **task-manager** — Add, complete, and review tasks in `tasks.md`
 
 ## Decision Log
 
