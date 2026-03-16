@@ -151,21 +151,115 @@ Jack's top priority: Glorify God and Enjoy Him Forever.
 Current context:
 - Unbilled hours: ${totalUnbilled.toFixed(1)}h ($${unbilledAmount.toFixed(0)}) at $150/hr
 - Last invoice: ${lastInvoice ? `${lastInvoice.issueDate} for $${lastInvoice.total}` : "None found"}
-- Active tasks: ${tasks.length > 0 ? tasks.map((t: Record<string, unknown>) => `[${t["category"]}] ${t["title"]}`).join("; ") : "None"}
+- Active tasks: ${tasks.length > 0 ? tasks.map((t: Record<string, unknown>) => `[${t["id"]}][${t["category"]}] ${t["title"]}`).join("; ") : "None"}
 - Active alerts: ${alerts.length > 0 ? alerts.map((a: Record<string, unknown>) => `${a["type"]}: ${a["message"]}`).join("; ") : "None"}
 - Today's briefing: ${todayBriefing ? JSON.stringify(todayBriefing) : "Not generated yet"}
 
-Be concise and direct. Use a warm, professional tone — like a trusted assistant who knows Jack well. If Jack asks you to do something (add a task, etc.), confirm the action clearly.
+Be concise and direct. Use a warm, professional tone — like a trusted assistant who knows Jack well. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it.
 Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numeric", month: "long", day: "numeric"})}.`;
+
+    const tools: Anthropic.Messages.Tool[] = [
+      {
+        name: "add_task",
+        description: "Add a new task to Jack's task list",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            title: {type: "string", description: "The task description"},
+            category: {
+              type: "string",
+              enum: ["ihrdc", "solomon", "dial", "ppk", "church", "general"],
+              description: "Task category. Use 'church' for Grace Pres church tasks.",
+            },
+            dueDate: {
+              type: "string",
+              description: "Optional due date in YYYY-MM-DD format",
+            },
+          },
+          required: ["title", "category"],
+        },
+      },
+      {
+        name: "complete_task",
+        description: "Mark a task as completed. Use the task ID from the active tasks list.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            taskId: {
+              type: "string",
+              description: "The Firestore document ID of the task to complete",
+            },
+          },
+          required: ["taskId"],
+        },
+      },
+    ];
 
     try {
       const anthropic = new Anthropic({apiKey});
-      const response = await anthropic.messages.create({
+      const messages: Anthropic.Messages.MessageParam[] = [
+        {role: "user", content: message},
+      ];
+
+      let response = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 1024,
         system: systemPrompt,
-        messages: [{role: "user", content: message}],
+        tools,
+        messages,
       });
+
+      // Tool use loop — execute any tool calls, then get the final text response
+      while (response.stop_reason === "tool_use") {
+        const toolUseBlocks = response.content.filter(
+          (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use"
+        );
+        const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
+
+        for (const block of toolUseBlocks) {
+          if (block.name === "add_task") {
+            const input = block.input as {
+              title: string;
+              category: string;
+              dueDate?: string;
+            };
+            const docRef = await db.collection("tasks").add({
+              title: input.title,
+              category: input.category,
+              completed: false,
+              dueDate: input.dueDate || null,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({success: true, taskId: docRef.id}),
+            });
+          } else if (block.name === "complete_task") {
+            const input = block.input as {taskId: string};
+            await db.collection("tasks").doc(input.taskId).update({
+              completed: true,
+              completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({success: true}),
+            });
+          }
+        }
+
+        messages.push({role: "assistant", content: response.content});
+        messages.push({role: "user", content: toolResults});
+
+        response = await anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1024,
+          system: systemPrompt,
+          tools,
+          messages,
+        });
+      }
 
       const text = response.content
         .filter((b) => b.type === "text")
