@@ -30,7 +30,7 @@ export class ChatService {
     try {
       const response = await firstValueFrom(
         this.http.post<{ response: string }>(
-          'https://chat-r3e3oqky6a-uc.a.run.app',
+          'https://chat-nxe253ex3a-uc.a.run.app',
           { message: text },
           { headers: { Authorization: `Bearer ${token}` } }
         )

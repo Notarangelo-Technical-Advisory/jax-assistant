@@ -79,7 +79,7 @@ export class TtsService {
     try {
       const token = await this.authService.getIdToken();
       const response = await fetch(
-        'https://synthesizespeech-r3e3oqky6a-uc.a.run.app',
+        'https://synthesizespeech-nxe253ex3a-uc.a.run.app',
         {
           method: 'POST',
           headers: {

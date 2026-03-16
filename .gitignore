@@ -42,6 +42,9 @@ testem.log
 /functions/node_modules
 /functions/.env
 
+# Claude
+CLAUDE.local.md
+
 # System files
 .DS_Store
 Thumbs.db
