@@ -121,6 +121,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   });
 
+  // If the mic drops due to silence (no transcript, not waiting on a response),
+  // restart it automatically so conversation mode stays alive
+  private micDropEffect = effect(() => {
+    const listening = this.sttService.isListening();
+    const inConversation = this.conversationMode();
+    const loading = this.chatService.loading();
+    const hasTranscript = !!this.sttService.transcript();
+
+    if (!listening && inConversation && !loading && !hasTranscript && !this.wasSpeaking) {
+      setTimeout(() => {
+        if (this.conversationMode() && !this.chatService.loading() && !this.sttService.isListening()) {
+          this.sttService.startListening();
+        }
+      }, 300);
+    }
+  });
+
   ngOnInit(): void {
     this.subs.push(
       this.briefingService.getLatestBriefing().subscribe((b) => this.briefing.set(b)),
