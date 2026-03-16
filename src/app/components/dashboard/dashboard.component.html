@@ -291,7 +291,11 @@
         <div class="chat-messages">
           @for (msg of chatService.messages(); track msg.id) {
             <div class="chat-msg" [class]="'msg-' + msg.role">
-              <p>{{ msg.content }}</p>
+              @if (msg.role === 'assistant') {
+                <div class="md-content" [innerHTML]="renderMarkdown(msg.content)"></div>
+              } @else {
+                <p>{{ msg.content }}</p>
+              }
             </div>
           }
           @if (chatService.loading()) {

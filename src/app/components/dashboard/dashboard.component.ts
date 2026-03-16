@@ -1,7 +1,9 @@
 import { Component, inject, signal, effect, computed, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Subscription } from 'rxjs';
+import { marked } from 'marked';
 import { AuthService } from '../../services/auth.service';
 import { BriefingService } from '../../services/briefing.service';
 import { BillingService, BillingSummary } from '../../services/billing.service';
@@ -39,6 +41,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   calendarService = inject(CalendarService);
   ttsService = inject(TtsService);
   sttService = inject(SttService);
+  private sanitizer = inject(DomSanitizer);
 
   briefing = signal<Briefing | null>(null);
   billingSummary = signal<BillingSummary | null>(null);
@@ -367,5 +370,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   logout(): void {
     this.authService.logout();
+  }
+
+  renderMarkdown(content: string): SafeHtml {
+    const html = marked.parse(content) as string;
+    return this.sanitizer.bypassSecurityTrustHtml(html);
   }
 }
