@@ -52,8 +52,8 @@
 
 ## General
 
-- [ ] Dental coverage estimate for implant - check Mar 15 for new estimate
-- [ ] Every Monday post a LinkedIn article where AI is not leveraged by teammates
+- [ ] **OVERDUE** Dental coverage estimate for implant - was due Mar 15
+- [ ] Every Tuesday post a LinkedIn article where AI is not leveraged by teammates
 - [ ] Change iTunes password
 - [ ] Michael Reeves reading Roman's
 - [ ] Nathan Hayes: old colony correction center (OCC)
@@ -63,7 +63,7 @@
 - [ ] Weekly: Send Brad Donohue status report (Fridays)
 - [ ] Weekly: Schedule Friday IHRDC AI demo
 - [ ] Monthly: Generate and send IHRDC invoice (first week of month)
-- [ ] Weekly (Monday): Post LinkedIn article
+- [ ] Weekly (Tuesday): Post LinkedIn article
 
 ---
 
