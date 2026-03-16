@@ -147,6 +147,7 @@ jobs:
         run: |
           echo "ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}" > functions/.env
           echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> functions/.env
+          echo "MAISIE_PAT=${{ secrets.MAISIE_PAT }}" >> functions/.env
 
       - name: Deploy to Firebase
         env:

@@ -18,6 +18,37 @@ async function verifyAuth(
   return admin.auth().verifyIdToken(auth.split("Bearer ")[1]);
 }
 
+// ─── GitHub API helper ──────────────────────────────────────────
+const GITHUB_REPO = "Notarangelo-Technical-Advisory/jax-assistant";
+const GITHUB_API = "https://api.github.com";
+
+async function githubApi(
+  path: string,
+  method: "GET" | "POST" | "PUT" | "PATCH",
+  body?: unknown
+): Promise<unknown> {
+  const pat = process.env.MAISIE_PAT;
+  if (!pat) throw new Error("MAISIE_PAT not configured");
+
+  const resp = await fetch(`${GITHUB_API}${path}`, {
+    method,
+    headers: {
+      "Authorization": `Bearer ${pat}`,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+    },
+    ...(body ? {body: JSON.stringify(body)} : {}),
+  });
+
+  const json = await resp.json() as unknown;
+  if (!resp.ok) {
+    const msg = (json as {message?: string})?.message || resp.statusText;
+    throw new Error(`GitHub API ${method} ${path} failed (${resp.status}): ${msg}`);
+  }
+  return json;
+}
+
 // ─── TTS: ElevenLabs proxy (same pattern as Solomon) ───────────
 const ELEVENLABS_VOICE_ID: Record<string, string> = {
   "female-american": "WyFXw4PzMbRnp8iLMJwY",
@@ -128,7 +159,7 @@ export const chat = onRequest(
     chatTomorrowEnd.setDate(chatTomorrowEnd.getDate() + 2);
     chatTomorrowEnd.setHours(0, 0, 0, 0);
 
-    const [unbilledEntries, lastInvoice, todayBriefing, alerts, tasks, sessionHistory, customCategories, chatCalendarEvents, customers] =
+    const [unbilledEntries, lastInvoice, todayBriefing, alerts, tasks, recentCompletedTasks, sessionHistory, customCategories, chatCalendarEvents, customers] =
       await Promise.all([
         getUnbilledEntries().catch(() => []),
         getLastInvoice().catch(() => null),
@@ -144,6 +175,12 @@ export const chat = onRequest(
         db.collection("tasks")
           .where("completed", "==", false)
           .orderBy("createdAt", "desc").get()
+          .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()})))
+          .catch(() => []),
+        // Load 20 most recently completed tasks so Maisie can reopen them
+        db.collection("tasks")
+          .where("completed", "==", true)
+          .orderBy("completedAt", "desc").limit(20).get()
           .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()})))
           .catch(() => []),
         // Load last 40 messages for this session as conversation history
@@ -207,6 +244,7 @@ Current context:
   const due = t["dueDate"] ? ` (due: ${t["dueDate"]})` : "";
   return `[${t["id"]}][${t["category"]}] ${t["title"]}${due}`;
 }).join("; ") : "None"}
+- Recently completed tasks (last 20, use reopen_task to restore): ${recentCompletedTasks.length > 0 ? recentCompletedTasks.map((t: Record<string, unknown>) => `[${t["id"]}] ${t["title"]}`).join("; ") : "None"}
 - Active alerts: ${alerts.length > 0 ? alerts.map((a: Record<string, unknown>) => `${a["type"]}: ${a["message"]}`).join("; ") : "None"}
 - Today's briefing: ${todayBriefing ? JSON.stringify(todayBriefing) : "Not generated yet"}
 - Calendar (today & tomorrow): ${chatCalendarEvents.length > 0 ? chatCalendarEvents.map((e) => {
@@ -216,6 +254,8 @@ Current context:
 - Task categories: ${allCategories.map((c) => `${c.key} (${c.label})`).join(", ")}
 
 Be concise and direct. Never use emojis in any response. Use a warm, professional tone — like a trusted assistant who knows Jack well. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it. When Jack asks you to create a new task category, use the create_task_category tool. Use create_calendar_event when Jack asks to schedule something — always confirm title, date, and time before creating. Use move_calendar_event to reschedule existing events. Calendar changes are applied via a local bridge sync and appear within ~1 minute.
+
+When Jack asks you to fix a bug or make a code change, follow this exact workflow: (1) use get_file_content to read the relevant file(s) first — always read before editing, (2) use create_branch to create a branch named 'fix/short-description' for bugs or 'feat/short-description' for features, (3) use push_file_change for each file that needs updating — always provide the complete file content, never a partial diff, (4) use create_pull_request to open a PR targeting main with a clear description of what you changed and why, (5) tell Jack the PR URL so he can review and approve it in GitHub. Never push to main directly. Never claim to have made a code change without actually calling the tools. After opening the PR, remind Jack that CI/CD will auto-deploy once he approves and merges.
 Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numeric", month: "long", day: "numeric"})}.`;
 
     const buildTools = (cats: Array<{key: string; label: string}>): Anthropic.Messages.Tool[] => [
@@ -262,6 +302,20 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             taskId: {
               type: "string",
               description: "The Firestore document ID of the task to complete",
+            },
+          },
+          required: ["taskId"],
+        },
+      },
+      {
+        name: "reopen_task",
+        description: "Mark a completed task as incomplete/active again. Use the task ID from the recently completed tasks list.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            taskId: {
+              type: "string",
+              description: "The Firestore document ID of the completed task to reopen",
             },
           },
           required: ["taskId"],
@@ -397,6 +451,86 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
           required: ["event_title", "original_date", "new_date", "new_start_time", "new_end_time"],
         },
       },
+      {
+        name: "get_file_content",
+        description: "Read the current content of a file from the jax-assistant GitHub repo. Use this to understand code before proposing a fix. Always read the relevant file before making changes.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            file_path: {
+              type: "string",
+              description: "Path to the file relative to the repo root, e.g. 'functions/src/index.ts' or 'src/app/app.component.ts'",
+            },
+            ref: {
+              type: "string",
+              description: "Branch or commit SHA to read from. Defaults to 'main'. Use a feature branch name if you've already created one.",
+            },
+          },
+          required: ["file_path"],
+        },
+      },
+      {
+        name: "create_branch",
+        description: "Create a new feature branch from main in the jax-assistant repo. Always create a branch before making any file changes. Use 'fix/description' for bugs or 'feat/description' for features.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            branch_name: {
+              type: "string",
+              description: "Branch name following the convention 'fix/short-description' or 'feat/short-description'. Use kebab-case, e.g. 'fix/calendar-tomorrow-events'.",
+            },
+          },
+          required: ["branch_name"],
+        },
+      },
+      {
+        name: "push_file_change",
+        description: "Update the content of a file on a feature branch in the jax-assistant repo. This commits the change directly to the branch. Do NOT use this to push to main. Always call create_branch first.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            branch_name: {
+              type: "string",
+              description: "The feature branch to push to (must already exist, created via create_branch).",
+            },
+            file_path: {
+              type: "string",
+              description: "Path to the file relative to the repo root, e.g. 'functions/src/index.ts'.",
+            },
+            new_content: {
+              type: "string",
+              description: "The complete new file content as a string. This replaces the entire file — do not provide a diff or partial content.",
+            },
+            commit_message: {
+              type: "string",
+              description: "Git commit message. Follow conventional commit format: 'fix: description' or 'feat: description'.",
+            },
+          },
+          required: ["branch_name", "file_path", "new_content", "commit_message"],
+        },
+      },
+      {
+        name: "create_pull_request",
+        description: "Open a pull request on GitHub targeting main. Always call this after pushing all file changes. Jack must review and approve before the PR can be merged — it will not merge automatically.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            branch_name: {
+              type: "string",
+              description: "The feature branch that contains your changes.",
+            },
+            title: {
+              type: "string",
+              description: "PR title. Keep it under 72 characters. Use conventional commit style: 'fix: calendar not showing tomorrow events'.",
+            },
+            body: {
+              type: "string",
+              description: "PR description in markdown. Explain: (1) what the bug was, (2) what you changed and why, (3) what Jack should verify after merging. Be specific.",
+            },
+          },
+          required: ["branch_name", "title", "body"],
+        },
+      },
     ];
 
     let tools = buildTools(allCategories);
@@ -475,6 +609,17 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             await db.collection("tasks").doc(input.taskId).update({
               completed: true,
               completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({success: true}),
+            });
+          } else if (block.name === "reopen_task") {
+            const input = block.input as {taskId: string};
+            await db.collection("tasks").doc(input.taskId).update({
+              completed: false,
+              completedAt: admin.firestore.FieldValue.delete(),
             });
             toolResults.push({
               type: "tool_result",
@@ -749,6 +894,122 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
                 message: `"${input.event_title}" has been queued to move from ${input.original_date} to ${input.new_date} at ${input.new_start_time}–${input.new_end_time}. The change will appear within ~1 minute once the bridge syncs.`,
               }),
             });
+          } else if (block.name === "get_file_content") {
+            const input = block.input as {file_path: string; ref?: string};
+            const ref = input.ref || "main";
+            try {
+              const data = await githubApi(
+                `/repos/${GITHUB_REPO}/contents/${encodeURIComponent(input.file_path)}?ref=${encodeURIComponent(ref)}`,
+                "GET"
+              ) as {content: string; encoding: string; sha: string; size: number};
+              const content = Buffer.from(data.content, "base64").toString("utf-8");
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({file_path: input.file_path, ref, sha: data.sha, size: data.size, content}),
+              });
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : "get_file_content failed";
+              toolResults.push({type: "tool_result", tool_use_id: block.id, content: JSON.stringify({error: msg})});
+            }
+          } else if (block.name === "create_branch") {
+            const input = block.input as {branch_name: string};
+            if (!input.branch_name.match(/^(fix|feat)\/.+/)) {
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({error: "Branch name must start with 'fix/' or 'feat/'. Example: 'fix/calendar-tomorrow-events'"}),
+              });
+            } else {
+              try {
+                const mainRef = await githubApi(
+                  `/repos/${GITHUB_REPO}/git/ref/heads/main`,
+                  "GET"
+                ) as {object: {sha: string}};
+                const mainSha = mainRef.object.sha;
+                await githubApi(`/repos/${GITHUB_REPO}/git/refs`, "POST", {
+                  ref: `refs/heads/${input.branch_name}`,
+                  sha: mainSha,
+                });
+                toolResults.push({
+                  type: "tool_result",
+                  tool_use_id: block.id,
+                  content: JSON.stringify({
+                    success: true,
+                    branch_name: input.branch_name,
+                    branched_from_sha: mainSha,
+                    message: `Branch '${input.branch_name}' created from main (${mainSha.substring(0, 7)}).`,
+                  }),
+                });
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : "create_branch failed";
+                toolResults.push({type: "tool_result", tool_use_id: block.id, content: JSON.stringify({error: msg})});
+              }
+            }
+          } else if (block.name === "push_file_change") {
+            const input = block.input as {branch_name: string; file_path: string; new_content: string; commit_message: string};
+            if (input.branch_name === "main") {
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({error: "Cannot push directly to main. Use a feature branch created with create_branch."}),
+              });
+            } else {
+              try {
+                const existing = await githubApi(
+                  `/repos/${GITHUB_REPO}/contents/${encodeURIComponent(input.file_path)}?ref=${encodeURIComponent(input.branch_name)}`,
+                  "GET"
+                ) as {sha: string};
+                const result = await githubApi(
+                  `/repos/${GITHUB_REPO}/contents/${encodeURIComponent(input.file_path)}`,
+                  "PUT",
+                  {
+                    message: input.commit_message,
+                    content: Buffer.from(input.new_content, "utf-8").toString("base64"),
+                    sha: existing.sha,
+                    branch: input.branch_name,
+                  }
+                ) as {commit: {sha: string; html_url: string}};
+                toolResults.push({
+                  type: "tool_result",
+                  tool_use_id: block.id,
+                  content: JSON.stringify({
+                    success: true,
+                    commit_sha: result.commit.sha,
+                    commit_url: result.commit.html_url,
+                    file_path: input.file_path,
+                    branch: input.branch_name,
+                  }),
+                });
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : "push_file_change failed";
+                toolResults.push({type: "tool_result", tool_use_id: block.id, content: JSON.stringify({error: msg})});
+              }
+            }
+          } else if (block.name === "create_pull_request") {
+            const input = block.input as {branch_name: string; title: string; body: string};
+            try {
+              const pr = await githubApi(`/repos/${GITHUB_REPO}/pulls`, "POST", {
+                title: input.title,
+                body: input.body,
+                head: input.branch_name,
+                base: "main",
+                draft: false,
+              }) as {number: number; html_url: string; title: string};
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({
+                  success: true,
+                  pr_number: pr.number,
+                  pr_url: pr.html_url,
+                  message: `PR #${pr.number} opened: "${pr.title}". Review and merge at: ${pr.html_url}`,
+                }),
+              });
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : "create_pull_request failed";
+              toolResults.push({type: "tool_result", tool_use_id: block.id, content: JSON.stringify({error: msg})});
+            }
           }
         }
 
