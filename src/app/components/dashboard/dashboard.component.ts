@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { BriefingService } from '../../services/briefing.service';
+import { BillingService, BillingSummary } from '../../services/billing.service';
 import { TaskService } from '../../services/task.service';
 import { TaskCategoryService } from '../../services/task-category.service';
 import { AlertService } from '../../services/alert.service';
@@ -29,6 +30,7 @@ import { CalendarEvent } from '../../models/calendar-event.model';
 export class DashboardComponent implements OnInit, OnDestroy {
   authService = inject(AuthService);
   private briefingService = inject(BriefingService);
+  private billingService = inject(BillingService);
   taskService = inject(TaskService);
   taskCategoryService = inject(TaskCategoryService);
   alertService = inject(AlertService);
@@ -39,6 +41,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   sttService = inject(SttService);
 
   briefing = signal<Briefing | null>(null);
+  billingSummary = signal<BillingSummary | null>(null);
   calendarEvents = signal<CalendarEvent[]>([]);
   tasks = signal<Task[]>([]);
   categories = signal<TaskCategory[]>([]);
@@ -104,6 +107,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
+    this.billingService.getSummary()
+      .then((s) => this.billingSummary.set(s))
+      .catch((err) => console.error('[billing] getSummary error:', err));
+
     this.subs.push(
       this.briefingService.getLatestBriefing().subscribe((b) => this.briefing.set(b)),
       this.calendarService.getTodayEvents().subscribe((e) => this.calendarEvents.set(e)),

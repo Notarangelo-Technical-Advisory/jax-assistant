@@ -704,13 +704,18 @@ export const getUnbilledSummary = onRequest(
       return;
     }
 
-    const entries = await getUnbilledEntries();
+    const [entries, lastInvoice] = await Promise.all([
+      getUnbilledEntries(),
+      getLastInvoice().catch(() => null),
+    ]);
     const totalHours = entries.reduce((sum, e) => sum + e.durationHours, 0);
     res.json({
       totalHours: Math.round(totalHours * 100) / 100,
       totalAmount: Math.round(totalHours * 150 * 100) / 100,
       entryCount: entries.length,
-      entries: entries.slice(0, 10),
+      lastInvoice: lastInvoice
+        ? {issueDate: lastInvoice.issueDate, total: lastInvoice.total}
+        : null,
     });
   }
 );

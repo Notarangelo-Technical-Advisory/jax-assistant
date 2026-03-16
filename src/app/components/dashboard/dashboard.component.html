@@ -63,8 +63,8 @@
           <div class="briefing-grid">
             <div class="stat-card">
               <span class="stat-label">Unbilled Hours</span>
-              <span class="stat-value">{{ b.unbilledHours | number:'1.1-1' }}h</span>
-              <span class="stat-sub">${{ b.unbilledAmount | number:'1.0-0' }}</span>
+              <span class="stat-value">{{ (billingSummary()?.totalHours ?? b.unbilledHours) | number:'1.1-1' }}h</span>
+              <span class="stat-sub">${{ (billingSummary()?.totalAmount ?? b.unbilledAmount) | number:'1.0-0' }}</span>
             </div>
             <div class="stat-card">
               <span class="stat-label">This Week</span>
@@ -72,9 +72,9 @@
             </div>
             <div class="stat-card">
               <span class="stat-label">Last Invoice</span>
-              <span class="stat-value">{{ b.lastInvoiceDate || 'None' }}</span>
-              @if (b.lastInvoiceAmount) {
-                <span class="stat-sub">${{ b.lastInvoiceAmount | number:'1.0-0' }}</span>
+              <span class="stat-value">{{ (billingSummary()?.lastInvoiceDate ?? b.lastInvoiceDate) || 'None' }}</span>
+              @if (billingSummary()?.lastInvoiceAmount ?? b.lastInvoiceAmount) {
+                <span class="stat-sub">${{ (billingSummary()?.lastInvoiceAmount ?? b.lastInvoiceAmount) | number:'1.0-0' }}</span>
               }
             </div>
             @if (b.totalActiveTasks) {
