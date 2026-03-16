@@ -26,7 +26,7 @@ export class ChatService {
     const q = query(
       collection(this.firestore, 'chatMessages'),
       where('sessionId', '==', sessionId),
-      orderBy('sequence', 'asc'),
+      orderBy('createdAt', 'asc'),
     );
 
     this.unsubMessages = onSnapshot(q,
