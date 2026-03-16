@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "sync": "npx tsx calendar-sync.ts",
+    "queue": "npx tsx queue-viewer.ts",
     "build": "tsc"
   },
   "dependencies": {
