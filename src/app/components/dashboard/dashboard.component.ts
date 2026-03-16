@@ -55,7 +55,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   newTaskCategory = 'general';
   newTaskDueDate = '';
   voice = localStorage.getItem('maisie-voice') || 'female-british';
-  greetingPlaying = signal(false);
 
   expandedCategories = signal<Set<string>>(new Set(['ihrdc', 'solomon', 'dial', 'ppk', 'church', 'general']));
 
@@ -94,51 +93,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return groups;
   });
 
-  conversationMode = signal(false);
-  private wasSpeaking = false;
-  private greetingAudio: HTMLAudioElement | null = null;
   private subs: Subscription[] = [];
 
-  // When STT transcript updates, auto-send as chat
+  // When STT transcript updates (mic stopped naturally), auto-send as chat
   private sttEffect = effect(() => {
     const transcript = this.sttService.transcript();
     if (transcript && !this.sttService.isListening()) {
       this.chatInput = transcript;
       this.sendChat();
-    }
-  });
-
-  // After TTS finishes a response, auto-restart the mic in conversation mode
-  private conversationEffect = effect(() => {
-    const speakingId = this.ttsService.speakingId();
-    const inConversation = this.conversationMode();
-
-    if (speakingId !== null) {
-      this.wasSpeaking = true;
-    } else if (this.wasSpeaking && inConversation) {
-      this.wasSpeaking = false;
-      setTimeout(() => {
-        if (this.conversationMode() && !this.chatService.loading() && !this.sttService.isListening()) {
-          this.sttService.startListening();
-        }
-      }, 600);
-    }
-  });
-
-  // If the mic drops due to silence (no transcript, not waiting on a response),
-  // restart it automatically so conversation mode stays alive
-  private micDropEffect = effect(() => {
-    const listening = this.sttService.isListening();
-    const inConversation = this.conversationMode();
-    const loading = this.chatService.loading();
-    const hasTranscript = !!this.sttService.transcript();
-
-    if (!listening && inConversation && !loading && !hasTranscript && !this.wasSpeaking) {
-      setTimeout(() => {
-        if (this.conversationMode() && !this.chatService.loading() && !this.sttService.isListening()) {
-          this.sttService.startListening();
-        }
-      }, 300);
     }
   });
 
@@ -252,41 +214,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
   }
 
-  // ── Conversation mode ──────────────────────────────────────
-
-  startConversation(): void {
-    if (this.conversationMode()) {
-      this.stopConversation();
-      return;
-    }
-
-    this.conversationMode.set(true);
-    this.ttsService.primeAudioContext();
-    this.greetingPlaying.set(true);
-
-    this.greetingAudio = new Audio('/greeting.mp3');
-    const afterGreeting = () => {
-      this.greetingPlaying.set(false);
-      if (this.sttService.isSupported && this.conversationMode()) {
-        this.sttService.startListening();
-      }
-    };
-    this.greetingAudio.onended = afterGreeting;
-    this.greetingAudio.onerror = afterGreeting;
-    this.greetingAudio.play().catch(afterGreeting);
-  }
-
-  stopConversation(): void {
-    this.conversationMode.set(false);
-    this.wasSpeaking = false;
-    this.sttService.stopListening();
-    this.ttsService.stop();
-  }
+  // ── Push-to-talk ─────────────────────────────────────────
 
   toggleMic(): void {
     if (this.sttService.isListening()) {
       this.sttService.stopListening();
     } else {
+      // Stop any playing TTS before recording
+      this.ttsService.stop();
       this.ttsService.primeAudioContext();
       this.sttService.startListening();
     }

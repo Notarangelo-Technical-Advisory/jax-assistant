@@ -31,13 +31,6 @@
         { "fieldPath": "sessionId", "order": "ASCENDING" },
         { "fieldPath": "sequence", "order": "ASCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "calendarEvents",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "startTime", "order": "ASCENDING" }
-      ]
     }
   ],
   "fieldOverrides": []

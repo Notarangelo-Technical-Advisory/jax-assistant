@@ -396,54 +396,6 @@ $border: #334155;
   &.due-today { color: $warning; font-weight: 600; }
 }
 
-// Speak Button
-.btn-speak {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.75rem;
-  border: 2px solid $accent;
-  border-radius: 12px;
-  background: rgba($accent, 0.1);
-  color: $accent;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-
-  &:hover {
-    background: rgba($accent, 0.2);
-    border-color: $accent-hover;
-  }
-
-  &:disabled {
-    border-color: $border;
-    color: $text-secondary;
-    background: rgba($border, 0.2);
-    cursor: not-allowed;
-  }
-
-  // Conversation mode — green tint, pulses while listening or loading
-  &.active {
-    border-color: $success;
-    color: $success;
-    background: rgba($success, 0.1);
-    animation: pulse-green 2s infinite;
-
-    &:hover {
-      background: rgba($success, 0.2);
-    }
-  }
-}
-
-@keyframes pulse-green {
-  0%, 100% { box-shadow: 0 0 0 0 rgba($success, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba($success, 0); }
-}
-
 // Sessions Panel
 .sessions-panel {
   background: $bg-card;
