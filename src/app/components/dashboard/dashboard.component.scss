@@ -253,6 +253,38 @@ $border: #334155;
   color: $warning;
 }
 
+// Speak Button
+.btn-speak {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 2px solid $accent;
+  border-radius: 12px;
+  background: rgba($accent, 0.1);
+  color: $accent;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba($accent, 0.2);
+    border-color: $accent-hover;
+  }
+
+  &:disabled {
+    border-color: $border;
+    color: $text-secondary;
+    background: rgba($border, 0.2);
+    cursor: not-allowed;
+    animation: pulse 1.5s infinite;
+  }
+}
+
 // Chat
 .chat-section {
   h2 { margin-bottom: 0.5rem; }

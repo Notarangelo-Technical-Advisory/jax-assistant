@@ -37,7 +37,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   newTaskTitle = '';
   newTaskCategory: Task['category'] = 'general';
   voice = 'female-american';
+  greetingPlaying = signal(false);
 
+  private greetingAudio: HTMLAudioElement | null = null;
   private subs: Subscription[] = [];
 
   // When STT transcript updates, auto-send as chat
@@ -71,6 +73,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // Auto-speak the response
     this.ttsService.primeAudioContext();
     this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
+  }
+
+  startConversation(): void {
+    this.ttsService.primeAudioContext();
+    this.greetingPlaying.set(true);
+
+    this.greetingAudio = new Audio('/greeting.mp3');
+    this.greetingAudio.onended = () => {
+      this.greetingPlaying.set(false);
+      // Auto-start listening after greeting finishes
+      if (this.sttService.isSupported) {
+        this.sttService.startListening();
+      }
+    };
+    this.greetingAudio.onerror = () => {
+      this.greetingPlaying.set(false);
+    };
+    this.greetingAudio.play().catch(() => {
+      this.greetingPlaying.set(false);
+    });
   }
 
   toggleMic(): void {
