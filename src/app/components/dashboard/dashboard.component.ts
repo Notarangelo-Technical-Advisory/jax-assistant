@@ -329,7 +329,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
       text = `Good morning. You have ${b.unbilledHours} unbilled hours, worth $${b.unbilledAmount}. This week you've logged ${b.weekHours} hours.${calPart} ${b.alerts.map((a) => a.message).join('. ')}`;
     }
     this.ttsService.primeAudioContext();
-    this.ttsService.speak(text, this.voice, `briefing-${b.date}`);
+    // Use createdAt timestamp as cache key so regenerated briefings on the same
+    // day don't replay stale audio. Fall back to date if createdAt is absent.
+    const createdAt = (b.createdAt as any)?.toDate?.() ?? new Date(b.createdAt as any);
+    const briefingKey = `briefing-${createdAt.getTime() || b.date}`;
+    this.ttsService.speak(text, this.voice, briefingKey);
   }
 
   stopSpeaking(): void {
