@@ -54,8 +54,14 @@ async function run() {
 
   console.log(`[coding-bridge] Picked up task ${doc.id}: ${task.substring(0, 80)}...`);
 
-  // Mark as running immediately to prevent double-pickup on next poll
-  await doc.ref.update({ status: "running", startedAt: FieldValue.serverTimestamp() });
+  // Mark as running immediately to prevent double-pickup on next poll.
+  // If this write fails, bail out — we can't safely claim the task.
+  try {
+    await doc.ref.update({ status: "running", startedAt: FieldValue.serverTimestamp() });
+  } catch (claimErr) {
+    console.error(`[coding-bridge] Failed to claim task ${doc.id} (will retry next poll):`, claimErr);
+    return;
+  }
 
   const taskPrompt = `${task}
 
