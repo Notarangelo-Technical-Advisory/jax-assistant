@@ -49,6 +49,14 @@
       ]
     }
     ,{
+      "collectionGroup": "pendingCalendarActions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    }
+    ,{
       "collectionGroup": "pendingCodingTasks",
       "queryScope": "COLLECTION",
       "fields": [
