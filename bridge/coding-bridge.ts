@@ -31,7 +31,29 @@ db.settings({ preferRest: true });
 
 // ─── Configuration ───────────────────────────────────────────────
 const REPO_DIR = "/Users/jacknotarangelo/Documents/GitHub/jax-assistant";
-const CLAUDE_TIMEOUT_MS = 4 * 60 * 1000; // 4 min (under Maisie's 5 min poll timeout)
+const CLAUDE_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
+
+// ─── Helpers ─────────────────────────────────────────────────────
+async function writeWithRetry(
+  ref: FirebaseFirestore.DocumentReference,
+  data: Record<string, unknown>,
+  retries = 3,
+  delayMs = 2000
+): Promise<void> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await ref.update(data);
+      return;
+    } catch (err) {
+      if (i < retries - 1) {
+        console.warn(`[coding-bridge] Firestore write failed (attempt ${i + 1}/${retries}), retrying in ${delayMs}ms...`);
+        await new Promise((r) => setTimeout(r, delayMs));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
 
 // ─── Main ────────────────────────────────────────────────────────
 async function run() {
@@ -105,7 +127,7 @@ IMPORTANT WORKFLOW — follow these steps exactly, in order:
     console.log(`[coding-bridge] Task ${doc.id} completed. PR: ${prUrl ?? "not found in output"}`);
 
     try {
-      await doc.ref.update({
+      await writeWithRetry(doc.ref, {
         status: "completed",
         completedAt: FieldValue.serverTimestamp(),
         result: {
@@ -134,7 +156,7 @@ IMPORTANT WORKFLOW — follow these steps exactly, in order:
     console.error(`[coding-bridge] Task ${doc.id} failed:`, fullError.substring(0, 300));
 
     try {
-      await doc.ref.update({
+      await writeWithRetry(doc.ref, {
         status: "failed",
         completedAt: FieldValue.serverTimestamp(),
         result: {

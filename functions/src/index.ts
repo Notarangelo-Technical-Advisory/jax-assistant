@@ -911,7 +911,7 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
 
             // Poll for result — bridge picks it up within ~30s and runs Claude Code locally
             const POLL_INTERVAL_MS = 3000;
-            const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+            const TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes (bridge runs up to 10 min)
             const pollStart = Date.now();
             let codingResult: {success: boolean; pr_url?: string; pr_number?: number; summary?: string; error?: string} | null = null;
 
