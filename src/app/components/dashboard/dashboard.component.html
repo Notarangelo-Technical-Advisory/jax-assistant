@@ -229,17 +229,30 @@
         @if (groupedAndExpandedTasks().length > 0) {
           @for (group of groupedAndExpandedTasks(); track group.category) {
             <div class="task-group">
-              <button class="task-group-header" (click)="toggleCategory(group.category)">
-                <svg
-                  class="chevron"
-                  [class.expanded]="group.expanded"
-                  width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                >
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-                <span class="task-group-label badge-{{ group.category }}">{{ group.label }}</span>
-                <span class="task-group-count">{{ group.tasks.length }}</span>
-              </button>
+              <div class="task-group-row">
+                <button class="task-group-header" (click)="toggleCategory(group.category)">
+                  <svg
+                    class="chevron"
+                    [class.expanded]="group.expanded"
+                    width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  >
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                  <span class="task-group-label badge-{{ group.category }}">{{ group.label }}</span>
+                  <span class="task-group-count">{{ group.tasks.length }}</span>
+                </button>
+                @if (group.categoryId) {
+                  <button
+                    class="btn-delete-category"
+                    (click)="deleteCategory(group.category, group.categoryId!, group.label, $event)"
+                    title="Delete category"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                    </svg>
+                  </button>
+                }
+              </div>
               @if (group.expanded) {
                 <div class="task-list">
                   @for (task of group.tasks; track task.id) {

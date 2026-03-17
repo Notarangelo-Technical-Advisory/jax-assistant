@@ -89,39 +89,55 @@ After making all changes: commit with a descriptive message, push the branch, th
 
     console.log(`[coding-bridge] Task ${doc.id} completed. PR: ${prUrl ?? "not found in output"}`);
 
-    await doc.ref.update({
-      status: "completed",
-      completedAt: FieldValue.serverTimestamp(),
-      result: {
-        success: true,
-        pr_url: prUrl ?? null,
-        pr_number: prNumber ?? null,
-        summary: claudeText.substring(0, 500),
-      },
-      error: null,
-    });
+    try {
+      await doc.ref.update({
+        status: "completed",
+        completedAt: FieldValue.serverTimestamp(),
+        result: {
+          success: true,
+          pr_url: prUrl ?? null,
+          pr_number: prNumber ?? null,
+          summary: claudeText.substring(0, 500),
+        },
+        error: null,
+      });
+    } catch (writeErr) {
+      console.error(`[coding-bridge] Failed to write completed status for task ${doc.id}:`, writeErr);
+    }
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     // execSync throws and puts stderr in error.stderr (Buffer)
-    const stderr = (err as NodeJS.ErrnoException & { stderr?: Buffer })?.stderr?.toString?.() ?? "";
+    const rawStderr = (err as NodeJS.ErrnoException & { stderr?: Buffer })?.stderr?.toString?.() ?? "";
+    // Filter out the noisy TLS warning — it's not the real error
+    const stderr = rawStderr
+      .split("\n")
+      .filter((line) => !line.includes("NODE_TLS_REJECT_UNAUTHORIZED") && !line.includes("(Use `node --trace-warnings"))
+      .join("\n")
+      .trim();
     const fullError = stderr || errorMsg;
 
     console.error(`[coding-bridge] Task ${doc.id} failed:`, fullError.substring(0, 300));
 
-    await doc.ref.update({
-      status: "failed",
-      completedAt: FieldValue.serverTimestamp(),
-      result: {
-        success: false,
+    try {
+      await doc.ref.update({
+        status: "failed",
+        completedAt: FieldValue.serverTimestamp(),
+        result: {
+          success: false,
+          error: fullError.substring(0, 500),
+          summary: "Coding agent encountered an error.",
+        },
         error: fullError.substring(0, 500),
-        summary: "Coding agent encountered an error.",
-      },
-      error: fullError.substring(0, 500),
-    });
+      });
+    } catch (writeErr) {
+      console.error(`[coding-bridge] Failed to write error status for task ${doc.id}:`, writeErr);
+    }
   }
 }
 
 run().catch((err) => {
   console.error("[coding-bridge] Fatal error:", err);
-  process.exit(1);
+  // Don't exit with code 1 — launchd will just restart the process
+  // and we may be in a state where the task is stuck as "running"
+  process.exit(0);
 });
