@@ -63,9 +63,18 @@ async function run() {
     return;
   }
 
+  // Generate a short branch name slug from the task
+  const branchSlug = `maisie/${Date.now()}`;
+
   const taskPrompt = `${task}
 
-After making all changes: commit with a descriptive message, push the branch, then open a pull request targeting main using 'gh pr create --fill'. Output the PR URL on the last line of your response.`;
+IMPORTANT WORKFLOW — follow these steps exactly, in order:
+1. Create a new git branch: git checkout -b ${branchSlug}
+2. Make all code changes on that branch only. Do NOT commit to main.
+3. Commit with a descriptive message.
+4. Push the branch: git push origin ${branchSlug}
+5. Open a pull request targeting main: gh pr create --base main --fill
+6. Output the PR URL on the very last line of your response.`;
 
   try {
     const output = execSync(
