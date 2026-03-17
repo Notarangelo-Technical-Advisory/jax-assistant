@@ -70,6 +70,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   newTaskCategory = 'general';
   newTaskDueDate = '';
   voice = localStorage.getItem('maisie-voice') || 'female-british';
+  ttsMuted = signal(localStorage.getItem('maisie-muted') === 'true');
 
   expandedCategories = signal<Set<string>>(new Set());
 
@@ -127,6 +128,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const msg = this.chatService.latestAssistantMessage();
     if (!msg) return;
     if (this.httpWillSpeak) return; // HTTP response will handle TTS — skip
+    if (this.ttsMuted()) return;
     if (!this.audioContextPrimed) {
       this.ttsService.primeAudioContext();
       this.audioContextPrimed = true;
@@ -254,11 +256,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       try {
         this.httpWillSpeak = true;
         const response = await this.chatService.sendMessage(text, id);
-        if (!this.audioContextPrimed) {
-          this.ttsService.primeAudioContext();
-          this.audioContextPrimed = true;
+        if (!this.ttsMuted()) {
+          if (!this.audioContextPrimed) {
+            this.ttsService.primeAudioContext();
+            this.audioContextPrimed = true;
+          }
+          this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
         }
-        this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
         setTimeout(() => this.scrollToBottom(), 0);
       } catch (err) {
         console.error('[sendChat] error:', err);
@@ -273,11 +277,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     try {
       this.httpWillSpeak = true;
       const response = await this.chatService.sendMessage(text, session.id);
-      if (!this.audioContextPrimed) {
-        this.ttsService.primeAudioContext();
-        this.audioContextPrimed = true;
+      if (!this.ttsMuted()) {
+        if (!this.audioContextPrimed) {
+          this.ttsService.primeAudioContext();
+          this.audioContextPrimed = true;
+        }
+        this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
       }
-      this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
       setTimeout(() => this.scrollToBottom(), 0);
     } catch (err) {
       console.error('[sendChat] error:', err);
@@ -416,6 +422,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   onVoiceChange(voice: string): void {
     localStorage.setItem('maisie-voice', voice);
+  }
+
+  toggleMute(): void {
+    const next = !this.ttsMuted();
+    this.ttsMuted.set(next);
+    localStorage.setItem('maisie-muted', String(next));
+    if (next) this.ttsService.stop();
   }
 
   toggleCategory(category: string): void {

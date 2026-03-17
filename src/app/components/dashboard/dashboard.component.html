@@ -24,6 +24,22 @@
         <option value="male-american">Ethan (US)</option>
         <option value="male-british">Daniel (UK)</option>
       </select>
+      <button class="btn-icon" [class.muted]="ttsMuted()" (click)="toggleMute()" [title]="ttsMuted() ? 'Unmute TTS' : 'Mute TTS'">
+        @if (ttsMuted()) {
+          <!-- Speaker with X (muted) -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <line x1="23" y1="9" x2="17" y2="15"/>
+            <line x1="17" y1="9" x2="23" y2="15"/>
+          </svg>
+        } @else {
+          <!-- Speaker with waves (unmuted) -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/>
+          </svg>
+        }
+      </button>
       <button class="btn-icon" (click)="logout()" title="Sign out">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
