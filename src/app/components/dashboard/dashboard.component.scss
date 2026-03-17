@@ -418,8 +418,10 @@ $border: #334155;
   opacity: 0;
   transition: opacity 0.15s, color 0.15s, background 0.15s;
 
-  .task-group-row:hover & { opacity: 1; }
-  &:hover { color: #e05252; background: rgba(#e05252, 0.12); }
+  .task-group-row:hover &,
+  .task-group-row:focus-within & { opacity: 1; }
+  &:hover,
+  &:focus-visible { color: #e05252; background: rgba(#e05252, 0.12); outline: none; }
 }
 
 .chevron {

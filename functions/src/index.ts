@@ -623,8 +623,9 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             }
           } else if (block.name === "delete_task_category") {
             const input = block.input as {key: string};
+            const sanitizedDeleteKey = input.key.toLowerCase().replace(/[^a-z0-9-_]/g, "");
             const defaultKeys = ["ihrdc", "solomon", "dial", "ppk", "church", "general"];
-            if (defaultKeys.includes(input.key)) {
+            if (defaultKeys.includes(sanitizedDeleteKey)) {
               toolResults.push({
                 type: "tool_result",
                 tool_use_id: block.id,
@@ -633,7 +634,7 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             } else {
               // Check for active tasks under this category
               const activeTasksSnap = await db.collection("tasks")
-                .where("category", "==", input.key)
+                .where("category", "==", sanitizedDeleteKey)
                 .where("completed", "==", false)
                 .get();
               if (!activeTasksSnap.empty) {
@@ -642,29 +643,29 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
                   tool_use_id: block.id,
                   content: JSON.stringify({
                     success: false,
-                    error: `Cannot delete category "${input.key}" — it has ${activeTasksSnap.size} active task(s). Complete or reassign those tasks first.`,
+                    error: `Cannot delete category "${sanitizedDeleteKey}" — it has ${activeTasksSnap.size} active task(s). Complete or reassign those tasks first.`,
                     activeTasks: activeTasksSnap.docs.map((d) => ({id: d.id, title: d.data()["title"]})),
                   }),
                 });
               } else {
                 const catSnap = await db.collection("taskCategories")
-                  .where("key", "==", input.key).limit(1).get();
+                  .where("key", "==", sanitizedDeleteKey).limit(1).get();
                 if (catSnap.empty) {
                   toolResults.push({
                     type: "tool_result",
                     tool_use_id: block.id,
-                    content: JSON.stringify({success: false, error: `Category "${input.key}" not found.`}),
+                    content: JSON.stringify({success: false, error: `Category "${sanitizedDeleteKey}" not found.`}),
                   });
                 } else {
                   await catSnap.docs[0].ref.delete();
                   // Update in-memory list and rebuild tools
-                  const idx = allCategories.findIndex((c) => c.key === input.key);
+                  const idx = allCategories.findIndex((c) => c.key === sanitizedDeleteKey);
                   if (idx !== -1) allCategories.splice(idx, 1);
                   tools = buildTools(allCategories);
                   toolResults.push({
                     type: "tool_result",
                     tool_use_id: block.id,
-                    content: JSON.stringify({success: true, key: input.key}),
+                    content: JSON.stringify({success: true, key: sanitizedDeleteKey}),
                   });
                 }
               }
