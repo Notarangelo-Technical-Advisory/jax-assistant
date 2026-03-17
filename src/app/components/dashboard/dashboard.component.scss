@@ -90,6 +90,11 @@ $border: #334155;
   border-radius: 6px;
 
   &:hover { color: $text-primary; background: rgba(255, 255, 255, 0.05); }
+
+  &.muted {
+    color: $danger;
+    &:hover { color: $danger; background: rgba($danger, 0.1); }
+  }
 }
 
 // Two-panel layout
