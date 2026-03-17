@@ -16,7 +16,7 @@ import { CalendarService } from '../../services/calendar.service';
 import { TtsService } from '../../services/tts.service';
 import { SttService } from '../../services/stt.service';
 import { Briefing } from '../../models/briefing.model';
-import { Task } from '../../models/task.model';
+import { Task, TaskRecurrence } from '../../models/task.model';
 import { TaskCategory } from '../../models/task-category.model';
 import { Alert } from '../../models/alert.model';
 import { ChatSession } from '../../models/chat-session.model';
@@ -64,11 +64,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   editingTaskId: string | null = null;
   editingTaskDueDate = '';
+  editingTaskRecurrenceType = '';
+  editingTaskRecurrenceDay: number | null = null;
 
   chatInput = '';
   newTaskTitle = '';
   newTaskCategory = 'general';
   newTaskDueDate = '';
+  newTaskRecurrenceType = '';
+  newTaskRecurrenceDay: number | null = null;
   voice = localStorage.getItem('maisie-voice') || 'female-british';
   ttsMuted = signal(localStorage.getItem('maisie-muted') === 'true');
 
@@ -372,15 +376,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // ── Tasks ──────────────────────────────────────────────────
 
+  buildRecurrence(type: string, day: number | null): TaskRecurrence | undefined {
+    if (type === 'daily') return { type: 'daily' };
+    if (type === 'weekly' && day !== null) return { type: 'weekly', dayOfWeek: day };
+    if (type === 'monthly' && day !== null) return { type: 'monthly', dayOfMonth: day };
+    return undefined;
+  }
+
   async addTask(): Promise<void> {
     if (!this.newTaskTitle.trim()) return;
+    const recurrence = this.buildRecurrence(this.newTaskRecurrenceType, this.newTaskRecurrenceDay);
     await this.taskService.addTask(
       this.newTaskTitle.trim(),
       this.newTaskCategory,
       this.newTaskDueDate || undefined,
+      recurrence,
     );
     this.newTaskTitle = '';
     this.newTaskDueDate = '';
+    this.newTaskRecurrenceType = '';
+    this.newTaskRecurrenceDay = null;
   }
 
   toggleBillingEntries(): void {
@@ -403,17 +418,35 @@ export class DashboardComponent implements OnInit, OnDestroy {
   startEditingDueDate(task: Task): void {
     this.editingTaskId = task.id!;
     this.editingTaskDueDate = task.dueDate || '';
+    this.editingTaskRecurrenceType = task.recurrence?.type || '';
+    this.editingTaskRecurrenceDay = task.recurrence?.dayOfWeek ?? task.recurrence?.dayOfMonth ?? null;
   }
 
   async saveTaskDueDate(task: Task): Promise<void> {
     if (task.id) {
-      await this.taskService.updateTask(task.id, { dueDate: this.editingTaskDueDate || undefined });
+      const recurrence = this.buildRecurrence(this.editingTaskRecurrenceType, this.editingTaskRecurrenceDay);
+      await this.taskService.updateTask(task.id, {
+        dueDate: this.editingTaskDueDate || undefined,
+        recurrence,
+      });
     }
     this.editingTaskId = null;
   }
 
   cancelEditDueDate(): void {
     this.editingTaskId = null;
+  }
+
+  recurrenceLabel(task: Task): string {
+    const r = task.recurrence;
+    if (!r) return '';
+    if (r.type === 'daily') return 'daily';
+    if (r.type === 'weekly' && r.dayOfWeek !== undefined) {
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      return `wkly ${days[r.dayOfWeek]}`;
+    }
+    if (r.type === 'monthly' && r.dayOfMonth !== undefined) return `mthly ${r.dayOfMonth}`;
+    return '';
   }
 
   async dismissAlert(alert: Alert): Promise<void> {

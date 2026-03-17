@@ -239,6 +239,33 @@
             class="due-date-input"
             title="Due date (optional)"
           />
+          <select [(ngModel)]="newTaskRecurrenceType" class="recurrence-select" title="Recurrence (optional)">
+            <option value="">No recurrence</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+          @if (newTaskRecurrenceType === 'weekly') {
+            <select [(ngModel)]="newTaskRecurrenceDay" class="recurrence-day-select" title="Day of week">
+              <option [value]="0">Sunday</option>
+              <option [value]="1">Monday</option>
+              <option [value]="2">Tuesday</option>
+              <option [value]="3">Wednesday</option>
+              <option [value]="4">Thursday</option>
+              <option [value]="5">Friday</option>
+              <option [value]="6">Saturday</option>
+            </select>
+          }
+          @if (newTaskRecurrenceType === 'monthly') {
+            <input
+              type="number"
+              [(ngModel)]="newTaskRecurrenceDay"
+              class="recurrence-day-input"
+              min="1" max="31"
+              placeholder="Day of month"
+              title="Day of month (1–31)"
+            />
+          }
           <button class="btn-add" (click)="addTask()">Add</button>
         </div>
 
@@ -286,18 +313,48 @@
                           [(ngModel)]="editingTaskDueDate"
                           (keyup.enter)="saveTaskDueDate(task)"
                           (keyup.escape)="cancelEditDueDate()"
-                          (blur)="saveTaskDueDate(task)"
                           (click)="$event.stopPropagation()"
                           autofocus
                         />
+                        <select [(ngModel)]="editingTaskRecurrenceType" class="recurrence-select" title="Recurrence">
+                          <option value="">No recurrence</option>
+                          <option value="daily">Daily</option>
+                          <option value="weekly">Weekly</option>
+                          <option value="monthly">Monthly</option>
+                        </select>
+                        @if (editingTaskRecurrenceType === 'weekly') {
+                          <select [(ngModel)]="editingTaskRecurrenceDay" class="recurrence-day-select">
+                            <option [value]="0">Sunday</option>
+                            <option [value]="1">Monday</option>
+                            <option [value]="2">Tuesday</option>
+                            <option [value]="3">Wednesday</option>
+                            <option [value]="4">Thursday</option>
+                            <option [value]="5">Friday</option>
+                            <option [value]="6">Saturday</option>
+                          </select>
+                        }
+                        @if (editingTaskRecurrenceType === 'monthly') {
+                          <input
+                            type="number"
+                            [(ngModel)]="editingTaskRecurrenceDay"
+                            class="recurrence-day-input"
+                            min="1" max="31"
+                            placeholder="Day"
+                          />
+                        }
+                        <button class="btn-save-inline" (click)="saveTaskDueDate(task)" title="Save">&#10003;</button>
+                        <button class="btn-cancel-inline" (click)="cancelEditDueDate()" title="Cancel">&#10005;</button>
                       } @else {
                         <span class="task-due"
                           [class.overdue]="task.dueDate && isOverdue(task.dueDate)"
                           [class.due-today]="task.dueDate && isDueToday(task.dueDate)"
                           [class.no-due]="!task.dueDate"
                           (click)="startEditingDueDate(task)"
-                          title="Click to edit due date"
+                          title="Click to edit due date / recurrence"
                         >{{ task.dueDate || 'no date' }}</span>
+                        @if (task.recurrence) {
+                          <span class="task-recurrence" (click)="startEditingDueDate(task)" title="Click to edit recurrence">&#8635; {{ recurrenceLabel(task) }}</span>
+                        }
                       }
                     </div>
                   }

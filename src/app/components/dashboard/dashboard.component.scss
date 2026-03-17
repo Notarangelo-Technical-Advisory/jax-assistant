@@ -622,6 +622,57 @@ $border: #334155;
   }
 }
 
+.recurrence-select,
+.recurrence-day-select {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid $border;
+  border-radius: 6px;
+  background: $bg-input;
+  color: $text-primary;
+  font-size: 0.75rem;
+  cursor: pointer;
+
+  &:focus { outline: none; border-color: $accent; }
+}
+
+.recurrence-day-input {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid $border;
+  border-radius: 6px;
+  background: $bg-input;
+  color: $text-primary;
+  font-size: 0.75rem;
+  width: 70px;
+
+  &:focus { outline: none; border-color: $accent; }
+}
+
+.task-recurrence {
+  font-size: 0.7rem;
+  color: $accent;
+  opacity: 0.7;
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+
+  &:hover { opacity: 1; background: rgba($accent, 0.1); }
+}
+
+.btn-save-inline,
+.btn-cancel-inline {
+  background: none;
+  border: 1px solid $border;
+  border-radius: 4px;
+  color: $text-secondary;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.35rem;
+  cursor: pointer;
+  line-height: 1;
+
+  &:hover { border-color: $accent; color: $accent; }
+}
+
 // Sessions Panel
 .sessions-panel {
   background: $bg-card;

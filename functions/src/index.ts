@@ -1176,6 +1176,9 @@ export const morningBriefing = onSchedule(
     );
 
     // ── Task filtering ──────────────────────────────────────────
+    const todayDayOfWeek = today.getDay();   // 0 (Sun) – 6 (Sat)
+    const todayDayOfMonth = today.getDate(); // 1 – 31
+
     const overdueTasks = activeTasks.filter((t) => {
       const due = t["dueDate"] as string | undefined;
       return due && due < todayStr;
@@ -1185,14 +1188,39 @@ export const morningBriefing = onSchedule(
       dueDate: t["dueDate"] as string,
     }));
 
-    const dueTodayTasks = activeTasks.filter((t) => {
-      const due = t["dueDate"] as string | undefined;
-      return due && due === todayStr;
-    }).map((t) => ({
-      title: t["title"] as string,
-      category: t["category"] as string,
-      dueDate: t["dueDate"] as string,
-    }));
+    // Explicit due-date tasks due today
+    const explicitDueTodayIds = new Set(
+      activeTasks
+        .filter((t) => (t["dueDate"] as string | undefined) === todayStr)
+        .map((t) => t["id"] as string)
+    );
+
+    const explicitDueTodayTasks = activeTasks
+      .filter((t) => explicitDueTodayIds.has(t["id"] as string))
+      .map((t) => ({
+        title: t["title"] as string,
+        category: t["category"] as string,
+        dueDate: t["dueDate"] as string,
+      }));
+
+    // Recurring tasks whose rule fires today (not already counted above)
+    const recurringDueTodayTasks = activeTasks
+      .filter((t) => {
+        if (explicitDueTodayIds.has(t["id"] as string)) return false; // already included
+        const rec = t["recurrence"] as { type: string; dayOfWeek?: number; dayOfMonth?: number } | null | undefined;
+        if (!rec) return false;
+        if (rec.type === "daily") return true;
+        if (rec.type === "weekly") return rec.dayOfWeek === todayDayOfWeek;
+        if (rec.type === "monthly") return rec.dayOfMonth === todayDayOfMonth;
+        return false;
+      })
+      .map((t) => ({
+        title: t["title"] as string,
+        category: t["category"] as string,
+        dueDate: todayStr,
+      }));
+
+    const dueTodayTasks = [...explicitDueTodayTasks, ...recurringDueTodayTasks];
 
     // ── Calendar sync staleness ─────────────────────────────────
     let calendarSyncAge: number | null = null;
