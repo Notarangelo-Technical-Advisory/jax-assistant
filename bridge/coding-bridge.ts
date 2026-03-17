@@ -55,8 +55,38 @@ async function writeWithRetry(
   }
 }
 
+// How long before a "running" task is considered stale and reset to "failed"
+const STALE_RUNNING_MS = 13 * 60 * 1000; // 13 min (> CLAUDE_TIMEOUT_MS + retry time)
+
 // ─── Main ────────────────────────────────────────────────────────
 async function run() {
+  // Recover stale "running" tasks — tasks that were claimed but whose completion
+  // write failed (e.g. all Firestore retries hit ECONNRESET). Without this they
+  // stay "running" forever and block Maisie's poll loop until its 12-min timeout.
+  const staleSnap = await db
+    .collection("pendingCodingTasks")
+    .where("status", "==", "running")
+    .orderBy("createdAt", "asc")
+    .limit(5)
+    .get().catch(() => null);
+
+  if (staleSnap) {
+    const cutoff = Date.now() - STALE_RUNNING_MS;
+    for (const staleDoc of staleSnap.docs) {
+      const startedAt = staleDoc.data()["startedAt"];
+      const startedMs = startedAt?.toMillis?.() ?? 0;
+      if (startedMs < cutoff) {
+        console.warn(`[coding-bridge] Recovering stale task ${staleDoc.id} (running for >13 min)`);
+        await writeWithRetry(staleDoc.ref, {
+          status: "failed",
+          completedAt: FieldValue.serverTimestamp(),
+          result: { success: false, error: "Task timed out — bridge never received a completion signal." },
+          error: "Stale task recovered by bridge watchdog.",
+        }).catch(() => {/* best-effort */});
+      }
+    }
+  }
+
   // Pick up the oldest pending task (process one at a time)
   const snap = await db
     .collection("pendingCodingTasks")
@@ -96,11 +126,11 @@ IMPORTANT WORKFLOW — follow these steps exactly, in order:
 3. Commit with a descriptive message.
 4. Push the branch: git push origin ${branchSlug}
 5. Open a pull request targeting main: gh pr create --base main --fill
-6. Output the PR URL on the very last line of your response.`;
+6. Your final output must end with the PR URL on its own line. No text after the URL — not even punctuation or a closing sentence. The PR URL must be the absolute last thing you output.`;
 
   try {
     const output = execSync(
-      `npx @anthropic-ai/claude-code -p ${JSON.stringify(taskPrompt)} --dangerously-skip-permissions --output-format json`,
+      `npx @anthropic-ai/claude-code -p ${JSON.stringify(taskPrompt)} --dangerously-skip-permissions --output-format json --max-turns 30`,
       {
         cwd: REPO_DIR,
         timeout: CLAUDE_TIMEOUT_MS,
