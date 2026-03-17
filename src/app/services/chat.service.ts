@@ -17,10 +17,13 @@ export class ChatService {
   loading = signal(false);
   /** Current tool step Maisie is executing, e.g. "Reading functions/src/index.ts..." */
   thinkingStep = signal<string | null>(null);
+  /** Emits the content of each new assistant message as it arrives from Firestore. */
+  latestAssistantMessage = signal<string | null>(null);
 
   private unsubMessages: (() => void) | null = null;
   private unsubThinking: (() => void) | null = null;
   private activeSessionId: string | null = null;
+  private lastSeenAssistantSeq: number | null = null;
 
   /** Subscribe to real-time messages for a session. */
   watchSession(sessionId: string): void {
@@ -29,6 +32,8 @@ export class ChatService {
     this.activeSessionId = sessionId;
     this.messages.set([]);
     this.thinkingStep.set(null);
+    this.latestAssistantMessage.set(null);
+    this.lastSeenAssistantSeq = null;
 
     // Subscribe to live tool-step updates written by the Cloud Function
     this.unsubThinking = onSnapshot(
@@ -66,6 +71,23 @@ export class ChatService {
             return aT - bT;
           });
         this.messages.set(msgs);
+
+        // Detect new assistant messages arriving after the listener was set up
+        // (covers long-running tool calls where the HTTP response times out)
+        const latestAssistant = [...msgs]
+          .reverse()
+          .find((m) => (m as any).role === 'assistant');
+        if (latestAssistant) {
+          const seq: number | null = (latestAssistant as any).sequence ?? null;
+          if (this.lastSeenAssistantSeq === null) {
+            // First snapshot — record baseline, don't speak (page load / session switch)
+            this.lastSeenAssistantSeq = seq;
+          } else if (seq !== null && seq > this.lastSeenAssistantSeq) {
+            // A genuinely new assistant message arrived
+            this.lastSeenAssistantSeq = seq;
+            this.latestAssistantMessage.set(latestAssistant.content as string);
+          }
+        }
       },
       (err) => {
         console.error('[ChatService] watchSession error:', err);

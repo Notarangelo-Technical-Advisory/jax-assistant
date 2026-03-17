@@ -116,6 +116,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   });
 
+  // Track whether the current sendMessage HTTP call is expected to deliver TTS.
+  // Set to true before the HTTP call fires; cleared after TTS runs or on error.
+  // Prevents double-speaking when Firestore listener also detects the same new message.
+  private httpWillSpeak = false;
+
+  // Speak new assistant messages that arrive via Firestore — covers long coding tasks
+  // where the HTTP connection times out before the Cloud Function responds.
+  private latestAssistantEffect = effect(() => {
+    const msg = this.chatService.latestAssistantMessage();
+    if (!msg) return;
+    if (this.httpWillSpeak) return; // HTTP response will handle TTS — skip
+    if (!this.audioContextPrimed) {
+      this.ttsService.primeAudioContext();
+      this.audioContextPrimed = true;
+    }
+    this.ttsService.speak(msg, this.voice, `chat-${Date.now()}`);
+  });
+
   private billingLoaded = false;
   private billingEffect = effect(() => {
     // Wait for Firebase Auth to restore session before calling the authenticated endpoint
@@ -234,6 +252,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.chatInput = '';
       setTimeout(() => this.scrollToBottom(), 0);
       try {
+        this.httpWillSpeak = true;
         const response = await this.chatService.sendMessage(text, id);
         if (!this.audioContextPrimed) {
           this.ttsService.primeAudioContext();
@@ -243,6 +262,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         setTimeout(() => this.scrollToBottom(), 0);
       } catch (err) {
         console.error('[sendChat] error:', err);
+      } finally {
+        this.httpWillSpeak = false;
       }
       return;
     }
@@ -250,6 +271,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.chatInput = '';
     setTimeout(() => this.scrollToBottom(), 0);
     try {
+      this.httpWillSpeak = true;
       const response = await this.chatService.sendMessage(text, session.id);
       if (!this.audioContextPrimed) {
         this.ttsService.primeAudioContext();
@@ -259,6 +281,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       setTimeout(() => this.scrollToBottom(), 0);
     } catch (err) {
       console.error('[sendChat] error:', err);
+    } finally {
+      this.httpWillSpeak = false;
     }
   }
 
