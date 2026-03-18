@@ -1533,6 +1533,7 @@ ${taskListStr}`;
     };
 
     try {
+      console.log("[receiveSms] calling Haiku for intent parse");
       const anthropic = new Anthropic({apiKey: anthropicApiKey});
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
@@ -1611,6 +1612,7 @@ ${taskListStr}`;
     // ── 6. Generate personalized reply via Claude Haiku ────────
     let replyText: string;
     try {
+      console.log("[receiveSms] calling Haiku for personalized reply");
       const anthropic = new Anthropic({apiKey: anthropicApiKey});
       const replyResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
