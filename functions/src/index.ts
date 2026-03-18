@@ -1538,7 +1538,9 @@ ${taskListStr}`;
         .filter((b) => b.type === "text")
         .map((b) => (b.type === "text" ? b.text : ""))
         .join("")
-        .trim();
+        .trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/, "");
 
       parsed = JSON.parse(rawJson);
     } catch (err) {
