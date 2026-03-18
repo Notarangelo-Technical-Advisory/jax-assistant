@@ -48,6 +48,13 @@ $border: #334155;
   gap: 1rem;
 }
 
+.header-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
