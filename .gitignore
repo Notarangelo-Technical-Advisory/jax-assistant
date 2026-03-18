@@ -46,10 +46,17 @@ testem.log
 /bridge/node_modules
 /bridge/dist
 /bridge/service-account.json
+/bridge/package-lock.json
 
 # Claude
 CLAUDE.local.md
 
+# Firebase CLI cache
+.firebase/
+
 # System files
 .DS_Store
 Thumbs.db
+
+# Local dev scripts
+test-chat-queries.js
