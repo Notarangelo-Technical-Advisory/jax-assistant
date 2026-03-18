@@ -1450,11 +1450,11 @@ export const receiveSms = onRequest(
     }
 
     // ── 1. Validate Twilio signature ───────────────────────────
-    const webhookUrl = `https://us-central1-jax-assistant-cb47f.cloudfunctions.net/receiveSms`;
     const signature = req.headers["x-twilio-signature"] as string;
+    const webhookUrl = `https://${req.headers.host}${req.originalUrl}`;
     const isValid = twilio.validateRequest(authToken, signature, webhookUrl, req.body as Record<string, string>);
     if (!isValid) {
-      console.warn("[receiveSms] Invalid Twilio signature");
+      console.warn(`[receiveSms] Invalid Twilio signature. URL used: ${webhookUrl}`);
       res.status(403).send("Forbidden");
       return;
     }
