@@ -1478,12 +1478,16 @@ export const receiveSms = onRequest(
     }
 
     // ── 3. Load active tasks for context (needed for complete/list) ─
+    console.log("[receiveSms] loading active tasks");
     const activeTasks = await db.collection("tasks")
       .where("completed", "==", false)
-      .orderBy("createdAt", "desc")
       .get()
       .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()} as Record<string, unknown>)))
-      .catch(() => [] as Array<Record<string, unknown>>);
+      .catch((err) => {
+        console.error("[receiveSms] Firestore tasks load failed:", err);
+        return [] as Array<Record<string, unknown>>;
+      });
+    console.log(`[receiveSms] loaded ${activeTasks.length} tasks`);
 
     const taskListStr = activeTasks.length > 0
       ? activeTasks.map((t) => {
