@@ -486,6 +486,22 @@ $border: #334155;
 .task-title {
   flex: 1;
   font-size: 0.85rem;
+  cursor: pointer;
+
+  &:hover {
+    color: $accent;
+  }
+}
+
+.task-title-edit {
+  flex: 1;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid $accent;
+  border-radius: 4px;
+  background: $bg-input;
+  color: $text-primary;
+  font-size: 0.85rem;
+  min-width: 0;
 }
 
 .task-category {

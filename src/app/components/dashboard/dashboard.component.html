@@ -305,16 +305,23 @@
                           <circle cx="12" cy="12" r="10"/>
                         </svg>
                       </button>
-                      <span class="task-title">{{ task.title }}</span>
                       @if (editingTaskId === task.id) {
+                        <input
+                          type="text"
+                          class="task-title-edit"
+                          [(ngModel)]="editingTaskTitle"
+                          (keyup.enter)="saveTask(task)"
+                          (keyup.escape)="cancelEditTask()"
+                          placeholder="Task title"
+                          autofocus
+                        />
                         <input
                           type="date"
                           class="task-due-edit"
                           [(ngModel)]="editingTaskDueDate"
-                          (keyup.enter)="saveTaskDueDate(task)"
-                          (keyup.escape)="cancelEditDueDate()"
+                          (keyup.enter)="saveTask(task)"
+                          (keyup.escape)="cancelEditTask()"
                           (click)="$event.stopPropagation()"
-                          autofocus
                         />
                         <select [(ngModel)]="editingTaskRecurrenceType" class="recurrence-select" title="Recurrence">
                           <option value="">No recurrence</option>
@@ -342,18 +349,19 @@
                             placeholder="Day"
                           />
                         }
-                        <button class="btn-save-inline" (click)="saveTaskDueDate(task)" title="Save">&#10003;</button>
-                        <button class="btn-cancel-inline" (click)="cancelEditDueDate()" title="Cancel">&#10005;</button>
+                        <button class="btn-save-inline" (click)="saveTask(task)" title="Save">&#10003;</button>
+                        <button class="btn-cancel-inline" (click)="cancelEditTask()" title="Cancel">&#10005;</button>
                       } @else {
+                        <span class="task-title" (click)="startEditingTask(task)" title="Click to edit task">{{ task.title }}</span>
                         <span class="task-due"
                           [class.overdue]="task.dueDate && isOverdue(task.dueDate)"
                           [class.due-today]="task.dueDate && isDueToday(task.dueDate)"
                           [class.no-due]="!task.dueDate"
-                          (click)="startEditingDueDate(task)"
-                          title="Click to edit due date / recurrence"
+                          (click)="startEditingTask(task)"
+                          title="Click to edit task"
                         >{{ task.dueDate || 'no date' }}</span>
                         @if (task.recurrence) {
-                          <span class="task-recurrence" (click)="startEditingDueDate(task)" title="Click to edit recurrence">&#8635; {{ recurrenceLabel(task) }}</span>
+                          <span class="task-recurrence" (click)="startEditingTask(task)" title="Click to edit recurrence">&#8635; {{ recurrenceLabel(task) }}</span>
                         }
                       }
                     </div>

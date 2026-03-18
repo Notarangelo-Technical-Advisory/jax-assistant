@@ -63,6 +63,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   renameValue = '';
 
   editingTaskId: string | null = null;
+  editingTaskTitle = '';
   editingTaskDueDate = '';
   editingTaskRecurrenceType = '';
   editingTaskRecurrenceDay: number | null = null;
@@ -415,25 +416,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (task.id) await this.taskService.completeTask(task.id);
   }
 
-  startEditingDueDate(task: Task): void {
+  startEditingTask(task: Task): void {
     this.editingTaskId = task.id!;
+    this.editingTaskTitle = task.title;
     this.editingTaskDueDate = task.dueDate || '';
     this.editingTaskRecurrenceType = task.recurrence?.type || '';
     this.editingTaskRecurrenceDay = task.recurrence?.dayOfWeek ?? task.recurrence?.dayOfMonth ?? null;
   }
 
-  async saveTaskDueDate(task: Task): Promise<void> {
+  async saveTask(task: Task): Promise<void> {
     if (task.id) {
       const recurrence = this.buildRecurrence(this.editingTaskRecurrenceType, this.editingTaskRecurrenceDay);
-      await this.taskService.updateTask(task.id, {
+      const updates: Partial<Task> = {
         dueDate: this.editingTaskDueDate || undefined,
         recurrence,
-      });
+      };
+      if (this.editingTaskTitle.trim()) {
+        updates.title = this.editingTaskTitle.trim();
+      }
+      await this.taskService.updateTask(task.id, updates);
     }
     this.editingTaskId = null;
   }
 
-  cancelEditDueDate(): void {
+  cancelEditTask(): void {
     this.editingTaskId = null;
   }
 
