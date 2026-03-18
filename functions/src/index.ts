@@ -1436,7 +1436,7 @@ export const invoiceReminder = onSchedule(
 // the Twilio number. Claude Haiku parses the natural language command
 // into a structured action, executes it, and replies via TwiML.
 export const receiveSms = onRequest(
-  {region: "us-central1", memory: "256MiB", timeoutSeconds: 60},
+  {region: "us-central1", memory: "256MiB", timeoutSeconds: 120},
   async (req, res) => {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -1532,9 +1532,10 @@ ${taskListStr}`;
       clarification?: string;
     };
 
+    const anthropic = new Anthropic({apiKey: anthropicApiKey});
+
     try {
       console.log("[receiveSms] calling Haiku for intent parse");
-      const anthropic = new Anthropic({apiKey: anthropicApiKey});
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 256,
@@ -1551,6 +1552,7 @@ ${taskListStr}`;
         .replace(/\s*```$/, "");
 
       parsed = JSON.parse(rawJson);
+      console.log(`[receiveSms] intent parsed: ${parsed.action}`);
     } catch (err) {
       console.error("[receiveSms] Claude parse error:", err);
       const twiml = new twilio.twiml.MessagingResponse();
@@ -1613,7 +1615,6 @@ ${taskListStr}`;
     let replyText: string;
     try {
       console.log("[receiveSms] calling Haiku for personalized reply");
-      const anthropic = new Anthropic({apiKey: anthropicApiKey});
       const replyResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 160,
@@ -1630,6 +1631,7 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", month: "long
         .map((b) => (b.type === "text" ? b.text : ""))
         .join("")
         .trim();
+      console.log("[receiveSms] reply generated");
     } catch (err) {
       console.error("[receiveSms] Reply generation error:", err);
       // Fall back to plain summary if Haiku fails
