@@ -1559,7 +1559,7 @@ ${taskListStr}`;
     }
 
     // ── 5. Execute the action ──────────────────────────────────
-    let replyText: string;
+    let actionSummary: string;
     const twiml = new twilio.twiml.MessagingResponse();
 
     try {
@@ -1567,18 +1567,17 @@ ${taskListStr}`;
         const title = parsed.title || messageBody;
         const category = parsed.category || "general";
         const dueDate = parsed.dueDate || null;
-        const docRef = await db.collection("tasks").add({
+        await db.collection("tasks").add({
           title,
           category,
           completed: false,
           dueDate,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-        const duePart = dueDate ? ` (due ${dueDate})` : "";
-        replyText = `Task added: ${title}${duePart} [${category}]\nID: ${docRef.id.substring(0, 8)}`;
+        actionSummary = `Task added successfully: "${title}", category: ${category}${dueDate ? `, due: ${dueDate}` : ", no due date"}`;
       } else if (parsed.action === "complete_task") {
         if (!parsed.taskId) {
-          replyText = "Could not find a matching task to complete. Try: \"complete task <exact title>\"";
+          actionSummary = "Could not find a matching task to complete — the title was ambiguous";
         } else {
           await db.collection("tasks").doc(parsed.taskId).update({
             completed: true,
@@ -1586,26 +1585,53 @@ ${taskListStr}`;
           });
           const completedTask = activeTasks.find((t) => t["id"] === parsed.taskId);
           const completedTitle = completedTask ? (completedTask["title"] as string) : parsed.taskId;
-          replyText = `Done: ${completedTitle}`;
+          actionSummary = `Task completed: "${completedTitle}"`;
         }
       } else if (parsed.action === "list_tasks") {
         if (activeTasks.length === 0) {
-          replyText = "No active tasks.";
+          actionSummary = "Jack has no active tasks right now";
         } else {
           const lines = activeTasks.slice(0, 10).map((t) => {
-            const due = t["dueDate"] ? ` — due ${t["dueDate"]}` : "";
+            const due = t["dueDate"] ? ` (due ${t["dueDate"]})` : "";
             return `• [${t["category"]}] ${t["title"]}${due}`;
           });
           const more = activeTasks.length > 10 ? `\n...and ${activeTasks.length - 10} more` : "";
-          replyText = `${activeTasks.length} active tasks:\n${lines.join("\n")}${more}`;
+          actionSummary = `Jack's active tasks (${activeTasks.length} total):\n${lines.join("\n")}${more}`;
         }
       } else {
-        // unknown
-        replyText = parsed.clarification || "I didn't understand that. Try: \"add task X\", \"complete task Y\", or \"what are my tasks?\"";
+        actionSummary = `Could not parse the request: ${parsed.clarification || "unknown intent"}`;
       }
     } catch (err) {
       console.error("[receiveSms] Action execution error:", err);
-      replyText = "Something went wrong. Please try again or check the app.";
+      twiml.message("Something went wrong on my end. Please try again or check the app.");
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
+
+    // ── 6. Generate personalized reply via Claude Haiku ────────
+    let replyText: string;
+    try {
+      const anthropic = new Anthropic({apiKey: anthropicApiKey});
+      const replyResponse = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 160,
+        system: `You are Maisie, Jack Notarangelo's personal executive assistant, replying to Jack via SMS.
+Be warm, concise, and personal — like a trusted assistant who knows Jack well. Use his first name occasionally but not in every message. Never use emojis. Keep replies short (1-2 sentences max) — this is SMS. No markdown.
+Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", month: "long", day: "numeric", timeZone: "America/New_York"})}.`,
+        messages: [{
+          role: "user",
+          content: `Jack texted: "${messageBody}"\n\nResult: ${actionSummary}\n\nWrite a short SMS reply confirming what was done (or listing tasks if that was requested).`,
+        }],
+      });
+      replyText = replyResponse.content
+        .filter((b) => b.type === "text")
+        .map((b) => (b.type === "text" ? b.text : ""))
+        .join("")
+        .trim();
+    } catch (err) {
+      console.error("[receiveSms] Reply generation error:", err);
+      // Fall back to plain summary if Haiku fails
+      replyText = actionSummary;
     }
 
     twiml.message(replyText);
