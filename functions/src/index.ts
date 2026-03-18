@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
 import {onRequest} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
+import twilio from "twilio";
 import {getUnbilledEntries, getLastInvoice, getTimeEntriesForRange, getCustomers, getInvoices, Customer} from "./fta-client";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -1427,5 +1428,178 @@ export const invoiceReminder = onSchedule(
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     }
+  }
+);
+
+// ─── SMS: Receive inbound texts and act on them ─────────────────
+// Twilio sends form-encoded POST to this endpoint when Jack texts
+// the Twilio number. Claude Haiku parses the natural language command
+// into a structured action, executes it, and replies via TwiML.
+export const receiveSms = onRequest(
+  {region: "us-central1", memory: "256MiB", timeoutSeconds: 60},
+  async (req, res) => {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const jackPhone = process.env.JACK_PHONE_NUMBER;
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+
+    if (!accountSid || !authToken || !jackPhone || !anthropicApiKey) {
+      console.error("[receiveSms] Missing required environment variables");
+      res.status(500).send("Server misconfigured");
+      return;
+    }
+
+    // ── 1. Validate Twilio signature ───────────────────────────
+    const webhookUrl = `https://us-central1-jax-assistant-cb47f.cloudfunctions.net/receiveSms`;
+    const signature = req.headers["x-twilio-signature"] as string;
+    const isValid = twilio.validateRequest(authToken, signature, webhookUrl, req.body as Record<string, string>);
+    if (!isValid) {
+      console.warn("[receiveSms] Invalid Twilio signature");
+      res.status(403).send("Forbidden");
+      return;
+    }
+
+    // ── 2. Only accept messages from Jack's phone ──────────────
+    const fromNumber = req.body.From as string;
+    const messageBody = (req.body.Body as string || "").trim();
+
+    if (fromNumber !== jackPhone) {
+      console.warn(`[receiveSms] Rejected message from unknown number: ${fromNumber}`);
+      res.type("text/xml").send("<Response></Response>");
+      return;
+    }
+
+    if (!messageBody) {
+      res.type("text/xml").send("<Response><Message>I didn't catch that. Try: \"add task X\" or \"what are my tasks?\"</Message></Response>");
+      return;
+    }
+
+    // ── 3. Load active tasks for context (needed for complete/list) ─
+    const activeTasks = await db.collection("tasks")
+      .where("completed", "==", false)
+      .orderBy("createdAt", "desc")
+      .get()
+      .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()} as Record<string, unknown>)))
+      .catch(() => [] as Array<Record<string, unknown>>);
+
+    const taskListStr = activeTasks.length > 0
+      ? activeTasks.map((t) => {
+        const due = t["dueDate"] ? ` (due: ${t["dueDate"]})` : "";
+        return `[${t["id"]}][${t["category"]}] ${t["title"]}${due}`;
+      }).join("\n")
+      : "No active tasks";
+
+    // ── 4. Parse intent with Claude Haiku ──────────────────────
+    const today = new Date().toLocaleDateString("en-US", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "America/New_York",
+    });
+    const todayIso = new Date().toLocaleDateString("en-CA", {timeZone: "America/New_York"}); // YYYY-MM-DD
+
+    const systemPrompt = `You are a task parser for Maisie, Jack Notarangelo's personal assistant. Parse the SMS message into a JSON action.
+Respond ONLY with valid JSON — no markdown, no explanation, no extra text.
+
+Available actions:
+- add_task: {"action":"add_task","title":"string","category":"string","dueDate":"YYYY-MM-DD or null"}
+- complete_task: {"action":"complete_task","taskId":"string"}
+- list_tasks: {"action":"list_tasks"}
+- unknown: {"action":"unknown","clarification":"string"}
+
+Rules:
+- Default category is "general". Other categories: ihrdc, solomon, dial, ppk, church.
+- For complete_task, match the taskId from the active task list by fuzzy-matching the title. If ambiguous, use action "unknown".
+- For due dates, convert relative terms to absolute YYYY-MM-DD using today's date.
+- If the message is a list request ("tasks", "what's on my list", "show tasks"), use list_tasks.
+- If you cannot confidently parse the intent, use unknown with a helpful clarification.
+
+Today is ${today} (${todayIso}).
+
+Active tasks:
+${taskListStr}`;
+
+    let parsed: {
+      action: string;
+      title?: string;
+      category?: string;
+      dueDate?: string | null;
+      taskId?: string;
+      clarification?: string;
+    };
+
+    try {
+      const anthropic = new Anthropic({apiKey: anthropicApiKey});
+      const aiResponse = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 256,
+        system: systemPrompt,
+        messages: [{role: "user", content: messageBody}],
+      });
+
+      const rawJson = aiResponse.content
+        .filter((b) => b.type === "text")
+        .map((b) => (b.type === "text" ? b.text : ""))
+        .join("")
+        .trim();
+
+      parsed = JSON.parse(rawJson);
+    } catch (err) {
+      console.error("[receiveSms] Claude parse error:", err);
+      const twiml = new twilio.twiml.MessagingResponse();
+      twiml.message("Sorry, I had trouble understanding that. Try: \"add task X\" or \"what are my tasks?\"");
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
+
+    // ── 5. Execute the action ──────────────────────────────────
+    let replyText: string;
+    const twiml = new twilio.twiml.MessagingResponse();
+
+    try {
+      if (parsed.action === "add_task") {
+        const title = parsed.title || messageBody;
+        const category = parsed.category || "general";
+        const dueDate = parsed.dueDate || null;
+        const docRef = await db.collection("tasks").add({
+          title,
+          category,
+          completed: false,
+          dueDate,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        const duePart = dueDate ? ` (due ${dueDate})` : "";
+        replyText = `Task added: ${title}${duePart} [${category}]\nID: ${docRef.id.substring(0, 8)}`;
+      } else if (parsed.action === "complete_task") {
+        if (!parsed.taskId) {
+          replyText = "Could not find a matching task to complete. Try: \"complete task <exact title>\"";
+        } else {
+          await db.collection("tasks").doc(parsed.taskId).update({
+            completed: true,
+            completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          const completedTask = activeTasks.find((t) => t["id"] === parsed.taskId);
+          const completedTitle = completedTask ? (completedTask["title"] as string) : parsed.taskId;
+          replyText = `Done: ${completedTitle}`;
+        }
+      } else if (parsed.action === "list_tasks") {
+        if (activeTasks.length === 0) {
+          replyText = "No active tasks.";
+        } else {
+          const lines = activeTasks.slice(0, 10).map((t) => {
+            const due = t["dueDate"] ? ` — due ${t["dueDate"]}` : "";
+            return `• [${t["category"]}] ${t["title"]}${due}`;
+          });
+          const more = activeTasks.length > 10 ? `\n...and ${activeTasks.length - 10} more` : "";
+          replyText = `${activeTasks.length} active tasks:\n${lines.join("\n")}${more}`;
+        }
+      } else {
+        // unknown
+        replyText = parsed.clarification || "I didn't understand that. Try: \"add task X\", \"complete task Y\", or \"what are my tasks?\"";
+      }
+    } catch (err) {
+      console.error("[receiveSms] Action execution error:", err);
+      replyText = "Something went wrong. Please try again or check the app.";
+    }
+
+    twiml.message(replyText);
+    res.type("text/xml").send(twiml.toString());
   }
 );

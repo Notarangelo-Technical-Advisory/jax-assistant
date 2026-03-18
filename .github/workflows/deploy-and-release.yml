@@ -148,6 +148,10 @@ jobs:
           echo "ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}" > functions/.env
           echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> functions/.env
           echo "MAISIE_PAT=${{ secrets.MAISIE_PAT }}" >> functions/.env
+          echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}" >> functions/.env
+          echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}" >> functions/.env
+          echo "TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}" >> functions/.env
+          echo "JACK_PHONE_NUMBER=${{ secrets.JACK_PHONE_NUMBER }}" >> functions/.env
 
       - name: Deploy to Firebase
         env:
