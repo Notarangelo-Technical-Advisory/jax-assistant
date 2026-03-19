@@ -113,10 +113,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   });
 
   liveDueTodayTasks = computed(() => {
-    const b = this.briefing();
-    if (!b?.dueTodayTasks?.length) return [];
-    const activeTitleSet = new Set(this.tasks().map((t) => t.title));
-    return b.dueTodayTasks.filter((t) => activeTitleSet.has(t.title));
+    const todayET = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    return this.tasks().filter((t) => t.dueDate === todayET);
   });
 
   private subs: Subscription[] = [];
