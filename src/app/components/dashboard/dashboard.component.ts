@@ -112,6 +112,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return groups.map((g) => ({ ...g, expanded: expanded.has(g.category) }));
   });
 
+  dueTodayTasks = computed(() => {
+    const todayET = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    return this.tasks().filter((t) => t.dueDate === todayET);
+  });
+
   private subs: Subscription[] = [];
 
   // When STT transcript updates (mic stopped naturally), auto-send as chat
@@ -429,7 +434,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   isDueToday(dueDate: string): boolean {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     return dueDate === today;
   }
 

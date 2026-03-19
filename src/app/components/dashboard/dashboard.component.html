@@ -165,12 +165,12 @@
             </div>
           }
 
-          @if (b.dueTodayTasks && b.dueTodayTasks.length > 0) {
+          @if (dueTodayTasks().length > 0) {
             <div class="task-callout due-today">
               <span class="callout-icon">*</span>
               <div class="callout-body">
                 <strong>Due Today</strong>
-                @for (task of b.dueTodayTasks; track task.title) {
+                @for (task of dueTodayTasks(); track task.title) {
                   <p>{{ task.title }} <span class="callout-meta">({{ task.category }})</span></p>
                 }
               </div>
