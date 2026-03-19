@@ -899,12 +899,12 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
           } else if (block.name === "code_with_github") {
             const input = block.input as {task: string};
 
-            const githubPat = process.env.GITHUB_PAT;
+            const githubPat = process.env.MAISIE_PAT;
             if (!githubPat) {
               toolResults.push({
                 type: "tool_result",
                 tool_use_id: block.id,
-                content: JSON.stringify({success: false, error: "GITHUB_PAT is not configured in the Cloud Functions environment. Ask Jack to add it via Firebase secrets."}),
+                content: JSON.stringify({success: false, error: "MAISIE_PAT is not configured in the Cloud Functions environment. Ask Jack to add it via Firebase secrets."}),
               });
             } else {
               // Create a GitHub issue to trigger the cloud coding agent (claude.yml)
