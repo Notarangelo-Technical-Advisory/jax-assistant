@@ -232,7 +232,7 @@ Current context:
 
 Be concise and direct. Never use emojis in any response. Use a warm, professional tone — like a trusted assistant who knows Jack well. Use his first name (Jack) occasionally to keep the conversation natural — not in every message, but enough that it feels personal. When Jack asks you to add or complete a task, use the appropriate tool to actually do it — don't just say you did it. When Jack asks you to create a new task category, use the create_task_category tool. When Jack asks to delete a category, use delete_task_category — it will block deletion if active tasks exist and will tell you which tasks need to be handled first. Use create_calendar_event when Jack asks to schedule something — always confirm title, date, and time before creating. Use move_calendar_event to reschedule existing events. Calendar changes are applied via a local bridge sync and appear within ~1 minute.
 
-When Jack asks to fix a bug, add a feature, or change any code, use the code_with_github tool. The task description must be specific and actionable — name the exact file(s) involved and describe precisely what needs to change and why. Do NOT submit open-ended investigations like "figure out why X is broken"; use your own reasoning to identify the specific change needed first, then submit a targeted task. The coding agent has a fixed time limit, so vague tasks waste it on exploration instead of implementation. Once the agent returns, tell Jack the PR URL and remind him CI/CD will auto-deploy once he approves and merges.
+When Jack asks to fix a bug, add a feature, or change any code, use the code_with_github tool. The task description must be specific and actionable — name the exact file(s) involved and describe precisely what needs to change and why. Do NOT submit open-ended investigations like "figure out why X is broken"; use your own reasoning to identify the specific change needed first, then submit a targeted task. The agent works asynchronously — tell Jack the GitHub issue URL and that he'll get a notification when the PR is ready. Remind him that CI/CD will auto-deploy once he approves and merges.
 Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numeric", month: "long", day: "numeric"})}.`;
 
     const buildTools = (cats: Array<{key: string; label: string}>): Anthropic.Messages.Tool[] => [
@@ -444,7 +444,7 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
       },
       {
         name: "code_with_github",
-        description: "Delegate ANY coding task — bug fix, feature, refactor, or file change — to a local coding agent running on Jack's machine. Use this whenever Jack asks to fix a bug, add a feature, or change any code. The agent has full repo access, creates a branch, makes the changes, and opens a PR. Returns the PR URL when done.",
+        description: "Delegate ANY coding task — bug fix, feature, refactor, or file change — to the cloud coding agent. Use this whenever Jack asks to fix a bug, add a feature, or change any code. The agent creates a branch, makes the changes, and opens a PR. Returns the GitHub issue URL immediately; Jack gets a notification when the PR is ready.",
         input_schema: {
           type: "object" as const,
           properties: {
@@ -899,48 +899,59 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
           } else if (block.name === "code_with_github") {
             const input = block.input as {task: string};
 
-            // Write task to Firestore queue for the local coding bridge to pick up
-            const taskRef = await db.collection("pendingCodingTasks").add({
-              task: input.task,
-              status: "pending",
-              sessionId,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              completedAt: null,
-              result: null,
-              error: null,
-            });
+            const githubPat = process.env.MAISIE_PAT;
+            if (!githubPat) {
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({success: false, error: "MAISIE_PAT is not configured in the Cloud Functions environment. Ask Jack to add it via Firebase secrets."}),
+              });
+            } else {
+              // Create a GitHub issue to trigger the cloud coding agent (claude.yml)
+              const issueTitle = input.task.split("\n")[0].substring(0, 100);
+              const issueBody = `@claude\n\n${input.task}`;
 
-            // Poll for result — bridge picks it up within ~30s and runs Claude Code locally
-            const POLL_INTERVAL_MS = 3000;
-            const TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes (bridge runs up to 10 min)
-            const pollStart = Date.now();
-            let codingResult: {success: boolean; pr_url?: string; pr_number?: number; summary?: string; error?: string} | null = null;
-
-            while (Date.now() - pollStart < TIMEOUT_MS) {
-              await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-              const snap = await db.collection("pendingCodingTasks").doc(taskRef.id).get();
-              const data = snap.data();
-              if (data?.["status"] === "completed" || data?.["status"] === "failed") {
-                codingResult = data?.["result"] ?? {success: false, error: data?.["error"] ?? "Unknown error"};
-                break;
-              }
-              const elapsed = Math.round((Date.now() - pollStart) / 1000);
               await thinkingRef.set({
-                step: `Coding agent working... (${elapsed}s)`,
+                step: "Submitting task to cloud coding agent...",
                 tool: "code_with_github",
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
               });
-            }
 
-            if (!codingResult) {
-              codingResult = {success: false, error: "Coding agent timed out after 5 minutes."};
-            }
+              const ghResponse = await fetch(
+                "https://api.github.com/repos/Notarangelo-Technical-Advisory/jax-assistant/issues",
+                {
+                  method: "POST",
+                  headers: {
+                    "Authorization": `Bearer ${githubPat}`,
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({title: issueTitle, body: issueBody, labels: ["coding-task"]}),
+                }
+              );
 
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: block.id,
-              content: JSON.stringify(codingResult),
-            });
+              if (!ghResponse.ok) {
+                const errText = await ghResponse.text();
+                toolResults.push({
+                  type: "tool_result",
+                  tool_use_id: block.id,
+                  content: JSON.stringify({success: false, error: `GitHub API error ${ghResponse.status}: ${errText}`}),
+                });
+              } else {
+                const issue = await ghResponse.json() as {html_url: string; number: number};
+                toolResults.push({
+                  type: "tool_result",
+                  tool_use_id: block.id,
+                  content: JSON.stringify({
+                    success: true,
+                    issue_url: issue.html_url,
+                    issue_number: issue.number,
+                    message: "Task submitted to cloud coding agent. Jack will get a GitHub notification when the PR is ready.",
+                  }),
+                });
+              }
+            }
           }
         }
 
