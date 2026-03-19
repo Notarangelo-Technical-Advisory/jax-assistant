@@ -456,6 +456,38 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
           required: ["task"],
         },
       },
+      {
+        name: "search_place",
+        description: "Search for a business or place by name and optional location context. Returns the name, address, hours, and whether it's open right now. Use when Jack asks 'is [place] open?', wants to find a restaurant or hotel, or needs to resolve a business name to an address (e.g. before calling get_directions).",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            query: {
+              type: "string",
+              description: "Business name and optional location context, e.g. 'Nobu restaurant Chicago' or 'Marriott Marquis Times Square NYC'",
+            },
+          },
+          required: ["query"],
+        },
+      },
+      {
+        name: "get_directions",
+        description: "Get walking and driving distance/time between two locations. Use when Jack asks 'how far is [place] from [another place]' or needs travel time estimates. Can accept addresses, business names, or coordinates.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            origin: {
+              type: "string",
+              description: "Starting location — address, business name, or lat/lng coordinates (e.g. 'Times Square NYC', '123 Main St Chicago', '40.7580,-73.9855')",
+            },
+            destination: {
+              type: "string",
+              description: "Ending location — address, business name, or lat/lng coordinates",
+            },
+          },
+          required: ["origin", "destination"],
+        },
+      },
     ];
 
     let tools = buildTools(allCategories);
@@ -498,6 +530,8 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
           case "create_calendar_event": return `Scheduling "${input["title"]}"...`;
           case "move_calendar_event": return `Rescheduling "${input["event_title"]}"...`;
           case "code_with_github": return "Sending task to coding agent...";
+          case "search_place": return `Looking up "${input["query"]}"...`;
+          case "get_directions": return `Getting directions from ${input["origin"]} to ${input["destination"]}...`;
           default: return `Running ${name}...`;
         }
       };
@@ -949,6 +983,136 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
                     issue_number: issue.number,
                     message: "Task submitted to cloud coding agent. Jack will get a GitHub notification when the PR is ready.",
                   }),
+                });
+              }
+            }
+          } else if (block.name === "search_place") {
+            const input = block.input as {query: string};
+            const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
+            if (!googleApiKey) {
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({error: "GOOGLE_MAPS_API_KEY is not configured. Add it as a GitHub secret (GOOGLE_MAPS_API_KEY) and redeploy."}),
+              });
+            } else {
+              try {
+                const placesResp = await fetch(
+                  "https://places.googleapis.com/v1/places:searchText",
+                  {
+                    method: "POST",
+                    headers: {
+                      "X-Goog-Api-Key": googleApiKey,
+                      "X-Goog-Field-Mask": "places.displayName,places.formattedAddress,places.currentOpeningHours,places.regularOpeningHours,places.businessStatus",
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({textQuery: input.query}),
+                  }
+                );
+                if (!placesResp.ok) {
+                  const errText = await placesResp.text();
+                  toolResults.push({
+                    type: "tool_result",
+                    tool_use_id: block.id,
+                    content: JSON.stringify({error: `Google Places API error ${placesResp.status}: ${errText}`}),
+                  });
+                } else {
+                  type PlacesResult = {
+                    places?: Array<{
+                      displayName?: {text: string};
+                      formattedAddress?: string;
+                      businessStatus?: string;
+                      currentOpeningHours?: {openNow?: boolean; weekdayDescriptions?: string[]};
+                      regularOpeningHours?: {weekdayDescriptions?: string[]};
+                    }>;
+                  };
+                  const placesData = await placesResp.json() as PlacesResult;
+                  if (!placesData.places || placesData.places.length === 0) {
+                    toolResults.push({
+                      type: "tool_result",
+                      tool_use_id: block.id,
+                      content: JSON.stringify({found: false, message: `No results found for "${input.query}"`}),
+                    });
+                  } else {
+                    const place = placesData.places[0];
+                    const hours = place.currentOpeningHours?.weekdayDescriptions ||
+                                  place.regularOpeningHours?.weekdayDescriptions || [];
+                    toolResults.push({
+                      type: "tool_result",
+                      tool_use_id: block.id,
+                      content: JSON.stringify({
+                        found: true,
+                        name: place.displayName?.text || input.query,
+                        address: place.formattedAddress || "Address not available",
+                        currently_open: place.currentOpeningHours?.openNow ?? null,
+                        business_status: place.businessStatus || "OPERATIONAL",
+                        hours,
+                      }),
+                    });
+                  }
+                }
+              } catch (e) {
+                toolResults.push({
+                  type: "tool_result",
+                  tool_use_id: block.id,
+                  content: JSON.stringify({error: `Failed to call Google Places API: ${(e as Error).message}`}),
+                });
+              }
+            }
+          } else if (block.name === "get_directions") {
+            const input = block.input as {origin: string; destination: string};
+            const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
+            if (!googleApiKey) {
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({error: "GOOGLE_MAPS_API_KEY is not configured. Add it as a GitHub secret (GOOGLE_MAPS_API_KEY) and redeploy."}),
+              });
+            } else {
+              try {
+                const encodedOrigin = encodeURIComponent(input.origin);
+                const encodedDest = encodeURIComponent(input.destination);
+                type DistanceMatrixResponse = {
+                  status: string;
+                  rows?: Array<{elements: Array<{status: string; distance?: {text: string}; duration?: {text: string}}>}>;
+                  error_message?: string;
+                };
+                const [drivingResp, walkingResp] = await Promise.all([
+                  fetch(`https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodedOrigin}&destinations=${encodedDest}&mode=driving&key=${googleApiKey}`),
+                  fetch(`https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodedOrigin}&destinations=${encodedDest}&mode=walking&key=${googleApiKey}`),
+                ]);
+                const [drivingData, walkingData] = await Promise.all([
+                  drivingResp.json() as Promise<DistanceMatrixResponse>,
+                  walkingResp.json() as Promise<DistanceMatrixResponse>,
+                ]);
+                const drivingEl = drivingData.rows?.[0]?.elements?.[0];
+                const walkingEl = walkingData.rows?.[0]?.elements?.[0];
+                const result: Record<string, unknown> = {
+                  origin: input.origin,
+                  destination: input.destination,
+                };
+                if (drivingEl?.status === "OK") {
+                  result["driving_distance"] = drivingEl.distance?.text;
+                  result["driving_time"] = drivingEl.duration?.text;
+                } else {
+                  result["driving"] = drivingData.error_message || "Driving route not available";
+                }
+                if (walkingEl?.status === "OK") {
+                  result["walking_distance"] = walkingEl.distance?.text;
+                  result["walking_time"] = walkingEl.duration?.text;
+                } else {
+                  result["walking"] = walkingData.error_message || "Walking route not available";
+                }
+                toolResults.push({
+                  type: "tool_result",
+                  tool_use_id: block.id,
+                  content: JSON.stringify(result),
+                });
+              } catch (e) {
+                toolResults.push({
+                  type: "tool_result",
+                  tool_use_id: block.id,
+                  content: JSON.stringify({error: `Failed to call Google Maps API: ${(e as Error).message}`}),
                 });
               }
             }
