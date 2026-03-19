@@ -436,7 +436,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   isDueToday(dueDate: string): boolean {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     return dueDate === today;
   }
 
