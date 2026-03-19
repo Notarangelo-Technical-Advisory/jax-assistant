@@ -78,6 +78,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ttsMuted = signal(localStorage.getItem('maisie-muted') === 'true');
 
   expandedCategories = signal<Set<string>>(new Set());
+  refreshing = signal(false);
 
   groupedTasks = computed(() => {
     const all = this.tasks();
@@ -152,7 +153,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   });
 
-  ngOnInit(): void {
+  private setupSubscriptions(): void {
     this.subs.push(
       this.briefingService.getLatestBriefing().subscribe((b) => this.briefing.set(b)),
       this.calendarService.getTodayEvents().subscribe((e) => this.calendarEvents.set(e)),
@@ -169,6 +170,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
         }
       }),
     );
+  }
+
+  ngOnInit(): void {
+    this.setupSubscriptions();
+  }
+
+  async refresh(): Promise<void> {
+    if (this.refreshing()) return;
+    this.refreshing.set(true);
+    try {
+      this.subs.forEach((s) => s.unsubscribe());
+      this.subs = [];
+      this.setupSubscriptions();
+      const summary = await this.billingService.getSummary();
+      this.billingSummary.set(summary);
+    } catch (err) {
+      console.error('[refresh] error:', err);
+    } finally {
+      this.refreshing.set(false);
+    }
   }
 
   ngOnDestroy(): void {
