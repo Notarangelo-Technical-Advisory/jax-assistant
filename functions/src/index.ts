@@ -8,6 +8,9 @@ import Anthropic from "@anthropic-ai/sdk";
 admin.initializeApp();
 const db = admin.firestore();
 
+// Startup environment check — logs presence without exposing values
+console.log(`[startup] GOOGLE_MAPS_API_KEY: ${process.env.GOOGLE_MAPS_API_KEY ? "present" : "MISSING"}`);
+
 // ─── Auth helper ───────────────────────────────────────────────
 async function verifyAuth(
   req: {headers: {authorization?: string}}
