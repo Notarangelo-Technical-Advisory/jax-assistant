@@ -8,6 +8,9 @@ import Anthropic from "@anthropic-ai/sdk";
 admin.initializeApp();
 const db = admin.firestore();
 
+// Startup environment check — logs presence without exposing values
+console.log(`[startup] MAPS_API_KEY: ${process.env.MAPS_API_KEY ? "present" : "MISSING"}`);
+
 // ─── Auth helper ───────────────────────────────────────────────
 async function verifyAuth(
   req: {headers: {authorization?: string}}
@@ -988,12 +991,12 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             }
           } else if (block.name === "search_place") {
             const input = block.input as {query: string};
-            const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
+            const googleApiKey = process.env.MAPS_API_KEY;
             if (!googleApiKey) {
               toolResults.push({
                 type: "tool_result",
                 tool_use_id: block.id,
-                content: JSON.stringify({error: "GOOGLE_MAPS_API_KEY is not configured. Add it as a GitHub secret (GOOGLE_MAPS_API_KEY) and redeploy."}),
+                content: JSON.stringify({error: "MAPS_API_KEY is not configured. Add it as a GitHub secret (GOOGLE_MAPS_API_KEY) and redeploy."}),
               });
             } else {
               try {
@@ -1061,12 +1064,12 @@ Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numer
             }
           } else if (block.name === "get_directions") {
             const input = block.input as {origin: string; destination: string};
-            const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
+            const googleApiKey = process.env.MAPS_API_KEY;
             if (!googleApiKey) {
               toolResults.push({
                 type: "tool_result",
                 tool_use_id: block.id,
-                content: JSON.stringify({error: "GOOGLE_MAPS_API_KEY is not configured. Add it as a GitHub secret (GOOGLE_MAPS_API_KEY) and redeploy."}),
+                content: JSON.stringify({error: "MAPS_API_KEY is not configured. Add it as a GitHub secret (GOOGLE_MAPS_API_KEY) and redeploy."}),
               });
             } else {
               try {
