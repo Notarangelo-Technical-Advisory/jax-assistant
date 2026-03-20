@@ -152,6 +152,7 @@ jobs:
           echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}" >> functions/.env
           echo "TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}" >> functions/.env
           echo "JACK_PHONE_NUMBER=${{ secrets.JACK_PHONE_NUMBER }}" >> functions/.env
+          echo "GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}" >> functions/.env
 
       - name: Deploy to Firebase
         env:
