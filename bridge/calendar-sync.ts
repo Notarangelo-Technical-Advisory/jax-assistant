@@ -280,17 +280,21 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
     eventCount: events.length,
   });
 
+  const doneTs = new Date().toLocaleString("en-US", { timeZone: "America/New_York", hour12: false });
   console.log(
-    `Sync complete: ${added} added, ${updated} updated, ${deleted} deleted. Total: ${events.length} events.`
+    `[${doneTs}] Sync complete: ${added} added, ${updated} updated, ${deleted} deleted. Total: ${events.length} events.`
   );
 }
 
 // ─── Main ────────────────────────────────────────────────────────
 async function main(): Promise<void> {
+  const ts = new Date().toLocaleString("en-US", { timeZone: "America/New_York", hour12: false });
+  console.log(`[${ts}] Starting sync...`);
+
   // Apply any pending calendar write actions before reading
   await applyPendingActions();
 
-  console.log(`Syncing "${CALENDAR_NAME}" calendar (next ${SYNC_DAYS_AHEAD} days)...`);
+  console.log(`[${ts}] Syncing "${CALENDAR_NAME}" calendar (next ${SYNC_DAYS_AHEAD} days)...`);
   const events = readCalendarEvents();
   await syncToFirestore(events);
 }

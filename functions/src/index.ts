@@ -1507,6 +1507,13 @@ async function runBriefing(): Promise<void> {
       totalActiveTasks: activeTasks.length,
       nextWeekEvents: isFriday ? nextWeekEvents : [],
       calendarSyncAge,
+      calendarSyncAgeLabel: calendarSyncAge === null
+        ? "unknown"
+        : calendarSyncAge < 60
+          ? `${calendarSyncAge} minutes`
+          : calendarSyncAge < 1440
+            ? `${Math.round(calendarSyncAge / 60)} hours`
+            : `${Math.round(calendarSyncAge / 1440)} days`,
       alerts,
     };
 
@@ -1516,7 +1523,7 @@ async function runBriefing(): Promise<void> {
       const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
       const systemMsg = isAfternoon
         ? `You are Maisie, Jack Notarangelo's executive assistant. Write a concise afternoon check-in (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Focus on what's left for the rest of the day — remaining meetings, any overdue tasks still open, and current unbilled hours. Do not repeat things Jack already knows from the morning. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech.`
-        : `You are Maisie, Jack Notarangelo's executive assistant. Write a concise morning briefing (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Contextualize the numbers — mention trends, what to focus on, and any urgent items. If there are overdue tasks or early meetings, highlight them. On Fridays, mention the week ahead. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech.`;
+        : `You are Maisie, Jack Notarangelo's executive assistant. Write a concise morning briefing (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Contextualize the numbers — mention trends, what to focus on, and any urgent items. If there are overdue tasks or early meetings, highlight them. On Fridays, mention the week ahead. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech. The calendarSyncAge field is in minutes; use calendarSyncAgeLabel for any human-readable reference to sync age.`;
       const aiResponse = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 300,
