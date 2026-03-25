@@ -1484,8 +1484,8 @@ export const morningBriefing = onSchedule(
     }
 
     if (overdueTasks.length > 0) {
-      const titles = overdueTasks.slice(0, 3).map((t) => t.title).join(", ");
-      addAlert("overdue-tasks", `${overdueTasks.length} overdue task${overdueTasks.length > 1 ? "s" : ""}: ${titles}${overdueTasks.length > 3 ? "…" : ""}. `);
+      const taskSummaries = overdueTasks.slice(0, 3).map((t) => `${t.title} (${t.category})`).join(", ");
+      addAlert("overdue-tasks", `${overdueTasks.length} overdue task${overdueTasks.length > 1 ? "s" : ""}: ${taskSummaries}${overdueTasks.length > 3 ? "…" : ""}.`);
     }
 
     if (calendarSyncAge !== null && calendarSyncAge > 30) {
@@ -1550,6 +1550,17 @@ export const morningBriefing = onSchedule(
 
     const briefingDocId = isAfternoon ? `${todayStr}-afternoon` : todayStr;
     await db.collection("briefings").doc(briefingDocId).set(briefing);
+
+    // Delete any undismissed alerts from prior days (stale alerts with random or type-based IDs).
+    // This prevents old overdue-tasks/calendar-stale/invoice alerts from piling up day after day.
+    // Filter in JS (briefingDate < today) to avoid needing a composite index on dismissed+briefingDate.
+    const staleSnap = await db.collection("alerts").where("dismissed", "==", false).get();
+    const staleDocs = staleSnap.docs.filter((d) => (d.data()["briefingDate"] as string) < todayStr);
+    if (staleDocs.length > 0) {
+      const deleteBatch = db.batch();
+      staleDocs.forEach((d) => deleteBatch.delete(d.ref));
+      await deleteBatch.commit();
+    }
 
     // Write new alerts to the alerts collection.
     // Use the alert type as the document ID so that set() replaces any existing

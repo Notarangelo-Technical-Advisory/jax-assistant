@@ -153,18 +153,6 @@
             </div>
           }
 
-          @if (b.overdueTasks && b.overdueTasks.length > 0) {
-            <div class="task-callout overdue">
-              <span class="callout-icon">!</span>
-              <div class="callout-body">
-                <strong>Overdue</strong>
-                @for (task of b.overdueTasks; track task.title) {
-                  <p>{{ task.title }} <span class="callout-meta">({{ task.category }}, due {{ task.dueDate }})</span></p>
-                }
-              </div>
-            </div>
-          }
-
           @if (liveDueTodayTasks().length > 0) {
             <div class="task-callout due-today">
               <span class="callout-icon">*</span>
