@@ -1289,16 +1289,8 @@ function formatEventTime(date: Date): string {
   });
 }
 
-// ─── Scheduled: Briefing (weekdays 7am & 1pm ET) ────────────────
-export const morningBriefing = onSchedule(
-  {
-    schedule: "0 7,13 * * 1-5",
-    timeZone: "America/New_York",
-    region: "us-central1",
-    memory: "512MiB",
-    timeoutSeconds: 120,
-  },
-  async () => {
+// ─── Shared: Briefing generation logic ─────────────────────────
+async function runBriefing(): Promise<void> {
     const today = new Date();
     const dayOfWeek = today.getDay();
     const dayOfMonth = today.getDate();
@@ -1573,6 +1565,39 @@ export const morningBriefing = onSchedule(
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     }
+}
+
+// ─── On-demand: Refresh briefing (called from dashboard refresh button) ────
+export const refreshBriefing = onRequest(
+  {cors: true, region: "us-central1", memory: "512MiB", timeoutSeconds: 120},
+  async (req, res) => {
+    try {
+      await verifyAuth(req);
+    } catch {
+      res.status(401).json({error: "Unauthorized"});
+      return;
+    }
+    try {
+      await runBriefing();
+      res.json({ok: true});
+    } catch (err) {
+      console.error("[refreshBriefing] error:", err);
+      res.status(500).json({error: "Briefing generation failed"});
+    }
+  }
+);
+
+// ─── Scheduled: Briefing (weekdays 7am & 1pm ET) ────────────────
+export const morningBriefing = onSchedule(
+  {
+    schedule: "0 7,13 * * 1-5",
+    timeZone: "America/New_York",
+    region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    await runBriefing();
   }
 );
 

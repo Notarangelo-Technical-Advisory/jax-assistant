@@ -185,6 +185,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.refreshing()) return;
     this.refreshing.set(true);
     try {
+      await this.briefingService.triggerRefresh();
       this.subs.forEach((s) => s.unsubscribe());
       this.subs = [];
       this.setupSubscriptions();
