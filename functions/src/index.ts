@@ -1295,7 +1295,7 @@ async function runBriefing(): Promise<void> {
     const dayOfWeek = today.getDay();
     const dayOfMonth = today.getDate();
     const isFriday = dayOfWeek === 5;
-    const isFirstWeek = dayOfMonth <= 7;
+    const isFirstWeek = dayOfMonth >= 5 && dayOfMonth <= 7;
     const etHour = parseInt(
       today.toLocaleString("en-US", {hour: "numeric", hour12: false, timeZone: "America/New_York"})
     );
@@ -1522,8 +1522,8 @@ async function runBriefing(): Promise<void> {
     try {
       const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
       const systemMsg = isAfternoon
-        ? `You are Maisie, Jack Notarangelo's executive assistant. Write a concise afternoon check-in (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Focus on what's left for the rest of the day — remaining meetings, any overdue tasks still open, and current unbilled hours. Do not repeat things Jack already knows from the morning. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech.`
-        : `You are Maisie, Jack Notarangelo's executive assistant. Write a concise morning briefing (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Contextualize the numbers — mention trends, what to focus on, and any urgent items. If there are overdue tasks or early meetings, highlight them. On Fridays, mention the week ahead. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech. The calendarSyncAge field is in minutes; use calendarSyncAgeLabel for any human-readable reference to sync age.`;
+        ? `You are Maisie, Jack Notarangelo's executive assistant. Write a concise afternoon check-in (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Focus on what's left for the rest of the day — remaining meetings, any overdue tasks still open, and current unbilled hours. Do not repeat things Jack already knows from the morning. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech. Jack publishes invoices at the beginning of each month — unbilled hours are normal and expected throughout the month, so do not mention them unless Jack specifically asks or an invoice alert is present.`
+        : `You are Maisie, Jack Notarangelo's executive assistant. Write a concise morning briefing (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Contextualize the numbers — mention trends, what to focus on, and any urgent items. If there are overdue tasks or early meetings, highlight them. On Fridays, mention the week ahead. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech. The calendarSyncAge field is in minutes; use calendarSyncAgeLabel for any human-readable reference to sync age. Jack publishes invoices at the beginning of each month — unbilled hours are normal and expected throughout the month, so do not mention them unless Jack specifically asks or an invoice alert is present.`;
       const aiResponse = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 300,
@@ -1611,7 +1611,7 @@ export const morningBriefing = onSchedule(
 // ─── Scheduled: Invoice Reminder (first 7 days of month, weekdays 9am ET)
 export const invoiceReminder = onSchedule(
   {
-    schedule: "0 9 1-7 * 1-5",
+    schedule: "0 9 5-7 * 1-5",
     timeZone: "America/New_York",
     region: "us-central1",
   },
