@@ -1551,9 +1551,11 @@ export const morningBriefing = onSchedule(
     const briefingDocId = isAfternoon ? `${todayStr}-afternoon` : todayStr;
     await db.collection("briefings").doc(briefingDocId).set(briefing);
 
-    // Write new alerts to the alerts collection (deduplication was handled above)
+    // Write new alerts to the alerts collection.
+    // Use the alert type as the document ID so that set() replaces any existing
+    // alert of the same type (including stale undismissed alerts from prior days).
     for (const alert of alerts) {
-      await db.collection("alerts").add({
+      await db.collection("alerts").doc(alert.type).set({
         ...alert,
         dismissed: false,
         briefingDate: todayStr,
@@ -1598,7 +1600,8 @@ export const invoiceReminder = onSchedule(
     );
 
     if (totalUnbilled > 0) {
-      await db.collection("alerts").add({
+      // Use doc("invoice") so this upserts rather than appending a duplicate.
+      await db.collection("alerts").doc("invoice").set({
         type: "invoice",
         message: `Invoice reminder: ${totalUnbilled.toFixed(1)} unbilled hours ($${(totalUnbilled * 150).toFixed(0)}).`,
         dismissed: false,
