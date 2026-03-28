@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { RemoteConfig, fetchAndActivate, getValue } from '@angular/fire/remote-config';
+import { environment } from '../../environments/environment';
 
 /**
  * Feature flags with their default values (used when Remote Config is unavailable).
@@ -26,7 +27,9 @@ export class FeatureFlagService {
 
   constructor() {
     this.remoteConfig.defaultConfig = FLAG_DEFAULTS;
-    this.remoteConfig.settings.minimumFetchIntervalMillis = 3600000;
+    // In development, always fetch fresh values so flag changes take effect immediately.
+    // In production, cache for 1 hour to avoid excessive Firebase requests.
+    this.remoteConfig.settings.minimumFetchIntervalMillis = environment.production ? 3600000 : 0;
     this.init();
   }
 
