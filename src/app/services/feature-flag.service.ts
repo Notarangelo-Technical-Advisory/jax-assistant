@@ -1,25 +1,31 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { RemoteConfig, fetchAndActivate, getValue } from '@angular/fire/remote-config';
 
 /**
  * Feature flags with their default values (used when Remote Config is unavailable).
  * To add a flag: add it here, then create a matching parameter in the Firebase console.
  */
-const FLAG_DEFAULTS: Record<string, boolean> = {
+const FLAG_DEFAULTS = {
   enable_voice_input: true,
   enable_tts: true,
   enable_billing_tab: true,
   enable_calendar_sync: true,
-};
+} as const;
+
+type FlagKey = keyof typeof FLAG_DEFAULTS;
 
 @Injectable({ providedIn: 'root' })
 export class FeatureFlagService {
   private remoteConfig = inject(RemoteConfig);
-  private initialized = false;
+
+  // Signals start at defaults and update once Remote Config fetch completes
+  readonly enableVoiceInput = signal(FLAG_DEFAULTS.enable_voice_input);
+  readonly enableTts = signal(FLAG_DEFAULTS.enable_tts);
+  readonly enableBillingTab = signal(FLAG_DEFAULTS.enable_billing_tab);
+  readonly enableCalendarSync = signal(FLAG_DEFAULTS.enable_calendar_sync);
 
   constructor() {
     this.remoteConfig.defaultConfig = FLAG_DEFAULTS;
-    // Fetch fresh values in the background; 1hr min fetch interval
     this.remoteConfig.settings.minimumFetchIntervalMillis = 3600000;
     this.init();
   }
@@ -27,13 +33,16 @@ export class FeatureFlagService {
   private async init(): Promise<void> {
     try {
       await fetchAndActivate(this.remoteConfig);
+      this.enableVoiceInput.set(getValue(this.remoteConfig, 'enable_voice_input').asBoolean());
+      this.enableTts.set(getValue(this.remoteConfig, 'enable_tts').asBoolean());
+      this.enableBillingTab.set(getValue(this.remoteConfig, 'enable_billing_tab').asBoolean());
+      this.enableCalendarSync.set(getValue(this.remoteConfig, 'enable_calendar_sync').asBoolean());
     } catch {
-      // Falls back to defaultConfig if fetch fails
+      // Falls back to defaults if fetch fails
     }
-    this.initialized = true;
   }
 
-  isEnabled(flag: keyof typeof FLAG_DEFAULTS): boolean {
+  isEnabled(flag: FlagKey): boolean {
     return getValue(this.remoteConfig, flag).asBoolean();
   }
 }

@@ -3,7 +3,7 @@
   <header class="header">
     <div class="header-left">
       <img src="/maisie.png" alt="Maisie" class="header-logo" />
-      @if (!chatOpen()) {
+      @if (!chatOpen() && featureFlags.enableVoiceInput()) {
         <button
           class="btn-call-header"
           (click)="callMaisie()"
@@ -18,28 +18,30 @@
       }
     </div>
     <div class="header-actions">
-      <select [(ngModel)]="voice" (ngModelChange)="onVoiceChange($event)" class="voice-select">
-        <option value="female-british">Maisie (UK)</option>
-        <option value="female-american">Sophia (US)</option>
-        <option value="male-american">Ethan (US)</option>
-        <option value="male-british">Daniel (UK)</option>
-      </select>
-      <button class="btn-icon" [class.muted]="ttsMuted()" (click)="toggleMute()" [title]="ttsMuted() ? 'Unmute TTS' : 'Mute TTS'">
-        @if (ttsMuted()) {
-          <!-- Speaker with X (muted) -->
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-            <line x1="23" y1="9" x2="17" y2="15"/>
-            <line x1="17" y1="9" x2="23" y2="15"/>
-          </svg>
-        } @else {
-          <!-- Speaker with waves (unmuted) -->
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-            <path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/>
-          </svg>
-        }
-      </button>
+      @if (featureFlags.enableTts()) {
+        <select [(ngModel)]="voice" (ngModelChange)="onVoiceChange($event)" class="voice-select">
+          <option value="female-british">Maisie (UK)</option>
+          <option value="female-american">Sophia (US)</option>
+          <option value="male-american">Ethan (US)</option>
+          <option value="male-british">Daniel (UK)</option>
+        </select>
+        <button class="btn-icon" [class.muted]="ttsMuted()" (click)="toggleMute()" [title]="ttsMuted() ? 'Unmute TTS' : 'Mute TTS'">
+          @if (ttsMuted()) {
+            <!-- Speaker with X (muted) -->
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <line x1="23" y1="9" x2="17" y2="15"/>
+              <line x1="17" y1="9" x2="23" y2="15"/>
+            </svg>
+          } @else {
+            <!-- Speaker with waves (unmuted) -->
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/>
+            </svg>
+          }
+        </button>
+      }
       <button class="btn-icon" (click)="refresh()" [disabled]="refreshing()" title="Refresh dashboard">
         <svg class="refresh-icon" [class.spinning]="refreshing()" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="23 4 23 10 17 10"/>
@@ -79,7 +81,7 @@
       <section class="section">
         <div class="section-header">
           <h2>Morning Briefing</h2>
-          @if (briefing()) {
+          @if (briefing() && featureFlags.enableTts()) {
             <button class="btn-icon" (click)="speakBriefing()" title="Read briefing aloud">
               @if (ttsService.speakingId() && ttsService.speakingId()!.startsWith('briefing-')) {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
@@ -98,22 +100,26 @@
             <blockquote class="narrative-summary">{{ b.narrativeSummary }}</blockquote>
           }
           <div class="briefing-grid">
-            <div class="stat-card stat-card-clickable" (click)="toggleBillingEntries()" title="Click to see line items">
-              <span class="stat-label">Unbilled Hours <span class="stat-expand-hint">{{ billingEntriesOpen() ? '▲' : '▼' }}</span></span>
-              <span class="stat-value">{{ (billingSummary()?.totalHours ?? b.unbilledHours) | number:'1.1-1' }}h</span>
-              <span class="stat-sub">${{ (billingSummary()?.totalAmount ?? b.unbilledAmount) | number:'1.0-0' }}</span>
-            </div>
+            @if (featureFlags.enableBillingTab()) {
+              <div class="stat-card stat-card-clickable" (click)="toggleBillingEntries()" title="Click to see line items">
+                <span class="stat-label">Unbilled Hours <span class="stat-expand-hint">{{ billingEntriesOpen() ? '▲' : '▼' }}</span></span>
+                <span class="stat-value">{{ (billingSummary()?.totalHours ?? b.unbilledHours) | number:'1.1-1' }}h</span>
+                <span class="stat-sub">${{ (billingSummary()?.totalAmount ?? b.unbilledAmount) | number:'1.0-0' }}</span>
+              </div>
+            }
             <div class="stat-card">
               <span class="stat-label">This Week</span>
               <span class="stat-value">{{ b.weekHours | number:'1.1-1' }}h</span>
             </div>
-            <div class="stat-card">
-              <span class="stat-label">Last Invoice</span>
-              <span class="stat-value">{{ (billingSummary()?.lastInvoiceDate ?? b.lastInvoiceDate) || 'None' }}</span>
-              @if (billingSummary()?.lastInvoiceAmount ?? b.lastInvoiceAmount) {
-                <span class="stat-sub">${{ (billingSummary()?.lastInvoiceAmount ?? b.lastInvoiceAmount) | number:'1.0-0' }}</span>
-              }
-            </div>
+            @if (featureFlags.enableBillingTab()) {
+              <div class="stat-card">
+                <span class="stat-label">Last Invoice</span>
+                <span class="stat-value">{{ (billingSummary()?.lastInvoiceDate ?? b.lastInvoiceDate) || 'None' }}</span>
+                @if (billingSummary()?.lastInvoiceAmount ?? b.lastInvoiceAmount) {
+                  <span class="stat-sub">${{ (billingSummary()?.lastInvoiceAmount ?? b.lastInvoiceAmount) | number:'1.0-0' }}</span>
+                }
+              </div>
+            }
             @if (b.totalActiveTasks) {
               <div class="stat-card">
                 <span class="stat-label">Active Tasks</span>
@@ -122,7 +128,7 @@
             }
           </div>
 
-          @if (billingEntriesOpen() && billingSummary()) {
+          @if (featureFlags.enableBillingTab() && billingEntriesOpen() && billingSummary()) {
             <div class="billing-entries">
               @if (billingSummary()!.entries.length === 0) {
                 <p class="billing-entries-empty">No unbilled entries.</p>
@@ -170,6 +176,7 @@
       </section>
 
       <!-- Calendar -->
+      @if (featureFlags.enableCalendarSync()) {
       <section class="section">
         <h2>Today's Schedule</h2>
         @if (calendarEvents().length > 0) {
@@ -190,25 +197,28 @@
           <p class="empty-state">No events today.</p>
         }
       </section>
+      } <!-- end @if enableCalendarSync -->
 
       <!-- Friday Lookahead -->
-      @if (briefing(); as b) {
-        @if (b.nextWeekEvents && b.nextWeekEvents.length > 0) {
-          <section class="section">
-            <h2>Next Week Preview</h2>
-            <div class="calendar-list">
-              @for (event of b.nextWeekEvents; track event.summary + event.startTime) {
-                <div class="calendar-event lookahead">
-                  <span class="event-date">{{ event.date }}</span>
-                  <span class="event-time">{{ event.startTime }} – {{ event.endTime }}</span>
-                  <span class="event-summary">{{ event.summary }}</span>
-                  @if (event.location) {
-                    <span class="event-location">{{ event.location }}</span>
-                  }
-                </div>
-              }
-            </div>
-          </section>
+      @if (featureFlags.enableCalendarSync()) {
+        @if (briefing(); as b) {
+          @if (b.nextWeekEvents && b.nextWeekEvents.length > 0) {
+            <section class="section">
+              <h2>Next Week Preview</h2>
+              <div class="calendar-list">
+                @for (event of b.nextWeekEvents; track event.summary + event.startTime) {
+                  <div class="calendar-event lookahead">
+                    <span class="event-date">{{ event.date }}</span>
+                    <span class="event-time">{{ event.startTime }} – {{ event.endTime }}</span>
+                    <span class="event-summary">{{ event.summary }}</span>
+                    @if (event.location) {
+                      <span class="event-location">{{ event.location }}</span>
+                    }
+                  </div>
+                }
+              </div>
+            </section>
+          }
         }
       }
 
@@ -475,18 +485,20 @@
               <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
             </svg>
           </button>
-          <button
-            class="btn-mic"
-            [class.listening]="sttService.isListening()"
-            [disabled]="chatService.loading()"
-            (click)="toggleMic()"
-            title="Push to talk"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
-              <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
-            </svg>
-          </button>
+          @if (featureFlags.enableVoiceInput()) {
+            <button
+              class="btn-mic"
+              [class.listening]="sttService.isListening()"
+              [disabled]="chatService.loading()"
+              (click)="toggleMic()"
+              title="Push to talk"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+                <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
+              </svg>
+            </button>
+          }
           <input
             type="text"
             [(ngModel)]="chatInput"
