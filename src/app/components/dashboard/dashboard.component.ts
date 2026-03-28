@@ -15,6 +15,7 @@ import { ChatSessionService } from '../../services/chat-session.service';
 import { CalendarService } from '../../services/calendar.service';
 import { TtsService } from '../../services/tts.service';
 import { SttService } from '../../services/stt.service';
+import { FeatureFlagService } from '../../services/feature-flag.service';
 import { Briefing } from '../../models/briefing.model';
 import { Task, TaskRecurrence } from '../../models/task.model';
 import { TaskCategory } from '../../models/task-category.model';
@@ -41,6 +42,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   calendarService = inject(CalendarService);
   ttsService = inject(TtsService);
   sttService = inject(SttService);
+  featureFlags = inject(FeatureFlagService);
   private sanitizer = inject(DomSanitizer);
 
   @ViewChild('messagesContainer') private messagesContainer!: ElementRef;
@@ -122,7 +124,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // When STT transcript updates (mic stopped naturally), auto-send as chat
   private sttEffect = effect(() => {
     const transcript = this.sttService.transcript();
-    if (transcript && !this.sttService.isListening()) {
+    if (transcript && !this.sttService.isListening() && this.featureFlags.enableVoiceInput()) {
       this.chatInput = transcript;
       this.sendChat();
     }
@@ -140,6 +142,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (!msg) return;
     if (this.httpWillSpeak) return; // HTTP response will handle TTS — skip
     if (this.ttsMuted()) return;
+    if (!this.featureFlags.enableTts()) return;
     if (!this.audioContextPrimed) {
       this.ttsService.primeAudioContext();
       this.audioContextPrimed = true;
@@ -288,7 +291,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       try {
         this.httpWillSpeak = true;
         const response = await this.chatService.sendMessage(text, id);
-        if (!this.ttsMuted()) {
+        if (!this.ttsMuted() && this.featureFlags.enableTts()) {
           if (!this.audioContextPrimed) {
             this.ttsService.primeAudioContext();
             this.audioContextPrimed = true;
@@ -309,7 +312,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     try {
       this.httpWillSpeak = true;
       const response = await this.chatService.sendMessage(text, session.id);
-      if (!this.ttsMuted()) {
+      if (!this.ttsMuted() && this.featureFlags.enableTts()) {
         if (!this.audioContextPrimed) {
           this.ttsService.primeAudioContext();
           this.audioContextPrimed = true;
@@ -378,7 +381,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   speakBriefing(): void {
     const b = this.briefing();
-    if (!b) return;
+    if (!b || !this.featureFlags.enableTts()) return;
 
     // Use AI narrative if available, fall back to hardcoded template
     let text: string;
