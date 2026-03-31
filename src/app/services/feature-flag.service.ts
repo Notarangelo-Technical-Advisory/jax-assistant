@@ -19,10 +19,10 @@ export class FeatureFlagService {
   private remoteConfig = inject(RemoteConfig);
 
   // Signals start at defaults and update once Remote Config fetch completes
-  readonly enableVoiceInput = signal(FLAG_DEFAULTS.enable_voice_input);
-  readonly enableTts = signal(FLAG_DEFAULTS.enable_tts);
-  readonly enableBillingTab = signal(FLAG_DEFAULTS.enable_billing_tab);
-  readonly enableCalendarSync = signal(FLAG_DEFAULTS.enable_calendar_sync);
+  readonly enableVoiceInput = signal<boolean>(FLAG_DEFAULTS.enable_voice_input);
+  readonly enableTts = signal<boolean>(FLAG_DEFAULTS.enable_tts);
+  readonly enableBillingTab = signal<boolean>(FLAG_DEFAULTS.enable_billing_tab);
+  readonly enableCalendarSync = signal<boolean>(FLAG_DEFAULTS.enable_calendar_sync);
 
   constructor() {
     this.remoteConfig.defaultConfig = FLAG_DEFAULTS;
