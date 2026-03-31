@@ -706,6 +706,25 @@ $border: #334155;
   &:hover { border-color: $accent; color: $accent; }
 }
 
+.btn-edit-task {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: $text-secondary;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+
+  .task-item:hover &,
+  .task-item:focus-within & { opacity: 1; }
+  &:hover { color: $accent; background: rgba($accent, 0.1); }
+}
+
 // Sessions Panel
 .sessions-panel {
   background: $bg-card;
@@ -1142,4 +1161,12 @@ $border: #334155;
     flex-wrap: wrap;
     input { min-width: 100%; }
   }
+
+  // Always show the edit button on touch devices
+  .btn-edit-task { opacity: 1; }
+
+  // Wrap the edit form on narrow screens so inputs don't overflow
+  .task-item { flex-wrap: wrap; }
+  .task-title-edit { min-width: calc(100% - 2.5rem); }
+  .task-due-edit { flex: 1; min-width: 130px; }
 }
