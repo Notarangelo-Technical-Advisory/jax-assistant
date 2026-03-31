@@ -1142,4 +1142,32 @@ $border: #334155;
     flex-wrap: wrap;
     input { min-width: 100%; }
   }
+
+  // Task edit form: wrap onto multiple lines so nothing overflows off-screen
+  .task-item {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .task-title-edit {
+    flex: 1 1 calc(100% - 2.5rem); // fill row after the checkbox
+  }
+
+  .task-due-edit {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  .recurrence-select,
+  .recurrence-day-select,
+  .recurrence-day-input {
+    flex: 1 1 auto;
+  }
+
+  // Larger touch targets for save/cancel
+  .btn-save-inline,
+  .btn-cancel-inline {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+  }
 }
