@@ -26,8 +26,9 @@ export class FeatureFlagService {
 
   constructor() {
     this.remoteConfig.defaultConfig = FLAG_DEFAULTS;
-    this.remoteConfig.settings.minimumFetchIntervalMillis = 3600000;
+    this.remoteConfig.settings.minimumFetchIntervalMillis = 0;
     this.init();
+    setInterval(() => this.init(), 10000);
   }
 
   private async init(): Promise<void> {
