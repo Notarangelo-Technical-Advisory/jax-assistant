@@ -12,10 +12,48 @@ export const DEFAULT_CATEGORIES: Category[] = [
   {key: "dial", label: "DIAL"},
   {key: "ppk", label: "PPK"},
   {key: "church", label: "Church"},
+  {key: "embassy", label: "Embassy Series"},
   {key: "general", label: "General"},
 ];
 
 export const DEFAULT_CATEGORY_KEYS = DEFAULT_CATEGORIES.map((c) => c.key);
+
+/**
+ * Anthropic's server-side web tools. These execute on Anthropic's
+ * infrastructure — there is no entry for them in execute.ts and no API key to
+ * hold. They arrive back as `server_tool_use` / `web_search_tool_result` content
+ * blocks in the same response, so the chat function's tool loop (which matches
+ * on `tool_use`) correctly ignores them.
+ *
+ * Deliberately kept out of buildTools: the `_20260209` variants run code
+ * execution internally for dynamic filtering, so declaring `code_execution`
+ * alongside them gives the model two execution environments and confuses it.
+ * Also absent from MCP_TOOL_NAMES — Claude Code already has WebSearch/WebFetch.
+ *
+ * Appended after the custom tools and never rebuilt, so the cached tool prefix
+ * stays byte-identical across requests. See the caching note in index.ts.
+ */
+export const WEB_TOOLS: Anthropic.Messages.ToolUnion[] = [
+  {
+    type: "web_search_20260209",
+    name: "web_search",
+    max_uses: 8,
+    // Only what the persona already asserts — Jack is on Eastern Time. No city
+    // or region: nothing in context/ states one, and a wrong guess biases results.
+    user_location: {
+      type: "approximate",
+      country: "US",
+      timezone: "America/New_York",
+    },
+  },
+  {
+    type: "web_fetch_20260209",
+    name: "web_fetch",
+    max_uses: 5,
+    citations: {enabled: true},
+    max_content_tokens: 30000,
+  },
+];
 
 /**
  * Tool names exposed to the MAISIE MCP server (VS Code).
@@ -158,7 +196,7 @@ export const buildTools = (
     },
     {
       name: "delete_task_category",
-      description: "Delete a custom task category. Cannot delete built-in categories (ihrdc, solomon, dial, ppk, church, general). Will fail if there are active tasks under that category — those must be completed or reassigned first.",
+      description: "Delete a custom task category. Cannot delete built-in categories (ihrdc, solomon, dial, ppk, church, embassy, general). Will fail if there are active tasks under that category — those must be completed or reassigned first.",
       input_schema: {
         type: "object" as const,
         properties: {

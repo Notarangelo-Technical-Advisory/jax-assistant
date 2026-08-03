@@ -5,7 +5,7 @@ import {onDocumentWritten} from "firebase-functions/v2/firestore";
 import twilio from "twilio";
 import {getUnbilledEntries, getLastInvoice, getTimeEntriesForRange, getCustomers} from "./fta-client";
 import Anthropic from "@anthropic-ai/sdk";
-import {buildTools} from "./tools/definitions";
+import {buildTools, WEB_TOOLS} from "./tools/definitions";
 import {executeTool, toolLabel} from "./tools/execute";
 import {loadMaisieContext, MAISIE_PERSONA, buildStateBlock, historyToMessages} from "./tools/context";
 import {readCalendarEvents, formatEventTime} from "./tools/calendar-read";
@@ -196,7 +196,13 @@ export const chat = onRequest(
       {type: "text", text: buildStateBlock(maisieCtx)},
     ];
 
-    let tools = buildTools(allCategories);
+    // Custom tools first, then Anthropic's server-side web tools. WEB_TOOLS is a
+    // constant and always appended last, so the rendered tool prefix stays
+    // byte-identical across the requests in the loop below.
+    let tools: Anthropic.Messages.ToolUnion[] = [
+      ...buildTools(allCategories),
+      ...WEB_TOOLS,
+    ];
 
     try {
       const anthropic = new Anthropic({apiKey});
@@ -233,8 +239,34 @@ export const chat = onRequest(
         });
       };
 
+      // Server-side tools (web_search / web_fetch) run inside a single API
+      // request, capped at ~10 internal iterations. Hitting that cap ends the
+      // turn with "pause_turn" rather than "tool_use", so the loop has to treat
+      // it as a continuation — otherwise a long research answer falls straight
+      // through to the text extraction below and Jack gets a truncated reply
+      // with nothing logged. Resuming needs no extra user message: the trailing
+      // server_tool_use block tells the API where to pick up.
+      let continuations = 0;
+      const MAX_CONTINUATIONS = 5;
+
       // Tool use loop — execute any tool calls, then get the final text response
-      while (response.stop_reason === "tool_use") {
+      while (
+        response.stop_reason === "tool_use" ||
+        response.stop_reason === "pause_turn"
+      ) {
+        if (response.stop_reason === "pause_turn") {
+          if (++continuations > MAX_CONTINUATIONS) {
+            console.warn(
+              `[chat] hit continuation cap (${MAX_CONTINUATIONS}) — returning partial answer`
+            );
+            break;
+          }
+          await writeStep("Still researching...", "web_search");
+          messages.push({role: "assistant", content: response.content});
+          response = await anthropic.messages.create(buildRequest());
+          continue;
+        }
+
         const toolUseBlocks = response.content.filter(
           (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use"
         );
@@ -253,7 +285,7 @@ export const chat = onRequest(
             // schemas must be rebuilt when a category is added or removed
             // partway through the loop.
             onCategoriesChanged: () => {
-              tools = buildTools(allCategories);
+              tools = [...buildTools(allCategories), ...WEB_TOOLS];
             },
           });
 
@@ -281,11 +313,18 @@ export const chat = onRequest(
         })
         .join("");
 
-      // Strip all emoji characters regardless of system prompt compliance
+      // Strip all emoji characters regardless of system prompt compliance.
+      // Whitespace cleanup is deliberately horizontal-only: the old /\s{2,}/
+      // collapsed newlines too, which was invisible on "task added" replies but
+      // flattened any multi-paragraph answer into one unreadable run.
       const text = rawText.replace(
         /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu,
         ""
-      ).replace(/\s{2,}/g, " ").trim();
+      )
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/ +$/gm, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
 
       // Store user message and assistant reply in the session
       // Use integer sequence for deterministic ordering (same approach as Solomon).
@@ -1300,7 +1339,7 @@ Available actions:
 - unknown: {"action":"unknown","clarification":"string"}
 
 Rules:
-- Default category is "general". Other categories: ihrdc, solomon, dial, ppk, church.
+- Default category is "general". Other categories: ihrdc, solomon, dial, ppk, church, embassy.
 - For complete_task, match the taskId from the active task list by fuzzy-matching the title. If ambiguous, use action "unknown".
 - For due dates, convert relative terms to absolute YYYY-MM-DD using today's date.
 - If the message is a list request ("tasks", "what's on my list", "show tasks"), use list_tasks.

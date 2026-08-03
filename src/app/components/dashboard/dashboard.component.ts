@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, computed, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { Component, inject, signal, effect, computed, OnInit, OnDestroy, ViewChild, ElementRef, SecurityContext } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -598,6 +598,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   renderMarkdown(content: string): SafeHtml {
     const html = marked.parse(content) as string;
-    return this.sanitizer.bypassSecurityTrustHtml(html);
+    // Sanitize before trusting. marked passes raw HTML through, and Maisie's
+    // replies can now quote pages fetched by web_search/web_fetch — so a hostile
+    // page could otherwise land an <img onerror=...> in the DOM via the model.
+    // sanitize() strips scripts and event handlers, keeps the formatting tags.
+    const safe = this.sanitizer.sanitize(SecurityContext.HTML, html) ?? '';
+    return this.sanitizer.bypassSecurityTrustHtml(safe);
   }
 }
