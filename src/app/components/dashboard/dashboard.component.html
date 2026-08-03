@@ -507,19 +507,27 @@
               </svg>
             </button>
           }
-          <input
-            type="text"
-            [(ngModel)]="chatInput"
-            placeholder="Ask anything..."
-            (keyup.enter)="sendChat()"
-            [disabled]="chatService.loading()"
-          />
-          <button class="btn-send" (click)="sendChat()" [disabled]="chatService.loading() || !chatInput.trim()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-          </button>
+          @if (sttService.isListening()) {
+            <!-- Mic is hot: hide the text box so it's clear speech goes straight to Maisie -->
+            <div class="listening-indicator">
+              <span class="listening-dots"><i></i><i></i><i></i></span>
+              <span class="listening-label">Listening&hellip;</span>
+            </div>
+          } @else {
+            <input
+              type="text"
+              [(ngModel)]="chatInput"
+              placeholder="Ask anything..."
+              (keyup.enter)="sendChat()"
+              [disabled]="chatService.loading()"
+            />
+            <button class="btn-send" (click)="sendChat()" [disabled]="chatService.loading() || !chatInput.trim()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          }
         </div>
       </div>
     </div>
