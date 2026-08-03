@@ -41,6 +41,54 @@ const ELEVENLABS_VOICE_ID: Record<string, string> = {
   "male-british": "onwK4e9ZLuTAKqWW03F9",
 };
 
+/**
+ * Turn text into MP3 bytes via ElevenLabs.
+ *
+ * Extracted from the synthesizeSpeech handler so the spoken-alert path can
+ * reuse it. That path cannot call the HTTP endpoint: it requires a Firebase ID
+ * token and the only caller would be a Cloud Function, not a signed-in user.
+ *
+ * Returns null rather than throwing — an alert that cannot be synthesized should
+ * degrade to the system voice on the Mac, not fail the whole trigger.
+ */
+async function synthesizeToBuffer(
+  text: string,
+  voice = "female-british"
+): Promise<Buffer | null> {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) {
+    console.error("[synthesize] ELEVENLABS_API_KEY not configured");
+    return null;
+  }
+  const voiceId = ELEVENLABS_VOICE_ID[voice] || ELEVENLABS_VOICE_ID["female-british"];
+  try {
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+          "Accept": "audio/mpeg",
+        },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_turbo_v2_5",
+          voice_settings: {stability: 0.5, similarity_boost: 0.75},
+        }),
+      }
+    );
+    if (!response.ok) {
+      console.error(`[synthesize] ElevenLabs ${response.status}: ${(await response.text()).slice(0, 200)}`);
+      return null;
+    }
+    return Buffer.from(await response.arrayBuffer());
+  } catch (err) {
+    console.error("[synthesize] failed:", err);
+    return null;
+  }
+}
+
 export const synthesizeSpeech = onRequest(
   {cors: true, region: "us-central1", memory: "256MiB"},
   async (req, res) => {
@@ -819,6 +867,144 @@ async function runBriefing(): Promise<void> {
 /** Minimum gap between two model-written narratives, to bound churn. */
 const NARRATIVE_MIN_GAP_MS = 2 * 60 * 1000;
 
+// ─── Spoken alerts ─────────────────────────────────────────────
+//
+// A calendar change worth speaking about goes out as a `speak` action on the
+// pendingDesktopActions queue, which desktop-bridge drains every 30s and plays
+// through afplay. Detection is ~120s (the sync poll) and delivery ~30s, so an
+// invite lands audibly in about two and a half minutes.
+//
+// The audio travels with the action as base64 rather than as a URL because the
+// bridge authenticates with a service account and synthesizeSpeech expects a
+// user ID token. A one-sentence clip is ~25KB against a 1MB document limit.
+
+/** Only speak about events starting inside this window — the "imminent" rule. */
+const ANNOUNCE_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** Never leave an undelivered alert queued longer than this. */
+const ANNOUNCE_MAX_TTL_MS = 6 * 60 * 60 * 1000;
+
+interface CalendarChangeEntry {
+  summary: string;
+  kind: "added" | "moved" | "updated" | "deleted";
+  startISO: string;
+  calendarName: string;
+}
+
+/** "today at 4:15 PM", "tomorrow at 9 AM", "Thursday at 2 PM". */
+function describeWhen(start: Date, now: Date): string {
+  const et = (d: Date) => d.toLocaleDateString("en-CA", {timeZone: "America/New_York"});
+  const time = formatEventTime(start);
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  if (et(start) === et(now)) return `today at ${time}`;
+  if (et(start) === et(tomorrow)) return `tomorrow at ${time}`;
+  const day = start.toLocaleDateString("en-US", {weekday: "long", timeZone: "America/New_York"});
+  return `${day} at ${time}`;
+}
+
+/**
+ * Turn the sync's change list into something worth saying out loud, or null.
+ *
+ * Deliberately templated rather than model-written. An alert competes for
+ * attention with whatever Jack is already doing, so it needs to be short and
+ * predictable; a model would sometimes editorialise at length, and would add a
+ * couple of seconds to a path whose whole promise is speed.
+ */
+function buildAnnouncement(
+  changes: CalendarChangeEntry[],
+  now: Date
+): {text: string; earliestStart: Date} | null {
+  const imminent = changes.filter((c) => {
+    if (c.kind === "updated") return false; // a tweaked note is not news
+    const t = new Date(c.startISO).getTime();
+    if (isNaN(t)) return false;
+    // Forward-looking only, and only inside the imminent window.
+    return t > now.getTime() && t - now.getTime() <= ANNOUNCE_WINDOW_MS;
+  });
+  if (imminent.length === 0) return null;
+
+  const sentences = imminent.map((c) => {
+    const start = new Date(c.startISO);
+    const when = describeWhen(start, now);
+    const cal = c.calendarName && c.calendarName !== "Jax" ? ` on your ${c.calendarName} calendar` : "";
+    if (c.kind === "added") return `New invite${cal}: ${c.summary}, ${when}.`;
+    if (c.kind === "moved") return `${c.summary} moved to ${when}.`;
+    return `${c.summary}, ${when}, was cancelled.`;
+  });
+
+  const earliestStart = imminent
+    .map((c) => new Date(c.startISO))
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+
+  // One utterance covers everything in this sync, which is not the same as rate
+  // limiting — it is just not speaking three times for one batch of invites.
+  // Spelled-out counts because this is read aloud, not displayed.
+  const COUNT_WORDS = ["", "", "Two", "Three", "Four", "Five"];
+  const lead = sentences.length > 1
+    ? `${COUNT_WORDS[sentences.length] ?? sentences.length} calendar changes. `
+    : "";
+  return {
+    text: (lead + sentences.join(" ")).trim(),
+    earliestStart,
+  };
+}
+
+/** The meeting currently in progress, if any, so an alert can wait for it. */
+async function findMeetingInProgress(now: Date): Promise<{endTime: Date} | null> {
+  // Single range on startTime plus a client-side end check — a two-field
+  // inequality would need a composite index for no real benefit at this size.
+  const snap = await db.collection("calendarEvents")
+    .where("startTime", ">=", admin.firestore.Timestamp.fromDate(new Date(now.getTime() - 6 * 60 * 60 * 1000)))
+    .where("startTime", "<=", admin.firestore.Timestamp.fromDate(now))
+    .get()
+    .catch(() => null);
+  if (!snap) return null;
+  let latestEnd: Date | null = null;
+  for (const d of snap.docs) {
+    const end = d.data()["endTime"]?.toDate?.();
+    if (end && end.getTime() > now.getTime()) {
+      if (!latestEnd || end.getTime() > latestEnd.getTime()) latestEnd = end;
+    }
+  }
+  return latestEnd ? {endTime: latestEnd} : null;
+}
+
+/**
+ * Queue a spoken alert for the Mac.
+ *
+ * `idempotencyKey` becomes the document id. Firestore triggers are at-least-once,
+ * so the same change can invoke onCalendarChange more than once; a create-only
+ * write on a deterministic id collapses those retries into a single alert
+ * instead of speaking twice.
+ */
+async function queueSpokenAlert(
+  text: string,
+  idempotencyKey: string,
+  opts: {notBefore?: Date; expiresAt: Date}
+): Promise<"queued" | "duplicate" | "failed"> {
+  const audio = await synthesizeToBuffer(text);
+  const ref = db.collection("pendingDesktopActions").doc(idempotencyKey);
+  try {
+    await ref.create({
+      action: "speak",
+      status: "pending",
+      payload: {
+        text,
+        // Absent when synthesis failed; the bridge falls back to `say`.
+        audioBase64: audio ? audio.toString("base64") : null,
+      },
+      notBefore: opts.notBefore ? admin.firestore.Timestamp.fromDate(opts.notBefore) : null,
+      expiresAt: admin.firestore.Timestamp.fromDate(opts.expiresAt),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return "queued";
+  } catch (err) {
+    // ALREADY_EXISTS is the expected outcome of a duplicate trigger delivery.
+    if ((err as {code?: number}).code === 6) return "duplicate";
+    console.error("[queueSpokenAlert] failed:", err);
+    return "failed";
+  }
+}
+
 export const onCalendarChange = onDocumentWritten(
   {
     document: "metadata/calendarChange",
@@ -868,6 +1054,36 @@ export const onCalendarChange = onDocumentWritten(
     const narrativeAgeMs = Date.now() -
       (live?.["narrativeAt"]?.toDate?.()?.getTime() ?? 0);
     const inWakingHours = etHour >= 6 && etHour < 21;
+
+    // ── Spoken alert ──────────────────────────────────────────
+    // Independent of the narrative decision: a new invite is worth saying out
+    // loud even when the prose was just regenerated a minute ago.
+    if (inWakingHours) {
+      const now = new Date();
+      const announcement = buildAnnouncement(
+        (after["changes"] ?? []) as CalendarChangeEntry[],
+        now
+      );
+      if (announcement) {
+        const inProgress = await findMeetingInProgress(now);
+        const expiresAt = new Date(Math.min(
+          Math.max(announcement.earliestStart.getTime(), now.getTime() + 5 * 60 * 1000),
+          now.getTime() + ANNOUNCE_MAX_TTL_MS
+        ));
+        // The change beacon's own timestamp is a natural idempotency key: one
+        // sync-with-changes writes it exactly once.
+        const changedAtMs = after["changedAt"]?.toDate?.()?.getTime() ?? Date.now();
+        const outcome = await queueSpokenAlert(
+          announcement.text,
+          `speak-${changedAtMs}`,
+          {notBefore: inProgress?.endTime, expiresAt}
+        );
+        console.log(
+          `[onCalendarChange] spoken alert ${outcome}: "${announcement.text}"` +
+          (inProgress ? ` (deferred until ${inProgress.endTime.toISOString()})` : "")
+        );
+      }
+    }
     // No prose at all yet — first run after deploy, or a previous generation
     // failed. Narrate regardless of whether this particular change was material,
     // otherwise the dashboard shows bare numbers until the next cron beat.

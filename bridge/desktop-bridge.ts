@@ -31,6 +31,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { createEvent, moveEvent } from "./applescript/calendar.js";
 import { searchMessages, readMessage, createDraft, sendMessage } from "./applescript/mail.js";
+import { speak } from "./speak.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -54,7 +55,8 @@ type DesktopAction =
   | "mail.draft"
   | "mail.send"
   | "calendar.create"
-  | "calendar.move";
+  | "calendar.move"
+  | "speak";
 
 // ─── Helpers ─────────────────────────────────────────────────────
 async function writeWithRetry(
@@ -194,6 +196,14 @@ function execute(action: DesktopAction, payload: Record<string, unknown>): Recor
     return { success: true };
   }
 
+  case "speak": {
+    const text = (payload["text"] as string) ?? "";
+    const audio = payload["audioBase64"] as string | undefined;
+    const outcome = speak(text, audio);
+    if (!outcome.spoken) throw new Error("Could not produce audio via afplay or say");
+    return { spoken: true, via: outcome.via, text };
+  }
+
   default:
     throw new Error(`Unknown action "${action}"`);
   }
@@ -231,6 +241,31 @@ async function run(): Promise<void> {
     const data = doc.data();
     const action = data["action"] as DesktopAction;
     const payload = (data["payload"] ?? {}) as Record<string, unknown>;
+
+    // Spoken alerts can carry a schedule. `notBefore` is how "stay quiet during
+    // meetings" is honoured — the cloud sets it to the end of whatever is in
+    // progress and the action simply waits here, still pending, until a later
+    // poll. Leave it unclaimed so nothing else has to know about deferral.
+    const notBeforeMs = data["notBefore"]?.toMillis?.() ?? 0;
+    if (notBeforeMs > Date.now()) {
+      const waitMin = Math.ceil((notBeforeMs - Date.now()) / 60000);
+      console.log(`[desktop-bridge] Deferring ${doc.id} (${action}) for ~${waitMin} min`);
+      continue;
+    }
+
+    // An alert about a meeting that has already begun is worse than silence —
+    // it invites acting on stale information. Drop it rather than speak it.
+    const expiresMs = data["expiresAt"]?.toMillis?.() ?? 0;
+    if (expiresMs && expiresMs < Date.now()) {
+      console.warn(`[desktop-bridge] Expired ${doc.id} (${action}) — dropping unspoken`);
+      await writeWithRetry(doc.ref, {
+        status: "failed",
+        appliedAt: FieldValue.serverTimestamp(),
+        result: null,
+        error: "Expired before it could be delivered (Mac asleep, or deferred past the event).",
+      }).catch(() => {/* best-effort */});
+      continue;
+    }
 
     // Claim first so a concurrent run cannot double-execute.
     try {
