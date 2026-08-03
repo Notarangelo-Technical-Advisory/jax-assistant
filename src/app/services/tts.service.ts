@@ -23,6 +23,25 @@ export class TtsService {
   private blobUrls: string[] = [];
   private db: IDBDatabase | null = null;
 
+  /**
+   * Bumped by every stop() (and therefore every speak(), which stops first).
+   *
+   * Playback is a chain of async steps that all share one <video> element and
+   * one currentIndex. Aborting a fetch does not unwind the step awaiting it —
+   * it resolves null and the chain marches on. So a chain started by an earlier
+   * speak() would wake up inside the *new* utterance, bump currentIndex past
+   * sentence 0, and swap videoEl.src out from under the audio already playing.
+   * Each step carries the generation it started in and bails if it is stale.
+   */
+  private generation = 0;
+
+  /**
+   * Synthesis requests still in flight, keyed by generation + sentence. The
+   * initial prefetch and playNext() both ask for sentence 0; without this they
+   * each issue their own ElevenLabs call for identical text.
+   */
+  private inFlight = new Map<string, Promise<Blob | null>>();
+
   constructor() {
     this.openDb();
   }
@@ -44,6 +63,7 @@ export class TtsService {
 
     if (!text?.trim()) return;
 
+    const gen = this.generation; // stop() just bumped it — this chain owns it
     this.currentId = id || null;
     this.currentVoice = voice;
     this.speakingId.set(this.currentId);
@@ -57,13 +77,15 @@ export class TtsService {
     // Prefetch first sentences
     const prefetchCount = Math.min(this.prefetchAhead, this.sentences.length);
     for (let i = 0; i < prefetchCount; i++) {
-      this.fetchSentence(i);
+      this.fetchSentence(i, gen);
     }
 
-    this.playNext();
+    this.playNext(gen);
   }
 
   stop(): void {
+    this.generation++;
+    this.inFlight.clear();
     this.abortController?.abort();
     this.abortController = null;
 
@@ -149,22 +171,36 @@ export class TtsService {
     };
   }
 
-  private async fetchSentence(index: number): Promise<Blob | null> {
-    if (index >= this.sentences.length) return null;
+  private fetchSentence(index: number, gen: number): Promise<Blob | null> {
+    if (index >= this.sentences.length) return Promise.resolve(null);
 
     const cacheKey = `${this.currentId}|${this.currentVoice}|${index}`;
 
     // 1. Check in-memory cache first (fastest)
-    if (this.memCache.has(cacheKey)) return this.memCache.get(cacheKey)!;
+    const cached = this.memCache.get(cacheKey);
+    if (cached) return Promise.resolve(cached);
 
-    // 2. Check IndexedDB (persists across page refreshes)
+    // 2. Join a request already in flight rather than starting a second one
+    const flightKey = `${gen}|${cacheKey}`;
+    const pending = this.inFlight.get(flightKey);
+    if (pending) return pending;
+
+    const request = this.loadSentence(index, cacheKey)
+      .finally(() => this.inFlight.delete(flightKey));
+    this.inFlight.set(flightKey, request);
+    return request;
+  }
+
+  /** Resolve one sentence's audio from IndexedDB, else synthesize it. */
+  private async loadSentence(index: number, cacheKey: string): Promise<Blob | null> {
+    // 1. Check IndexedDB (persists across page refreshes)
     const persisted = await this.dbGet(cacheKey);
     if (persisted) {
       this.memCache.set(cacheKey, persisted);
       return persisted;
     }
 
-    // 3. Fetch from ElevenLabs via Cloud Function
+    // 2. Fetch from ElevenLabs via Cloud Function
     try {
       const token = await this.authService.getIdToken();
       const response = await fetch(
@@ -183,35 +219,50 @@ export class TtsService {
         }
       );
 
-      if (!response.ok) return null;
+      if (!response.ok) {
+        console.error('[TtsService] synthesis failed, status:', response.status, 'sentence:', index);
+        return null;
+      }
 
       const blob = await response.blob();
       this.memCache.set(cacheKey, blob);
       this.dbSet(cacheKey, blob); // fire-and-forget persist
       return blob;
-    } catch {
+    } catch (err: any) {
+      // An abort is a deliberate stop(), not a failure worth reporting.
+      if (err?.name !== 'AbortError') {
+        console.error('[TtsService] synthesis error, sentence:', index, err);
+      }
       return null;
     }
   }
 
-  private async playNext(): Promise<void> {
+  private async playNext(gen: number): Promise<void> {
+    if (gen !== this.generation) return;
+
     if (this.currentIndex >= this.sentences.length || !this.videoEl) {
       this.speakingId.set(null);
       this.currentId = null;
       return;
     }
 
-    const blob = await this.fetchSentence(this.currentIndex);
+    const index = this.currentIndex;
+    const blob = await this.fetchSentence(index, gen);
+
+    // A newer speak() took over while this sentence was being synthesized —
+    // leave its currentIndex and its audio alone.
+    if (gen !== this.generation) return;
+
     if (!blob) {
-      this.currentIndex++;
-      this.playNext();
+      this.currentIndex = index + 1;
+      this.playNext(gen);
       return;
     }
 
     // Prefetch next sentence
-    const nextPrefetch = this.currentIndex + this.prefetchAhead;
+    const nextPrefetch = index + this.prefetchAhead;
     if (nextPrefetch < this.sentences.length) {
-      this.fetchSentence(nextPrefetch);
+      this.fetchSentence(nextPrefetch, gen);
     }
 
     const url = URL.createObjectURL(blob);
@@ -219,13 +270,15 @@ export class TtsService {
     this.videoEl.src = url;
 
     this.videoEl.onended = () => {
-      this.currentIndex++;
-      this.playNext();
+      if (gen !== this.generation) return;
+      this.currentIndex = index + 1;
+      this.playNext(gen);
     };
 
     this.videoEl.play().catch(() => {
-      this.currentIndex++;
-      this.playNext();
+      if (gen !== this.generation) return;
+      this.currentIndex = index + 1;
+      this.playNext(gen);
     });
   }
 

@@ -176,25 +176,37 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   });
 
-  // Track whether the current sendMessage HTTP call is expected to deliver TTS.
-  // Set to true before the HTTP call fires; cleared after TTS runs or on error.
-  // Prevents double-speaking when Firestore listener also detects the same new message.
-  private httpWillSpeak = false;
+  // The reply text most recently handed to TTS. The Cloud Function writes the
+  // assistant message to Firestore *and* returns it over HTTP, so both delivery
+  // paths below see the identical string; whichever arrives first speaks it and
+  // the other one skips.
+  //
+  // The previous "httpWillSpeak" boolean could not do this: speak() returns as
+  // soon as it kicks off the first fetch, so the flag was already back to false
+  // by the time the Firestore listener fired. Every reply got spoken twice, and
+  // the second speak() cut the first one off partway through its opening
+  // sentence — which is why the voice sounded like it started mid-response.
+  private lastSpokenReply: string | null = null;
 
   // Speak new assistant messages that arrive via Firestore — covers long coding tasks
   // where the HTTP connection times out before the Cloud Function responds.
   private latestAssistantEffect = effect(() => {
     const msg = this.chatService.latestAssistantMessage();
-    if (!msg) return;
-    if (this.httpWillSpeak) return; // HTTP response will handle TTS — skip
+    if (msg) this.speakReply(msg);
+  });
+
+  /** Speak an assistant reply once, via whichever delivery path reaches it first. */
+  private speakReply(text: string): void {
+    if (!text || text === this.lastSpokenReply) return;
     if (this.ttsMuted()) return;
     if (!this.featureFlags.enableTts()) return;
+    this.lastSpokenReply = text;
     if (!this.audioContextPrimed) {
       this.ttsService.primeAudioContext();
       this.audioContextPrimed = true;
     }
-    this.ttsService.speak(msg, this.voice, `chat-${Date.now()}`);
-  });
+    this.ttsService.speak(text, this.voice, `chat-${Date.now()}`);
+  }
 
   private billingLoaded = false;
   private billingEffect = effect(() => {
@@ -339,20 +351,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.chatInput = '';
       setTimeout(() => this.scrollToBottom(), 0);
       try {
-        this.httpWillSpeak = true;
         const response = await this.chatService.sendMessage(text, id);
-        if (!this.ttsMuted() && this.featureFlags.enableTts()) {
-          if (!this.audioContextPrimed) {
-            this.ttsService.primeAudioContext();
-            this.audioContextPrimed = true;
-          }
-          this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
-        }
+        this.speakReply(response);
         setTimeout(() => this.scrollToBottom(), 0);
       } catch (err) {
         console.error('[sendChat] error:', err);
-      } finally {
-        this.httpWillSpeak = false;
       }
       return;
     }
@@ -360,20 +363,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.chatInput = '';
     setTimeout(() => this.scrollToBottom(), 0);
     try {
-      this.httpWillSpeak = true;
       const response = await this.chatService.sendMessage(text, session.id);
-      if (!this.ttsMuted() && this.featureFlags.enableTts()) {
-        if (!this.audioContextPrimed) {
-          this.ttsService.primeAudioContext();
-          this.audioContextPrimed = true;
-        }
-        this.ttsService.speak(response, this.voice, `chat-${Date.now()}`);
-      }
+      this.speakReply(response);
       setTimeout(() => this.scrollToBottom(), 0);
     } catch (err) {
       console.error('[sendChat] error:', err);
-    } finally {
-      this.httpWillSpeak = false;
     }
   }
 
