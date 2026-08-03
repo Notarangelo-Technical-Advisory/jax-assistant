@@ -3,6 +3,9 @@ name: Deploy and Release
 on:
   push:
     branches: [main]
+  # Lets a failed deploy be retried from the Actions tab once GitHub stops
+  # allowing re-runs of the original run, without pushing an empty commit.
+  workflow_dispatch:
 
 concurrency:
   group: deploy-${{ github.ref }}
