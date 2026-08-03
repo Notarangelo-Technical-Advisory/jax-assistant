@@ -50,6 +50,9 @@ testem.log
 
 # Claude
 CLAUDE.local.md
+.claude/worktrees/
+# Machine-specific: absolute paths to this checkout and the service account
+.mcp.json
 
 # Firebase CLI cache
 .firebase/

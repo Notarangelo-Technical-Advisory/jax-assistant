@@ -1,8 +1,11 @@
 /**
- * Coding Queue Viewer — live terminal UI for pendingCodingTasks.
+ * Desktop Queue Viewer — live terminal UI for pendingDesktopActions.
+ *
+ * Repointed from pendingCodingTasks, which nothing has written since the
+ * code_with_github tool switched to opening GitHub issues.
  *
  * Usage:
- *   cd bridge && npx tsx queue-viewer.ts
+ *   cd bridge && npm run queue
  *
  * Press 'q' or Ctrl-C to exit.
  */
@@ -41,6 +44,10 @@ const HIDE_CURSOR  = `${ESC}[?25l`;
 const SHOW_CURSOR  = `${ESC}[?25h`;
 
 // ─── Types ───────────────────────────────────────────────────────
+/**
+ * Renderer-facing shape. Desktop-action docs are normalized onto this in the
+ * snapshot handler below ("applied" -> "completed", appliedAt -> completedAt).
+ */
 interface CodingTask {
   id: string;
   task: string;
@@ -48,7 +55,7 @@ interface CodingTask {
   createdAt: Timestamp | null;
   startedAt?: Timestamp | null;
   completedAt?: Timestamp | null;
-  result?: { success: boolean; pr_url?: string; error?: string; summary?: string } | null;
+  result?: Record<string, unknown> | null;
   error?: string | null;
 }
 
@@ -133,14 +140,9 @@ function render() {
         timeLine = `${BLUE}  Running for ${elapsed(task.startedAt, null)}…${RESET}`;
       } else if (task.status === "completed") {
         const dur = elapsed(task.startedAt ?? task.createdAt, task.completedAt);
-        const prUrl = task.result?.pr_url;
-        if (prUrl) {
-          timeLine = `${DIM}  Took ${dur} · ${RESET}${GREEN}PR: ${prUrl}${RESET}`;
-        } else {
-          timeLine = `${DIM}  Took ${dur} · no PR URL captured${RESET}`;
-        }
+        timeLine = `${DIM}  Took ${dur} · ${RESET}${GREEN}${truncate(summarizeResult(task.result), innerWidth - 20)}${RESET}`;
       } else if (task.status === "failed") {
-        const errMsg = task.result?.error ?? task.error ?? "Unknown error";
+        const errMsg = String(task.result?.["error"] ?? task.error ?? "Unknown error");
         timeLine = `${RED}  Error: ${truncate(errMsg, innerWidth - 10)}${RESET}`;
       }
 
@@ -164,13 +166,57 @@ function render() {
   }
 }
 
+/** Compact summary of a completed action's result for the detail line. */
+function summarizeResult(result: Record<string, unknown> | null | undefined): string {
+  if (!result) return "applied";
+  if (typeof result["count"] === "number") return `${result["count"]} message(s)`;
+  if (result["found"] === false) return "not found";
+  if (result["found"] === true) return `read "${result["subject"] ?? ""}"`;
+  if (result["sent"] === true) return "sent";
+  if (result["sent"] === false) return "draft created";
+  if (result["success"] === false) return String(result["error"] ?? "failed");
+  return "applied";
+}
+
+/** One-line description of a queued desktop action for the list row. */
+function describeAction(action: string, payload: Record<string, unknown>): string {
+  switch (action) {
+  case "mail.search": {
+    const bits = [payload["sender"], payload["subject"]].filter(Boolean);
+    return `mail.search ${bits.length ? bits.join(" / ") : "(recent)"}`;
+  }
+  case "mail.read":   return `mail.read ${payload["messageId"] ?? ""}`;
+  case "mail.draft":  return `mail.draft "${payload["subject"] ?? ""}"`;
+  case "mail.send":   return `mail.send "${payload["subject"] ?? ""}"`;
+  case "calendar.create": return `calendar.create "${payload["title"] ?? ""}" ${payload["date"] ?? ""}`;
+  case "calendar.move":   return `calendar.move "${payload["eventTitle"] ?? ""}" -> ${payload["newDate"] ?? ""}`;
+  default: return action;
+  }
+}
+
 // ─── Firestore listener ──────────────────────────────────────────
-db.collection("pendingCodingTasks")
+db.collection("pendingDesktopActions")
   .orderBy("createdAt", "desc")
   .limit(20)
   .onSnapshot(
     (snap) => {
-      tasks = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CodingTask));
+      // Adapt desktop-action docs onto the shape the renderer already knows:
+      // action+payload become the description, applied/appliedAt map to
+      // completed/completedAt.
+      tasks = snap.docs.map((d) => {
+        const data = d.data();
+        const status = data["status"] === "applied" ? "completed" : data["status"];
+        return {
+          id: d.id,
+          task: describeAction(data["action"] ?? "?", (data["payload"] ?? {}) as Record<string, unknown>),
+          status,
+          createdAt: data["createdAt"] ?? null,
+          startedAt: data["startedAt"] ?? null,
+          completedAt: data["appliedAt"] ?? null,
+          result: data["result"] ?? null,
+          error: data["error"] ?? null,
+        } as CodingTask;
+      });
       render();
     },
     (err) => {

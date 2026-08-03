@@ -8,5 +8,5 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "applescript/*.ts", "mcp/*.ts"]
 }

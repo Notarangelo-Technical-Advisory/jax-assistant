@@ -6,12 +6,16 @@
   "scripts": {
     "sync": "npx tsx calendar-sync.ts",
     "queue": "npx tsx queue-viewer.ts",
-    "build": "tsc"
+    "desktop": "npx tsx desktop-bridge.ts",
+    "mcp:desktop": "npx tsx mcp/desktop-server.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }

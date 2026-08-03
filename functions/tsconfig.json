@@ -11,5 +11,9 @@
     "skipLibCheck": true
   },
   "compileOnSave": true,
-  "include": ["src"]
+  "include": ["src"],
+  // The MCP server is a local-only script run via tsx and is never deployed.
+  // It needs "exports"-map resolution for the MCP SDK, which requires
+  // module/moduleResolution Node16 — see tsconfig.mcp.json.
+  "exclude": ["src/mcp"]
 }

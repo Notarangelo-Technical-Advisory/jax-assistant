@@ -1,0 +1,23 @@
+// Typecheck-only config for the local MAISIE MCP server.
+//
+// The MCP SDK ships its CJS build under dist/ and is only resolvable through
+// its package "exports" map, which TypeScript honours under Node16 resolution.
+// Node16 resolution requires module: Node16, and changing that on the base
+// config would alter the emit for the deployed Cloud Functions — so the MCP
+// server gets its own config and is excluded from the production build.
+//
+// Run: npm run typecheck:mcp
+{
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noEmit": true,
+    "strict": true,
+    "target": "es2022",
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/mcp", "src/tools", "src/fta-client.ts"]
+}

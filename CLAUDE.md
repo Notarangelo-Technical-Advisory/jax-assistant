@@ -23,6 +23,26 @@ Glorify God and Enjoy Him Forever. Everything else supports this.
 - **Apple Mail** — Email communication
 - **fta-time-tracker** — Time tracking, weekly status reports, and monthly invoice generation
 
+## MCP Servers (in this repo)
+
+Two local stdio MCP servers make MAISIE usable from VS Code. See `README.md` for
+setup; `.mcp.json` is gitignored because it holds absolute paths.
+
+- **`maisie`** (`functions/src/mcp/server.ts`) — MAISIE's task and billing tools
+  plus `get_maisie_context` and a `maisie` persona prompt. Shares
+  `functions/src/tools/` with the cloud `chat` function, so there is one
+  implementation per tool.
+- **`desktop`** (`bridge/mcp/desktop-server.ts`) — Apple Mail and Calendar over
+  AppleScript, from `bridge/applescript/`.
+
+When working in this repo, prefer the `desktop` server's `calendar_read` over
+MAISIE's `get_calendar`: it reads Apple Calendar live, while `get_calendar` reads
+the Firestore mirror that the launchd sync populates.
+
+**Email:** `mail_draft` creates an unsent draft; `mail_send` actually sends.
+Default to drafting and let Jack send. The cloud MAISIE has no send capability
+at all.
+
 ## Key Recurring Workflows
 
 - **Daily:** Proactively review tomorrow's calendar. Flag anything at 9am or earlier — Jack tends to miss early appointments.

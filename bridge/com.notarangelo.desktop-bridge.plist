@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Runs the desktop bridge every 30s so the cloud MAISIE (web app, SMS) can
+  reach Apple Mail and Calendar on this Mac.
+
+  Install:
+    cp bridge/com.notarangelo.desktop-bridge.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.notarangelo.desktop-bridge.plist
+
+  Replaces com.notarangelo.coding-bridge.plist — unload that one first:
+    launchctl unload ~/Library/LaunchAgents/com.notarangelo.coding-bridge.plist
+
+  The first run will prompt for macOS automation permission to control Mail and
+  Calendar. Because launchd runs headless, grant it once by running
+  `npm run desktop` from a terminal before loading this agent.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.notarangelo.desktop-bridge</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/npx</string>
+        <string>tsx</string>
+        <string>/Users/jacknotarangelo/Documents/GitHub/jax-assistant/bridge/desktop-bridge.ts</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jacknotarangelo/Documents/GitHub/jax-assistant/bridge</string>
+
+    <key>StartInterval</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/desktop-bridge.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/desktop-bridge.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>NODE_TLS_REJECT_UNAUTHORIZED</key>
+        <string>0</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
