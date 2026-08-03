@@ -103,7 +103,8 @@ export async function executeTool(
     const formatted = events.map((e) => {
       const day = e.startTime.toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York"});
       const time = `${formatEventTime(e.startTime)}–${formatEventTime(e.endTime)}`;
-      return `${day} ${time}: ${e.summary}${e.location ? ` (${e.location})` : ""}`;
+      const cal = e.calendarName ? `[${e.calendarName}] ` : "";
+      return `${day} ${time}: ${cal}${e.summary}${e.location ? ` (${e.location})` : ""}`;
     });
     return {
       events: formatted,

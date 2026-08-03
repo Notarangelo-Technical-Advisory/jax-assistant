@@ -21,7 +21,7 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { readEvents, createEvent, moveEvent, CALENDAR_NAME } from "../applescript/calendar.js";
+import { readEvents, createEvent, moveEvent, CALENDAR_NAME, READ_CALENDARS } from "../applescript/calendar.js";
 import { searchMessages, readMessage, createDraft, sendMessage } from "../applescript/mail.js";
 
 const server = new Server(
@@ -32,7 +32,7 @@ const server = new Server(
 const TOOLS = [
   {
     name: "calendar_read",
-    description: `Read events from Jack's "${CALENDAR_NAME}" Apple Calendar, live. Prefer this over MAISIE's get_calendar — it reflects the calendar right now, whereas the Firestore mirror can be up to a minute stale (or much staler if the launchd sync is not running).`,
+    description: `Read events across all of Jack's tracked Apple Calendars, live: ${READ_CALENDARS.map((c) => c.label).join(", ")}. Every event carries the calendar it came from, so say which one when it matters — "IHRDC" is client work, "Grace Pres" is church. Prefer this over MAISIE's get_calendar: it reflects the calendars right now, whereas the Firestore mirror can be up to a minute stale (or much staler if the launchd sync is not running).`,
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -46,7 +46,7 @@ const TOOLS = [
   },
   {
     name: "calendar_create",
-    description: `Create an event on the "${CALENDAR_NAME}" calendar. Applies immediately. Note the Firestore mirror will not reflect it until the next bridge sync, so the MAISIE web dashboard may not show it right away — say so rather than claiming it is everywhere.`,
+    description: `Create an event. Always lands on the "${CALENDAR_NAME}" calendar — reads span several calendars but writes only go here, so do not offer to put something on IHRDC or a shared calendar. Applies immediately. The Firestore mirror will not reflect it until the next bridge sync, so the MAISIE web dashboard may lag — say so rather than claiming it is everywhere.`,
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -151,10 +151,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "calendar_read": {
       const events = readEvents((args["days_ahead"] as number) ?? 7);
       return ok({
-        calendar: CALENDAR_NAME,
+        calendars: READ_CALENDARS.map((c) => c.label),
         source: "Apple Calendar (live)",
         count: events.length,
         events: events.map((e) => ({
+          calendar: e.calendarName,
           summary: e.summary,
           start: e.startTime.toISOString(),
           end: e.endTime.toISOString(),

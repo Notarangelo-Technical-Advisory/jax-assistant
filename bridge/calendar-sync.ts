@@ -17,7 +17,7 @@ import {
   readEvents,
   createEventScript,
   moveEventScript,
-  CALENDAR_NAME,
+  READ_CALENDARS,
   type ParsedEvent,
 } from "./applescript/calendar.js";
 import { runAppleScript } from "./applescript/run.js";
@@ -105,9 +105,12 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
   const collRef = db.collection("calendarEvents");
   const now = Timestamp.now();
 
-  // Build a unique key for each event to enable upsert
+  // Build a unique key for each event to enable upsert. The calendar name is
+  // part of the key now that several calendars are synced — without it, two
+  // calendars holding the same meeting at the same time would collide and one
+  // would be deleted as stale on every run.
   const eventKey = (e: ParsedEvent) =>
-    `${e.summary}__${e.startTime.toISOString()}`;
+    `${e.calendarName}__${e.summary}__${e.startTime.toISOString()}`;
 
   // Get existing synced events
   const existingSnap = await collRef.get();
@@ -115,7 +118,7 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
   for (const doc of existingSnap.docs) {
     const data = doc.data();
     const start = data.startTime?.toDate?.() ?? new Date(data.startTime);
-    const key = `${data.summary}__${start.toISOString()}`;
+    const key = `${data.calendarName ?? ""}__${data.summary}__${start.toISOString()}`;
     existingByKey.set(key, doc.id);
   }
 
@@ -134,7 +137,7 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
       endTime: Timestamp.fromDate(event.endTime),
       location: event.location || null,
       notes: event.notes || null,
-      calendarName: CALENDAR_NAME,
+      calendarName: event.calendarName,
       syncedAt: now,
     };
 
@@ -178,7 +181,7 @@ async function main(): Promise<void> {
   // Apply any pending calendar write actions before reading
   await applyPendingActions();
 
-  console.log(`[${ts}] Syncing "${CALENDAR_NAME}" calendar (next ${SYNC_DAYS_AHEAD} days)...`);
+  console.log(`[${ts}] Syncing ${READ_CALENDARS.length} calendars (${READ_CALENDARS.map((c) => c.label).join(", ")}) for the next ${SYNC_DAYS_AHEAD} days...`);
   const events = readCalendarEvents();
   await syncToFirestore(events);
 }

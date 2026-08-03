@@ -5,6 +5,11 @@ export interface CalendarEvent {
   startTime: Date;
   endTime: Date;
   location?: string;
+  /**
+   * Which calendar the event came from ("Jax", "IHRDC", "Grace Pres", ...).
+   * Undefined for docs written before multi-calendar sync landed.
+   */
+  calendarName?: string;
 }
 
 /**
@@ -29,6 +34,7 @@ export async function readCalendarEvents(
       startTime: data.startTime.toDate(),
       endTime: data.endTime.toDate(),
       location: data.location || undefined,
+      calendarName: data.calendarName || undefined,
     };
   });
 }

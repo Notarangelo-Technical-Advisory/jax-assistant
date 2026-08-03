@@ -1,6 +1,35 @@
 import { runAppleScript, esc, appleScriptDate, parseAppleDate } from "./run.js";
 
-/** The Apple Calendar that MAISIE reads and writes. */
+/**
+ * Calendars MAISIE reads, as an explicit allowlist.
+ *
+ * Apple Calendar records which calendars you have unchecked (in
+ * `defaults read com.apple.iCal DisabledCalendars`), but only as UUIDs, and the
+ * only way to map those to names is Calendar.sqlitedb, which is TCC-protected.
+ * AppleScript has no visibility property, and its calendarIdentifier property
+ * errors at runtime. So this list is maintained by hand — hiding a calendar in
+ * Calendar.app does not remove it here.
+ *
+ * `label` is what MAISIE calls the calendar. It exists mainly because Exchange
+ * names its default calendar "Calendar", which is meaningless in a sentence.
+ *
+ * Deliberately excluded: Untitled Calendar, Birthdays (x2), Scheduled
+ * Reminders, Siri Suggestions, and the three redundant US holiday calendars.
+ */
+export const READ_CALENDARS: Array<{name: string; label: string}> = [
+  {name: "Jax", label: "Jax"},
+  {name: "Calendar", label: "IHRDC"},
+  {name: "Home", label: "Home"},
+  {name: "Family", label: "Family"},
+  {name: "Grace Presbyterian Church: Jack Notarangelo", label: "Grace Pres"},
+  {name: "jack@gracesouthshore.org", label: "Grace Pres (email)"},
+  {name: "jacknota1964@gmail.com", label: "Gmail"},
+];
+
+/**
+ * The single calendar MAISIE writes to. Creating an event has to pick one
+ * calendar, and "Jax" is the personal working calendar.
+ */
 export const CALENDAR_NAME = "Jax";
 
 export interface ParsedEvent {
@@ -9,6 +38,8 @@ export interface ParsedEvent {
   endTime: Date;
   location: string;
   notes: string;
+  /** Friendly label of the source calendar, from READ_CALENDARS. */
+  calendarName: string;
 }
 
 // ─── Script builders ─────────────────────────────────────────────
@@ -55,29 +86,43 @@ end tell
 `.trim();
 }
 
-export function readEventsScript(daysAhead: number): string {
+/**
+ * One script that walks every allowlisted calendar, so a read is a single
+ * osascript invocation rather than one per calendar.
+ *
+ * Each output line is: calendarName ||| summary ||| start ||| end ||| location ||| notes
+ * A missing calendar is skipped rather than failing the whole read.
+ */
+export function readEventsScript(daysAhead: number, calendars = READ_CALENDARS): string {
+  const nameList = calendars.map((c) => `"${esc(c.name)}"`).join(", ");
   return `
+set calNames to {${nameList}}
 set startDate to (current date)
 set endDate to startDate + ${daysAhead} * days
 set output to ""
 tell application "Calendar"
-    set cal to first calendar whose name is "${CALENDAR_NAME}"
-    set evts to (every event of cal whose start date ≥ startDate and start date < endDate)
-    repeat with e in evts
-        set evtStart to start date of e
-        set evtEnd to end date of e
-        set evtSummary to summary of e
-        set evtLocation to ""
-        set evtNotes to ""
+    repeat with cn in calNames
+        set calName to cn as string
         try
-            set evtLocation to location of e
+            set cal to first calendar whose name is calName
+            set evts to (every event of cal whose start date ≥ startDate and start date < endDate)
+            repeat with e in evts
+                set evtStart to start date of e
+                set evtEnd to end date of e
+                set evtSummary to summary of e
+                set evtLocation to ""
+                set evtNotes to ""
+                try
+                    set evtLocation to location of e
+                end try
+                try
+                    set evtNotes to description of e
+                end try
+                if evtLocation is missing value then set evtLocation to ""
+                if evtNotes is missing value then set evtNotes to ""
+                set output to output & calName & "|||" & evtSummary & "|||" & (evtStart as «class isot» as string) & "|||" & (evtEnd as «class isot» as string) & "|||" & evtLocation & "|||" & evtNotes & linefeed
+            end repeat
         end try
-        try
-            set evtNotes to description of e
-        end try
-        if evtLocation is missing value then set evtLocation to ""
-        if evtNotes is missing value then set evtNotes to ""
-        set output to output & evtSummary & "|||" & (evtStart as «class isot» as string) & "|||" & (evtEnd as «class isot» as string) & "|||" & evtLocation & "|||" & evtNotes & linefeed
     end repeat
 end tell
 return output
@@ -85,25 +130,31 @@ return output
 }
 
 /**
- * Read events starting from now through `daysAhead` days out. Reads Apple
- * Calendar live, so it does not depend on the Firestore mirror being fresh.
+ * Read events across every allowlisted calendar, from now through `daysAhead`
+ * days out. Reads Apple Calendar live, so it does not depend on the Firestore
+ * mirror being fresh. Results are sorted by start time across calendars.
  */
 export function readEvents(daysAhead: number): ParsedEvent[] {
   let raw: string;
   try {
-    raw = runAppleScript(readEventsScript(daysAhead));
+    // 7 calendars over a week is meaningfully more work than one — give it room.
+    raw = runAppleScript(readEventsScript(daysAhead), 120000);
   } catch (err) {
     console.error("AppleScript failed:", err);
     return [];
   }
   if (!raw) return [];
 
+  const labelFor = new Map(READ_CALENDARS.map((c) => [c.name, c.label]));
+
   return raw
     .split("\n")
     .filter((line) => line.trim())
     .map((line) => {
-      const [summary, startStr, endStr, location, notes] = line.split("|||");
+      const [calName, summary, startStr, endStr, location, notes] = line.split("|||");
+      const rawName = calName?.trim() ?? "";
       return {
+        calendarName: labelFor.get(rawName) ?? rawName,
         summary: summary?.trim() || "Untitled",
         startTime: parseAppleDate(startStr?.trim()),
         endTime: parseAppleDate(endStr?.trim()),
@@ -111,7 +162,8 @@ export function readEvents(daysAhead: number): ParsedEvent[] {
         notes: notes?.trim() || "",
       };
     })
-    .filter((e) => !isNaN(e.startTime.getTime()));
+    .filter((e) => !isNaN(e.startTime.getTime()))
+    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 }
 
 /** Create an event. Applies immediately — no queue, no sync delay. */
