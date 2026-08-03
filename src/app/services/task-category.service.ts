@@ -19,7 +19,8 @@ export class TaskCategoryService {
     { key: 'dial',    label: 'DIAL',    order: 2 },
     { key: 'ppk',     label: 'PPK',     order: 3 },
     { key: 'church',  label: 'Church',  order: 4 },
-    { key: 'general', label: 'General', order: 5 },
+    { key: 'embassy', label: 'Embassy Series', order: 5 },
+    { key: 'general', label: 'General', order: 6 },
   ];
 
   /**
