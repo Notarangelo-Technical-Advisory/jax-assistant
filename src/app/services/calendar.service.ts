@@ -26,6 +26,7 @@ export class CalendarService {
         startTime: d.startTime?.toDate?.() ? d.startTime.toDate() : new Date(d.startTime),
         endTime: d.endTime?.toDate?.() ? d.endTime.toDate() : new Date(d.endTime),
         syncedAt: d.syncedAt?.toDate?.() ? d.syncedAt.toDate() : new Date(d.syncedAt),
+        changedAt: d.changedAt?.toDate?.() ? d.changedAt.toDate() : null,
       } as CalendarEvent)))
     );
   }

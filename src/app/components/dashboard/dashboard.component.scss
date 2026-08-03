@@ -161,7 +161,20 @@ $border: #334155;
 .section-header {
   display: flex;
   align-items: center;
+  gap: 0.6rem;
   justify-content: space-between;
+}
+
+// How current the briefing's facts are. Pushed hard left against the heading so
+// the TTS button stays on the right edge where it was.
+.freshness {
+  margin-right: auto;
+  font-size: 0.7rem;
+  color: $text-secondary;
+  background: rgba($text-secondary, 0.12);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
 }
 
 .empty-state {
@@ -318,6 +331,32 @@ $border: #334155;
   &.early {
     border-left-color: $warning;
     background: rgba($warning, 0.05);
+  }
+
+  // Added or rescheduled within the last few minutes. Deliberately a ring
+  // rather than a border-left change so it composes with .early.
+  &.recently-changed {
+    box-shadow: inset 0 0 0 1px rgba($success, 0.55);
+  }
+}
+
+.event-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  white-space: nowrap;
+
+  &.event-badge-new {
+    color: $success;
+    background: rgba($success, 0.15);
+  }
+
+  &.event-badge-moved {
+    color: $warning;
+    background: rgba($warning, 0.15);
   }
 }
 

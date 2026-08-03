@@ -80,7 +80,10 @@
       <!-- Briefing -->
       <section class="section">
         <div class="section-header">
-          <h2>Morning Briefing</h2>
+          <h2>Briefing</h2>
+          @if (briefingAge(); as age) {
+            <span class="freshness" [title]="'Facts last refreshed ' + age">{{ age }}</span>
+          }
           @if (briefing() && featureFlags.enableTts()) {
             <button class="btn-icon" (click)="speakBriefing()" title="Read briefing aloud">
               @if (ttsService.speakingId() && ttsService.speakingId()!.startsWith('briefing-')) {
@@ -171,7 +174,7 @@
             </div>
           }
         } @else {
-          <p class="empty-state">No briefing yet today. Check back after 7 AM ET.</p>
+          <p class="empty-state">No briefing yet. Waiting on the first calendar sync.</p>
         }
       </section>
 
@@ -182,11 +185,16 @@
         @if (calendarEvents().length > 0) {
           <div class="calendar-list">
             @for (event of calendarEvents(); track event.id) {
-              <div class="calendar-event" [class.early]="isEarlyEvent(event)">
+              <div class="calendar-event"
+                   [class.early]="isEarlyEvent(event)"
+                   [class.recently-changed]="isRecentlyChanged(event)">
                 <span class="event-time">
                   {{ formatEventTime(event.startTime) }} – {{ formatEventTime(event.endTime) }}
                 </span>
                 <span class="event-summary">{{ event.summary }}</span>
+                @if (changeBadge(event); as badge) {
+                  <span class="event-badge event-badge-{{ badge }}">{{ badge }}</span>
+                }
                 @if (event.location) {
                   <span class="event-location">{{ event.location }}</span>
                 }

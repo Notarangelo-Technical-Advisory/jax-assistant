@@ -15,8 +15,25 @@
     <key>WorkingDirectory</key>
     <string>/Users/jacknotarangelo/Documents/GitHub/jax-assistant/bridge</string>
 
+    <!--
+      Polled, not watched. WatchPaths on ~/Library/Calendars does not fire:
+      the Calendar store is TCC-protected and launchd cannot register a kqueue
+      on it (verified empirically on macOS 26.5 — the same plist watching an
+      unprotected directory fires in about a second, this one never fires at
+      all). Granting Full Disk Access would be needed to change that, and it
+      still would not be a documented contract, so this polls instead.
+
+      A full run measured 30-50s wall clock against the 7-calendar allowlist,
+      but only ~1.5s of that is CPU (3% of one core) — the rest is blocked
+      waiting on Calendar.app. So the cost of polling often is latency, not
+      load. Effective freshness is therefore ~2-3 min, not 2 min exactly.
+
+      Runs overlapping the next tick is expected at this interval and is
+      handled by the lock in calendar-sync.ts, which skips rather than racing.
+      Do not drop below ~60s without re-measuring the read.
+    -->
     <key>StartInterval</key>
-    <integer>900</integer>
+    <integer>120</integer>
 
     <key>StandardOutPath</key>
     <string>/tmp/calendar-sync.log</string>

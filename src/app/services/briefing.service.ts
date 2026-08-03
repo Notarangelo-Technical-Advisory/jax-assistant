@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Firestore, collection, query, orderBy, limit, collectionData } from '@angular/fire/firestore';
+import { Firestore, doc, docData } from '@angular/fire/firestore';
 import { HttpClient } from '@angular/common/http';
 import { Observable, map, firstValueFrom } from 'rxjs';
 import { Briefing } from '../models/briefing.model';
@@ -11,11 +11,19 @@ export class BriefingService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
 
+  /**
+   * The live briefing.
+   *
+   * `briefings/live` is rewritten whenever the calendar changes or the facts
+   * heartbeat runs, so this is always current. It used to be an
+   * orderBy(createdAt).limit(1) query over the whole collection, which returned
+   * whichever dated snapshot happened to be newest — and those are now an
+   * archive that only the 7am/1pm runs write.
+   */
   getLatestBriefing(): Observable<Briefing | null> {
-    const ref = collection(this.firestore, 'briefings');
-    const q = query(ref, orderBy('createdAt', 'desc'), limit(1));
-    return collectionData(q, { idField: 'id' }).pipe(
-      map((docs) => docs.length > 0 ? docs[0] as Briefing : null)
+    const ref = doc(this.firestore, 'briefings', 'live');
+    return docData(ref, { idField: 'id' }).pipe(
+      map((d) => (d ? (d as Briefing) : null))
     );
   }
 

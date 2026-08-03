@@ -17,6 +17,25 @@ export interface Briefing {
   nextWeekEvents?: BriefingCalendarEvent[];
   calendarSyncAge?: number | null;
   createdAt: Date;
+  /** Last time any fact on the briefing was refreshed. Moves on every sync change. */
+  updatedAt?: Date;
+  /** Last time the prose was regenerated. Moves only when narrativeSummary changes. */
+  narrativeAt?: Date | null;
+  lastChangeSummary?: BriefingChangeSummary | null;
+}
+
+/** What the calendar sync last saw change, as recorded on the live briefing. */
+export interface BriefingChangeSummary {
+  added: number;
+  moved: number;
+  updated: number;
+  deleted: number;
+  changes?: Array<{
+    summary: string;
+    kind: 'added' | 'moved' | 'updated' | 'deleted';
+    startISO: string;
+    calendarName: string;
+  }>;
 }
 
 export interface BriefingCalendarEvent {

@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
 import {onRequest} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
+import {onDocumentWritten} from "firebase-functions/v2/firestore";
 import twilio from "twilio";
 import {getUnbilledEntries, getLastInvoice, getTimeEntriesForRange, getCustomers} from "./fta-client";
 import Anthropic from "@anthropic-ai/sdk";
@@ -359,8 +360,42 @@ async function getCalendarEvents(
   return readCalendarEvents(db, startOfDay, endOfDay);
 }
 
-// ─── Shared: Briefing generation logic ─────────────────────────
-async function runBriefing(): Promise<void> {
+// ─── Briefing: state, narration, and persistence ───────────────
+//
+// runBriefing used to be one 290-line function that gathered data, called the
+// model, and wrote Firestore. It only ever ran on the 7am/1pm cron, so the
+// briefing was frozen between beats and stale within the hour.
+//
+// It is now three pieces so a calendar change can refresh the *facts* without
+// paying for the model, and re-narrate only when something actually warrants it:
+//
+//   computeBriefingState  — pure data gathering + alert rules, no model call
+//   generateNarrative     — the single Anthropic call
+//   writeBriefing         — persistence (briefings/live, archive, alerts)
+//
+// The split is also what makes a genuinely agentic briefing a contained change
+// later: generateNarrative is the only seam that would become a tool loop.
+
+/** The billing figures, which move on the order of hours rather than minutes. */
+interface BillingSlice {
+  unbilledHours: number;
+  unbilledAmount: number;
+  weekHours: number;
+  lastInvoiceDate: string | null;
+  lastInvoiceAmount: number | null;
+}
+
+/**
+ * Gather everything the briefing reports on. No model call, no writes — so it
+ * is cheap enough to run on every calendar change.
+ *
+ * `reuseBilling` skips the three cross-project reads into fta-invoice-tracking
+ * when a recent result is already on hand. Unbilled hours do not move because a
+ * meeting shifted, and those reads are the expensive part of this function.
+ */
+async function computeBriefingState(
+  reuseBilling?: BillingSlice | null
+): Promise<Record<string, unknown> & {alerts: Array<{type: string; message: string}>}> {
     const today = new Date();
     const dayOfWeek = today.getDay();
     const dayOfMonth = today.getDate();
@@ -382,8 +417,8 @@ async function runBriefing(): Promise<void> {
 
     const [unbilledEntries, lastInvoice, calendarEvents, activeTasks, lastSyncDoc, existingTodayAlerts] =
       await Promise.all([
-        getUnbilledEntries().catch(() => []),
-        getLastInvoice().catch(() => null),
+        reuseBilling ? Promise.resolve(null) : getUnbilledEntries().catch(() => []),
+        reuseBilling ? Promise.resolve(null) : getLastInvoice().catch(() => null),
         getCalendarEvents(calendarWindowStart, todayEnd).catch(() => []),
         db.collection("tasks")
           .where("completed", "==", false)
@@ -400,21 +435,34 @@ async function runBriefing(): Promise<void> {
           .catch(() => new Set<string>()),
       ]);
 
-    const totalUnbilled = unbilledEntries.reduce(
-      (sum, e) => sum + e.durationHours, 0
-    );
-
     // Get this week's time entries for status report
     const weekStart = new Date(today);
     weekStart.setDate(today.getDate() - today.getDay() + 1);
     const weekStartStr = weekStart.toISOString().split("T")[0];
 
-    const weekEntries = await getTimeEntriesForRange(
-      weekStartStr, todayStr
-    ).catch(() => []);
-    const weekHours = weekEntries.reduce(
-      (sum, e) => sum + e.durationHours, 0
-    );
+    let totalUnbilled: number;
+    let weekHours: number;
+    let lastInvoiceDate: string | null;
+    let lastInvoiceAmount: number | null;
+
+    if (reuseBilling) {
+      totalUnbilled = reuseBilling.unbilledHours;
+      weekHours = reuseBilling.weekHours;
+      lastInvoiceDate = reuseBilling.lastInvoiceDate;
+      lastInvoiceAmount = reuseBilling.lastInvoiceAmount;
+    } else {
+      totalUnbilled = (unbilledEntries ?? []).reduce(
+        (sum, e) => sum + e.durationHours, 0
+      );
+      const weekEntries = await getTimeEntriesForRange(
+        weekStartStr, todayStr
+      ).catch(() => []);
+      weekHours = weekEntries.reduce(
+        (sum, e) => sum + e.durationHours, 0
+      );
+      lastInvoiceDate = lastInvoice?.issueDate || null;
+      lastInvoiceAmount = lastInvoice?.total || null;
+    }
 
     // ── Task filtering ──────────────────────────────────────────
     const todayDayOfWeek = today.getDay();   // 0 (Sun) – 6 (Sat)
@@ -540,7 +588,7 @@ async function runBriefing(): Promise<void> {
       const lastMonth = new Date(today);
       lastMonth.setMonth(lastMonth.getMonth() - 1);
       const lastMonthName = lastMonth.toLocaleString("en-US", {month: "long"});
-      if (!lastInvoice || new Date(lastInvoice.issueDate) < lastMonth) {
+      if (!lastInvoiceDate || new Date(lastInvoiceDate) < lastMonth) {
         addAlert("invoice", `${lastMonthName} invoice may be due. Unbilled: ${totalUnbilled.toFixed(1)}h ($${(totalUnbilled * 150).toFixed(0)}).`);
       }
     }
@@ -564,8 +612,8 @@ async function runBriefing(): Promise<void> {
       unbilledHours: Math.round(totalUnbilled * 100) / 100,
       unbilledAmount: Math.round(totalUnbilled * 150 * 100) / 100,
       weekHours: Math.round(weekHours * 100) / 100,
-      lastInvoiceDate: lastInvoice?.issueDate || null,
-      lastInvoiceAmount: lastInvoice?.total || null,
+      lastInvoiceDate,
+      lastInvoiceAmount,
       calendarEvents: calendarEvents.map((e) => ({
         summary: e.summary,
         startTime: formatEventTime(e.startTime),
@@ -587,23 +635,46 @@ async function runBriefing(): Promise<void> {
       alerts,
     };
 
-    // ── AI narrative summary ────────────────────────────────────
+    return briefingData;
+}
+
+/**
+ * The one model call in the briefing path.
+ *
+ * `changeSummary` is what a scheduled run does not have: when a reschedule is
+ * what prompted this narration, saying so is the whole point — otherwise the
+ * prose silently reflects the new reality and Jack cannot tell what moved.
+ */
+async function generateNarrative(
+  briefingData: Record<string, unknown>,
+  changeSummary?: Record<string, unknown> | null
+): Promise<string | null> {
+    const isAfternoon = briefingData["timeOfDay"] === "afternoon";
     let narrativeSummary: string | null = null;
     try {
       const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
       const systemMsg = isAfternoon
         ? `You are Maisie, Jack Notarangelo's executive assistant. Write a concise afternoon check-in (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Focus on what's left for the rest of the day — remaining meetings, any overdue tasks still open, and current unbilled hours. Do not repeat things Jack already knows from the morning. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech. Jack publishes invoices at the beginning of each month — unbilled hours are normal and expected throughout the month, so do not mention them unless Jack specifically asks or an invoice alert is present.`
         : `You are Maisie, Jack Notarangelo's executive assistant. Write a concise morning briefing (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Contextualize the numbers — mention trends, what to focus on, and any urgent items. If there are overdue tasks or early meetings, highlight them. On Fridays, mention the week ahead. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech. The calendarSyncAge field is in minutes; use calendarSyncAgeLabel for any human-readable reference to sync age. Jack publishes invoices at the beginning of each month — unbilled hours are normal and expected throughout the month, so do not mention them unless Jack specifically asks or an invoice alert is present.`;
+
+      // A change-triggered re-narration is not a fresh briefing — Jack has
+      // already read today's. Lead with what moved instead of restating the day.
+      const changeMsg = changeSummary
+        ? ` This is an update prompted by a calendar change, not a scheduled briefing. Jack has already seen today's briefing, so lead with what changed and keep it to 1-3 sentences. The changeSummary field lists the added, moved, and deleted events that triggered this update — name them specifically.`
+        : "";
+
       const aiResponse = await anthropic.messages.create({
         model: MODEL,
         max_tokens: 1024,
         // Pure summarization of JSON assembled above — thinking buys nothing here.
         thinking: {type: "disabled"},
         output_config: {effort: "low"},
-        system: systemMsg,
+        system: systemMsg + changeMsg,
         messages: [{
           role: "user",
-          content: JSON.stringify({...briefingData, timeOfDay}),
+          content: JSON.stringify(
+            changeSummary ? {...briefingData, changeSummary} : briefingData
+          ),
         }],
       });
       // Filter by type rather than indexing content[0] — with thinking enabled
@@ -620,15 +691,60 @@ async function runBriefing(): Promise<void> {
       console.error("AI narrative generation failed:", err);
     }
 
+    return narrativeSummary;
+}
+
+/**
+ * Persist a briefing.
+ *
+ * `briefings/live` is the document the dashboard reads — always the current
+ * state. The dated documents are an archive of what the 7am and 1pm runs said,
+ * kept so "what did the morning briefing tell me" stays answerable.
+ */
+async function writeBriefing(
+  briefingData: Record<string, unknown> & {alerts: Array<{type: string; message: string}>},
+  narrativeSummary: string | null,
+  opts: {archiveDocId?: string; changeSummary?: Record<string, unknown> | null} = {}
+): Promise<void> {
+    const todayStr = briefingData["date"] as string;
+    const alerts = briefingData.alerts;
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
     const briefing = {
       ...briefingData,
       narrativeSummary,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: now,
+      updatedAt: now,
+      // Keyed separately from updatedAt so the dashboard can tell a facts-only
+      // refresh from new prose — the TTS cache depends on that distinction.
+      narrativeAt: now,
+      lastChangeSummary: opts.changeSummary ?? null,
     };
 
-    const briefingDocId = isAfternoon ? `${todayStr}-afternoon` : todayStr;
-    await db.collection("briefings").doc(briefingDocId).set(briefing);
+    await db.collection("briefings").doc("live").set(briefing);
+    if (opts.archiveDocId) {
+      await db.collection("briefings").doc(opts.archiveDocId).set(briefing);
+    }
 
+    await syncAlerts(alerts, todayStr);
+}
+
+/**
+ * Reconcile the alerts collection, which is what the dashboard's alert banner
+ * reads — `briefings/live.alerts` is not rendered directly.
+ *
+ * Shared by both write paths on purpose. A facts-only refresh can surface a
+ * genuinely new alert (a task crossing into overdue at midday, the calendar
+ * sync going quiet), and if only the full-briefing path wrote here those would
+ * sit invisible until the next cron beat.
+ *
+ * Idempotent: the alert type is the document id, so re-running replaces rather
+ * than duplicates.
+ */
+async function syncAlerts(
+  alerts: Array<{type: string; message: string}>,
+  todayStr: string
+): Promise<void> {
     // Delete any undismissed alerts from prior days (stale alerts with random or type-based IDs).
     // This prevents old overdue-tasks/calendar-stale/invoice alerts from piling up day after day.
     // Filter in JS (briefingDate < today) to avoid needing a composite index on dismissed+briefingDate.
@@ -652,6 +768,159 @@ async function runBriefing(): Promise<void> {
       });
     }
 }
+
+/**
+ * Update briefings/live with new facts while leaving the prose alone.
+ *
+ * Deliberately preserves narrativeSummary and narrativeAt: the dashboard keys
+ * its TTS cache on narrativeAt, so bumping it here would re-synthesize audio
+ * for words that did not change.
+ */
+async function writeFactsOnly(
+  state: Record<string, unknown> & {alerts: Array<{type: string; message: string}>},
+  changeSummary?: Record<string, unknown> | null
+): Promise<void> {
+  const liveRef = db.collection("briefings").doc("live");
+  const liveSnap = await liveRef.get().catch(() => null);
+  const live = liveSnap?.exists ? liveSnap.data() : null;
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  await liveRef.set({
+    ...state,
+    narrativeSummary: (live?.["narrativeSummary"] as string | null) ?? null,
+    narrativeAt: live?.["narrativeAt"] ?? null,
+    createdAt: live?.["createdAt"] ?? now,
+    updatedAt: now,
+    lastChangeSummary: changeSummary ?? live?.["lastChangeSummary"] ?? null,
+  });
+
+  await syncAlerts(state.alerts, state["date"] as string);
+}
+
+/**
+ * A full briefing: fresh state, fresh prose, written to live plus a dated
+ * archive. This is what the 7am/1pm cron and the dashboard refresh button do.
+ */
+async function runBriefing(): Promise<void> {
+  const state = await computeBriefingState();
+  const narrative = await generateNarrative(state);
+  const archiveDocId = state["timeOfDay"] === "afternoon"
+    ? `${state["date"]}-afternoon`
+    : (state["date"] as string);
+  await writeBriefing(state, narrative, {archiveDocId});
+}
+
+// ─── Reactive: recompute when the calendar actually changes ─────
+//
+// Triggered by metadata/calendarChange, which the Mac bridge writes ONLY when a
+// sync found a real difference. Triggering off metadata/calendarSync instead
+// would fire on every heartbeat — every two minutes, all day — for nothing.
+
+/** Minimum gap between two model-written narratives, to bound churn. */
+const NARRATIVE_MIN_GAP_MS = 2 * 60 * 1000;
+
+export const onCalendarChange = onDocumentWritten(
+  {
+    document: "metadata/calendarChange",
+    region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 120,
+  },
+  async (event) => {
+    const after = event.data?.after?.data();
+    if (!after) return; // deletion — nothing to react to
+
+    const changeSummary = {
+      added: after["added"] ?? 0,
+      moved: after["moved"] ?? 0,
+      updated: after["updated"] ?? 0,
+      deleted: after["deleted"] ?? 0,
+      changes: after["changes"] ?? [],
+    };
+    const materialChange = after["materialChange"] === true;
+
+    // Reuse the billing figures already on the live document when they are
+    // recent. A meeting moving does not change unbilled hours, and those are
+    // three cross-project reads into fta-invoice-tracking.
+    const liveRef = db.collection("briefings").doc("live");
+    const liveSnap = await liveRef.get().catch(() => null);
+    const live = liveSnap?.exists ? liveSnap.data() : null;
+
+    const liveUpdatedMs = live?.["updatedAt"]?.toDate?.()?.getTime() ?? 0;
+    const billingFresh = Date.now() - liveUpdatedMs < 10 * 60 * 1000;
+    const reuseBilling: BillingSlice | null = billingFresh && live ? {
+      unbilledHours: (live["unbilledHours"] as number) ?? 0,
+      unbilledAmount: (live["unbilledAmount"] as number) ?? 0,
+      weekHours: (live["weekHours"] as number) ?? 0,
+      lastInvoiceDate: (live["lastInvoiceDate"] as string | null) ?? null,
+      lastInvoiceAmount: (live["lastInvoiceAmount"] as number | null) ?? null,
+    } : null;
+
+    const state = await computeBriefingState(reuseBilling);
+
+    // Re-narrate only when the change is worth interrupting for, not too soon
+    // after the last narration, and not in the middle of the night.
+    const etHour = parseInt(
+      new Date().toLocaleString("en-US", {
+        hour: "numeric", hour12: false, timeZone: "America/New_York",
+      })
+    );
+    const narrativeAgeMs = Date.now() -
+      (live?.["narrativeAt"]?.toDate?.()?.getTime() ?? 0);
+    const inWakingHours = etHour >= 6 && etHour < 21;
+    // No prose at all yet — first run after deploy, or a previous generation
+    // failed. Narrate regardless of whether this particular change was material,
+    // otherwise the dashboard shows bare numbers until the next cron beat.
+    const hasNarrative = Boolean(live?.["narrativeSummary"]);
+    const shouldNarrate =
+      inWakingHours &&
+      (!hasNarrative ||
+        (materialChange && narrativeAgeMs > NARRATIVE_MIN_GAP_MS));
+
+    if (shouldNarrate) {
+      const narrative = await generateNarrative(state, changeSummary);
+      await writeBriefing(state, narrative, {changeSummary});
+      console.log(`[onCalendarChange] re-narrated: ${JSON.stringify(changeSummary)}`);
+      return;
+    }
+
+    // Facts-only refresh: update everything except the prose, so the dashboard
+    // is current without paying for a model call or churning the TTS cache.
+    await writeFactsOnly(state, changeSummary);
+    console.log(
+      `[onCalendarChange] facts-only refresh (material=${materialChange}, ` +
+      `narrativeAgeMin=${Math.round(narrativeAgeMs / 60000)}, etHour=${etHour})`
+    );
+  }
+);
+
+// ─── Scheduled: keep the facts fresh between calendar changes ───
+//
+// Unbilled hours, and a task crossing midnight into overdue, are not calendar
+// events, so nothing above would notice them. This is a cheap facts-only
+// refresh — no model call — on the half hour during the working day.
+export const refreshBriefingFacts = onSchedule(
+  {
+    schedule: "*/30 6-20 * * 1-5",
+    timeZone: "America/New_York",
+    region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    const state = await computeBriefingState();
+    const liveSnap = await db.collection("briefings").doc("live").get().catch(() => null);
+
+    // Self-heal: if there is no prose on the live document — first run after
+    // deploy, or a generation that failed — write a full briefing rather than
+    // leaving the dashboard showing numbers with no narrative.
+    if (!liveSnap?.exists || !liveSnap.data()?.["narrativeSummary"]) {
+      await writeBriefing(state, await generateNarrative(state));
+      return;
+    }
+    await writeFactsOnly(state);
+  }
+);
 
 // ─── On-demand: Refresh briefing (called from dashboard refresh button) ────
 export const refreshBriefing = onRequest(

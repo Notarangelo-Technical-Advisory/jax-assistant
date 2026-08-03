@@ -119,6 +119,52 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return this.tasks().filter((t) => t.dueDate === todayET);
   });
 
+  // ── Freshness ────────────────────────────────────────────────
+  // The briefing now updates whenever the calendar changes rather than twice a
+  // day, so the useful thing to show is how current it is. Ticks on a timer
+  // because "3 minutes ago" goes stale on its own, with no new data arriving.
+  private now = signal(Date.now());
+  private nowTimer?: ReturnType<typeof setInterval>;
+
+  /** How old the live briefing's facts are, e.g. "just now", "4 min ago". */
+  briefingAge = computed(() => {
+    const b = this.briefing();
+    if (!b) return null;
+    const updated = this.toDate(b.updatedAt) ?? this.toDate(b.createdAt);
+    if (!updated) return null;
+    const mins = Math.floor((this.now() - updated.getTime()) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins === 1) return '1 min ago';
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.round(mins / 60);
+    return hrs === 1 ? '1 hour ago' : `${hrs} hours ago`;
+  });
+
+  /** Firestore Timestamp, Date, or absent — normalise to a Date. */
+  private toDate(v: unknown): Date | null {
+    if (!v) return null;
+    const ts = v as { toDate?: () => Date };
+    if (typeof ts.toDate === 'function') return ts.toDate();
+    const d = new Date(v as string | number | Date);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  /** True for events that changed recently enough to be worth pointing out. */
+  private static readonly RECENT_CHANGE_MS = 10 * 60 * 1000;
+
+  isRecentlyChanged(event: CalendarEvent): boolean {
+    const changed = this.toDate(event.changedAt);
+    if (!changed || !event.changeKind) return false;
+    return this.now() - changed.getTime() < DashboardComponent.RECENT_CHANGE_MS;
+  }
+
+  changeBadge(event: CalendarEvent): string | null {
+    if (!this.isRecentlyChanged(event)) return null;
+    return event.changeKind === 'added' ? 'new'
+      : event.changeKind === 'moved' ? 'moved'
+        : null;
+  }
+
   private subs: Subscription[] = [];
 
   // When STT transcript updates (mic stopped naturally), auto-send as chat
@@ -182,6 +228,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.setupSubscriptions();
+    // 30s is fine for a minute-granularity label and keeps the badges expiring
+    // on their own without a reload.
+    this.nowTimer = setInterval(() => this.now.set(Date.now()), 30_000);
   }
 
   async refresh(): Promise<void> {
@@ -203,6 +252,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.subs.forEach((s) => s.unsubscribe());
+    if (this.nowTimer) clearInterval(this.nowTimer);
     this.ttsService.stop();
     this.sttService.stopListening();
     this.chatService.stopWatching();
@@ -394,10 +444,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
       text = `Good morning. You have ${b.unbilledHours} unbilled hours, worth $${b.unbilledAmount}. This week you've logged ${b.weekHours} hours.${calPart} ${b.alerts.map((a) => a.message).join('. ')}`;
     }
     this.ttsService.primeAudioContext();
-    // Use createdAt timestamp as cache key so regenerated briefings on the same
-    // day don't replay stale audio. Fall back to date if createdAt is absent.
-    const createdAt = (b.createdAt as any)?.toDate?.() ?? new Date(b.createdAt as any);
-    const briefingKey = `briefing-${createdAt.getTime() || b.date}`;
+    // Key on narrativeAt, not createdAt/updatedAt: the briefing's facts now
+    // refresh on every calendar change, and keying on those would re-synthesize
+    // audio for prose that had not changed a word. Falls back to createdAt for
+    // briefings written before narrativeAt existed.
+    const narrativeAt = this.toDate(b.narrativeAt) ?? this.toDate(b.createdAt);
+    const briefingKey = `briefing-${narrativeAt?.getTime() || b.date}`;
     this.ttsService.speak(text, this.voice, briefingKey);
   }
 

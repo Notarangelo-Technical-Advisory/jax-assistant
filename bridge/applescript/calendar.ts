@@ -40,6 +40,17 @@ export interface ParsedEvent {
   notes: string;
   /** Friendly label of the source calendar, from READ_CALENDARS. */
   calendarName: string;
+  /**
+   * Apple Calendar's stable identifier for the event, which survives a move.
+   * Every instance of a recurring series shares one uid, so it identifies a
+   * series rather than an occurrence — see `recurring`.
+   *
+   * Empty string when Calendar declines to supply one; callers must fall back
+   * to content-based identity in that case.
+   */
+  uid: string;
+  /** True when the event belongs to a recurring series (non-empty recurrence rule). */
+  recurring: boolean;
 }
 
 // ─── Script builders ─────────────────────────────────────────────
@@ -86,11 +97,31 @@ end tell
 `.trim();
 }
 
+/** Number of `|||` fields readEventsScript emits per record. */
+const FIELD_COUNT = 8;
+
+/**
+ * Record delimiter. Must be something no calendar event will contain, and must
+ * not be a newline — see the note on readEventsScript.
+ */
+const RECORD_SEP = "@@@MAISIE_REC@@@";
+
 /**
  * One script that walks every allowlisted calendar, so a read is a single
  * osascript invocation rather than one per calendar.
  *
- * Each output line is: calendarName ||| summary ||| start ||| end ||| location ||| notes
+ * Each record is:
+ *   calendarName ||| uid ||| recurrence ||| start ||| end ||| summary ||| location ||| notes
+ *
+ * Records are separated by RECORD_SEP, not by a newline. Event notes routinely
+ * contain newlines — every Teams invite is a ten-line block — and splitting on
+ * linefeed silently shredded them: the event parsed from its first line and the
+ * remaining lines were dropped by the NaN-date filter, so the Teams join link
+ * never reached Firestore at all.
+ *
+ * The two free-text fields are last on purpose. A `|||` typed into an event's
+ * notes can then only corrupt notes itself, and the parser rejoins the overflow.
+ *
  * A missing calendar is skipped rather than failing the whole read.
  */
 export function readEventsScript(daysAhead: number, calendars = READ_CALENDARS): string {
@@ -112,15 +143,25 @@ tell application "Calendar"
                 set evtSummary to summary of e
                 set evtLocation to ""
                 set evtNotes to ""
+                set evtUid to ""
+                set evtRecur to ""
                 try
                     set evtLocation to location of e
                 end try
                 try
                     set evtNotes to description of e
                 end try
+                try
+                    set evtUid to uid of e
+                end try
+                try
+                    set evtRecur to recurrence of e
+                end try
                 if evtLocation is missing value then set evtLocation to ""
                 if evtNotes is missing value then set evtNotes to ""
-                set output to output & calName & "|||" & evtSummary & "|||" & (evtStart as «class isot» as string) & "|||" & (evtEnd as «class isot» as string) & "|||" & evtLocation & "|||" & evtNotes & linefeed
+                if evtUid is missing value then set evtUid to ""
+                if evtRecur is missing value then set evtRecur to ""
+                set output to output & calName & "|||" & evtUid & "|||" & evtRecur & "|||" & (evtStart as «class isot» as string) & "|||" & (evtEnd as «class isot» as string) & "|||" & evtSummary & "|||" & evtLocation & "|||" & evtNotes & "${RECORD_SEP}"
             end repeat
         end try
     end repeat
@@ -148,10 +189,20 @@ export function readEvents(daysAhead: number): ParsedEvent[] {
   const labelFor = new Map(READ_CALENDARS.map((c) => [c.name, c.label]));
 
   return raw
-    .split("\n")
-    .filter((line) => line.trim())
-    .map((line) => {
-      const [calName, summary, startStr, endStr, location, notes] = line.split("|||");
+    .split(RECORD_SEP)
+    .filter((record) => record.trim())
+    .map((record) => {
+      // Notes is the last field, so a `|||` inside it produces extra parts.
+      // Rejoin the overflow rather than silently truncating the note.
+      const parts = record.split("|||");
+      if (parts.length > FIELD_COUNT) {
+        parts.splice(
+          FIELD_COUNT - 1,
+          parts.length - FIELD_COUNT + 1,
+          parts.slice(FIELD_COUNT - 1).join("|||")
+        );
+      }
+      const [calName, uid, recur, startStr, endStr, summary, location, notes] = parts;
       const rawName = calName?.trim() ?? "";
       return {
         calendarName: labelFor.get(rawName) ?? rawName,
@@ -159,7 +210,11 @@ export function readEvents(daysAhead: number): ParsedEvent[] {
         startTime: parseAppleDate(startStr?.trim()),
         endTime: parseAppleDate(endStr?.trim()),
         location: location?.trim() || "",
-        notes: notes?.trim() || "",
+        // AppleScript hands back CR line endings inside notes; normalise so the
+        // stored text is ordinary multi-line content.
+        notes: notes?.replace(/\r\n?/g, "\n").trim() || "",
+        uid: uid?.trim() || "",
+        recurring: Boolean(recur?.trim()),
       };
     })
     .filter((e) => !isNaN(e.startTime.getTime()))
