@@ -28,17 +28,25 @@ export interface ToolContext {
   onCategoriesChanged?: () => void;
 }
 
-/** How long a cloud tool waits for the desktop bridge before giving up. */
-const DESKTOP_ACTION_TIMEOUT_MS = 40_000;
+/**
+ * How long a cloud tool waits for the desktop bridge before giving up.
+ *
+ * This has to cover the bridge's poll interval PLUS the AppleScript execution,
+ * not just the poll. At 40s it did not: the bridge polls every 10s and a
+ * mail.read body fetch alone takes 11-15s, so a read enqueued right after a
+ * search — the launchd tick that ran the search has already exited, so the read
+ * waits a fresh full interval — blew the deadline nearly every time and got
+ * reported to Jack as "the bridge may be down" while the action was in fact
+ * succeeding. The chat function has a 300s budget, so 90s is cheap insurance.
+ */
+const DESKTOP_ACTION_TIMEOUT_MS = 90_000;
 const DESKTOP_POLL_INTERVAL_MS = 1_500;
 
 /**
  * Queue an action for the local desktop bridge and wait for its result.
  *
- * The bridge polls every 30s via launchd, so a cold queue can take that long;
- * the chat function has a 300s budget, so waiting ~40s is safe. On timeout the
- * action stays queued and will still be applied — the caller just reports back
- * without the result.
+ * On timeout the action stays queued and will still be applied — the caller
+ * just reports back without the result.
  */
 async function queueAndAwaitDesktopAction(
   db: admin.firestore.Firestore,
@@ -57,11 +65,14 @@ async function queueAndAwaitDesktopAction(
   });
 
   const deadline = Date.now() + DESKTOP_ACTION_TIMEOUT_MS;
+  // Whether the bridge ever claimed the action tells us which failure this is.
+  let wasClaimed = false;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, DESKTOP_POLL_INTERVAL_MS));
     const snap = await ref.get();
     const data = snap.data();
     const status = data?.["status"];
+    if (data?.["startedAt"]) wasClaimed = true;
     if (status === "applied") {
       return {success: true, ...(data?.["result"] as Record<string, unknown>)};
     }
@@ -70,11 +81,17 @@ async function queueAndAwaitDesktopAction(
     }
   }
 
+  // Do not guess at the cause. A claimed action proves the bridge is alive and
+  // Mac awake, so saying "the bridge may be down" there is simply false — and
+  // it is what MAISIE reports to Jack, so it has to be accurate.
   return {
     success: false,
     pending: true,
     actionId: ref.id,
-    error: "The desktop bridge did not respond in time. The action is still queued and will run when Jack's Mac picks it up — tell him it is pending rather than failed, and that his Mac may be asleep or the bridge may not be running.",
+    claimed: wasClaimed,
+    error: wasClaimed
+      ? "The desktop bridge picked this up but was still working when the wait ran out — it is slow, not broken. The action will finish on its own. Tell Jack it is still running and offer to retry in a moment; do NOT tell him the bridge is down or his Mac is asleep, because it demonstrably is not."
+      : "The desktop bridge never picked this up, so it is still sitting in the queue unclaimed. It will run whenever Jack's Mac next polls — tell him it is pending rather than failed, and that his Mac may be asleep or the bridge may not be running.",
   };
 }
 

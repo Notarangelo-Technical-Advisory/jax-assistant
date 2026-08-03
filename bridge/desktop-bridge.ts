@@ -12,7 +12,7 @@
  *
  * Requires a Firebase service account key at bridge/service-account.json and
  * macOS automation permission for Mail and Calendar. Run via launchd
- * (com.notarangelo.desktop-bridge.plist) for automatic execution every 30s.
+ * (com.notarangelo.desktop-bridge.plist) for automatic execution every 10s.
  *
  * Note on scope: calendar create/move from the cloud still flows through the
  * older pendingCalendarActions queue, which calendar-sync.ts applies on its own

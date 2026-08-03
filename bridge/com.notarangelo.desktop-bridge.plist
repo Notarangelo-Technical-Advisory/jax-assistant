@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Runs the desktop bridge every 30s so the cloud MAISIE (web app, SMS) can
+  Runs the desktop bridge every 10s so the cloud MAISIE (web app, SMS) can
   reach Apple Mail and Calendar on this Mac.
 
   Install:
@@ -30,8 +30,16 @@
     <key>WorkingDirectory</key>
     <string>/Users/jacknotarangelo/Documents/GitHub/jax-assistant/bridge</string>
 
+    <!--
+      10s, not 30s. A cloud tool call waits on the result synchronously, so this
+      interval is dead time added to every mail/calendar action — and because a
+      run exits as soon as it drains the queue, a second action enqueued right
+      after the first waits a fresh full interval. At 30s that pushed mail.read
+      past the cloud's timeout routinely. launchd skips a tick if the previous
+      run is still going, so a slow AppleScript cannot pile up overlapping runs.
+    -->
     <key>StartInterval</key>
-    <integer>30</integer>
+    <integer>10</integer>
 
     <key>StandardOutPath</key>
     <string>/tmp/desktop-bridge.log</string>
