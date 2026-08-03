@@ -6,11 +6,17 @@ import {getUnbilledEntries, getLastInvoice, getTimeEntriesForRange, getCustomers
 import Anthropic from "@anthropic-ai/sdk";
 import {buildTools} from "./tools/definitions";
 import {executeTool, toolLabel} from "./tools/execute";
-import {loadMaisieContext, buildSystemPrompt, historyToMessages} from "./tools/context";
+import {loadMaisieContext, MAISIE_PERSONA, buildStateBlock, historyToMessages} from "./tools/context";
 import {readCalendarEvents, formatEventTime} from "./tools/calendar-read";
 
 admin.initializeApp();
 const db = admin.firestore();
+
+/**
+ * The model behind every MAISIE call — chat, briefing, and SMS.
+ * Kept in one place so the next migration is a one-line change.
+ */
+const MODEL = "claude-sonnet-5";
 
 // Startup environment check — logs presence without exposing values
 console.log(`[startup] GOOGLE_MAPS_API_KEY: ${process.env.GOOGLE_MAPS_API_KEY ? "present" : "MISSING"}`);
@@ -131,7 +137,15 @@ export const chat = onRequest(
     // Gather context from Firestore and the NTA time tracker
     const maisieCtx = await loadMaisieContext(db, sessionId);
     const allCategories = maisieCtx.categories;
-    const systemPrompt = buildSystemPrompt(maisieCtx);
+
+    // Two system blocks with the breakpoint on the first. Render order is
+    // tools -> system -> messages, so this caches the tool schemas and the
+    // persona together (~3.5k tokens measured) while leaving the volatile state
+    // block after the boundary, where it costs nothing to change every request.
+    const systemPrompt: Anthropic.Messages.TextBlockParam[] = [
+      {type: "text", text: MAISIE_PERSONA, cache_control: {type: "ephemeral"}},
+      {type: "text", text: buildStateBlock(maisieCtx)},
+    ];
 
     let tools = buildTools(allCategories);
 
@@ -144,13 +158,21 @@ export const chat = onRequest(
         {role: "user", content: message},
       ];
 
-      let response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 4096,
+      // Both requests in this function must be byte-identical up to the cache
+      // breakpoint, so they are built from one place. Reads `tools` and
+      // `messages` at call time — tools is rebuilt when a category changes and
+      // messages is pushed to in the loop below.
+      const buildRequest = (): Anthropic.Messages.MessageCreateParamsNonStreaming => ({
+        model: MODEL,
+        max_tokens: 8192,
+        thinking: {type: "adaptive"},
+        output_config: {effort: "high"},
         system: systemPrompt,
         tools,
         messages,
       });
+
+      let response = await anthropic.messages.create(buildRequest());
 
       const thinkingRef = db.collection("chatThinking").doc(sessionId);
       // Broadcast the current tool step to Firestore so the frontend can show it
@@ -196,13 +218,7 @@ export const chat = onRequest(
         messages.push({role: "assistant", content: response.content});
         messages.push({role: "user", content: toolResults});
 
-        response = await anthropic.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: 4096,
-          system: systemPrompt,
-          tools,
-          messages,
-        });
+        response = await anthropic.messages.create(buildRequest());
       }
 
       // Clear thinking indicator now that we have a final response
@@ -579,17 +595,26 @@ async function runBriefing(): Promise<void> {
         ? `You are Maisie, Jack Notarangelo's executive assistant. Write a concise afternoon check-in (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Focus on what's left for the rest of the day — remaining meetings, any overdue tasks still open, and current unbilled hours. Do not repeat things Jack already knows from the morning. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech. Jack publishes invoices at the beginning of each month — unbilled hours are normal and expected throughout the month, so do not mention them unless Jack specifically asks or an invoice alert is present.`
         : `You are Maisie, Jack Notarangelo's executive assistant. Write a concise morning briefing (3-5 sentences). Be warm but direct — dry wit is welcome if it fits naturally. Contextualize the numbers — mention trends, what to focus on, and any urgent items. If there are overdue tasks or early meetings, highlight them. On Fridays, mention the week ahead. All times are Eastern Time. No markdown — plain text only, suitable for text-to-speech. The calendarSyncAge field is in minutes; use calendarSyncAgeLabel for any human-readable reference to sync age. Jack publishes invoices at the beginning of each month — unbilled hours are normal and expected throughout the month, so do not mention them unless Jack specifically asks or an invoice alert is present.`;
       const aiResponse = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 300,
+        model: MODEL,
+        max_tokens: 1024,
+        // Pure summarization of JSON assembled above — thinking buys nothing here.
+        thinking: {type: "disabled"},
+        output_config: {effort: "low"},
         system: systemMsg,
         messages: [{
           role: "user",
           content: JSON.stringify({...briefingData, timeOfDay}),
         }],
       });
-      const block = aiResponse.content[0];
-      if (block.type === "text") {
-        narrativeSummary = block.text;
+      // Filter by type rather than indexing content[0] — with thinking enabled
+      // the first block is a thinking block, which would silently yield null.
+      const text = aiResponse.content
+        .filter((b) => b.type === "text")
+        .map((b) => (b.type === "text" ? b.text : ""))
+        .join("")
+        .trim();
+      if (text) {
+        narrativeSummary = text;
       }
     } catch (err) {
       console.error("AI narrative generation failed:", err);
@@ -815,8 +840,13 @@ ${taskListStr}`;
     try {
       console.log("[receiveSms] calling Haiku for intent parse");
       const aiResponse = await anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 256,
+        model: MODEL,
+        max_tokens: 512,
+        // Thinking off on both SMS calls: Twilio's webhook timeout is ~15s and
+        // this handler makes two sequential model calls. Latency is the binding
+        // constraint here, not reasoning depth.
+        thinking: {type: "disabled"},
+        output_config: {effort: "low"},
         system: systemPrompt,
         messages: [{role: "user", content: messageBody}],
       });
@@ -894,8 +924,10 @@ ${taskListStr}`;
     try {
       console.log("[receiveSms] calling Haiku for personalized reply");
       const replyResponse = await anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 160,
+        model: MODEL,
+        max_tokens: 320,
+        thinking: {type: "disabled"},
+        output_config: {effort: "low"},
         system: `You are Maisie, Jack Notarangelo's personal executive assistant, replying to Jack via SMS.
 Be concise and personal — warm with a dry wit, like a trusted colleague who knows Jack well. Use his first name occasionally but not in every message. Never use emojis. Keep replies short (1-2 sentences max) — this is SMS. No markdown.
 Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", month: "long", day: "numeric", timeZone: "America/New_York"})}.`,
