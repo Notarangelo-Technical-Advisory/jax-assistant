@@ -4,7 +4,7 @@ import {
   getTimeEntriesForRange,
   getInvoices,
 } from "../fta-client";
-import {readCalendarEvents, formatEventTime} from "./calendar-read";
+import {readCalendarEvents, formatEventTime, extractMeetingLink, extractPasscode} from "./calendar-read";
 import {Category, DEFAULT_CATEGORY_KEYS} from "./definitions";
 
 export interface CustomerInfo {
@@ -104,7 +104,14 @@ export async function executeTool(
       const day = e.startTime.toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York"});
       const time = `${formatEventTime(e.startTime)}–${formatEventTime(e.endTime)}`;
       const cal = e.calendarName ? `[${e.calendarName}] ` : "";
-      return `${day} ${time}: ${cal}${e.summary}${e.location ? ` (${e.location})` : ""}`;
+      // The join link is the answer to "how do I get into this meeting", so
+      // surface it here rather than making the model ask for the invite body.
+      const link = extractMeetingLink(e.notes);
+      const passcode = extractPasscode(e.notes);
+      const join = link
+        ? ` — join: ${link}${passcode ? ` (passcode ${passcode})` : ""}`
+        : "";
+      return `${day} ${time}: ${cal}${e.summary}${e.location ? ` (${e.location})` : ""}${join}`;
     });
     return {
       events: formatted,

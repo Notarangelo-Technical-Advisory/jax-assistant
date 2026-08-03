@@ -10,6 +10,11 @@ export interface CalendarEvent {
    * Undefined for docs written before multi-calendar sync landed.
    */
   calendarName?: string;
+  /**
+   * The event's notes. For an Exchange invite this is the whole invite body,
+   * which is where the Teams join link lives — see extractMeetingLink.
+   */
+  notes?: string;
 }
 
 /**
@@ -35,6 +40,7 @@ export async function readCalendarEvents(
       endTime: data.endTime.toDate(),
       location: data.location || undefined,
       calendarName: data.calendarName || undefined,
+      notes: data.notes || undefined,
     };
   });
 }
@@ -43,4 +49,39 @@ export function formatEventTime(date: Date): string {
   return date.toLocaleTimeString("en-US", {
     hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
   });
+}
+
+/**
+ * Pull the join URL out of an invite body.
+ *
+ * "How do I get into my 1:45?" is one of the most common things asked of a
+ * calendar, and the answer is buried in ~900 characters of invite boilerplate.
+ * Returning the whole body instead would spend most of a tool result on legal
+ * footers and tenant GUIDs, so extract just the link.
+ *
+ * Ordered most specific first: the Teams `/meet/` short link is the one a human
+ * can actually use, whereas the `/l/meetup-join/` variant that also appears in
+ * the same body is a deep link wrapped in URL-encoded context.
+ */
+export function extractMeetingLink(notes?: string): string | undefined {
+  if (!notes) return undefined;
+  const patterns = [
+    /https:\/\/teams\.microsoft\.com\/meet\/\S+/,
+    /https:\/\/teams\.microsoft\.com\/l\/meetup-join\/\S+/,
+    /https:\/\/\S*zoom\.us\/j\/\S+/,
+    /https:\/\/meet\.google\.com\/\S+/,
+    /https:\/\/\S*webex\.com\/\S*\/j\.php\?\S+/,
+  ];
+  for (const re of patterns) {
+    const m = notes.match(re);
+    // Trailing punctuation and the '>' that Outlook wraps bare URLs in are not
+    // part of the URL.
+    if (m) return m[0].replace(/[>).,;]+$/, "");
+  }
+  return undefined;
+}
+
+/** Passcode, when the invite carries one alongside the link. */
+export function extractPasscode(notes?: string): string | undefined {
+  return notes?.match(/Passcode:\s*(\S+)/i)?.[1];
 }
