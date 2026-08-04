@@ -424,6 +424,78 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return event.startTime.getHours() < 9;
   }
 
+  // ── Today's schedule: what matters right now ─────────────────
+  // Appointments stay on the list all day — they only leave when the sync sees
+  // them gone from Apple Calendar. So the list gets longer as the day goes and
+  // the eye needs somewhere to land: the meeting that is running, or if none is,
+  // the one that is next.
+
+  /**
+   * Timed events in start order. All-day entries are excluded because they
+   * technically span the whole day and would otherwise sit there as the
+   * permanent "current meeting", crowding out every real one.
+   */
+  private timedEvents = computed(() =>
+    this.calendarEvents().filter(
+      (e) => !e.allDay && !isNaN(e.startTime.getTime()) && !isNaN(e.endTime.getTime()),
+    ),
+  );
+
+  /** The meeting happening right now, if there is one. */
+  currentEvent = computed<CalendarEvent | null>(() => {
+    const t = this.now();
+    return (
+      this.timedEvents().find(
+        (e) => e.startTime.getTime() <= t && e.endTime.getTime() > t,
+      ) ?? null
+    );
+  });
+
+  /** The next meeting still to start — only interesting when nothing is running. */
+  nextEvent = computed<CalendarEvent | null>(() => {
+    if (this.currentEvent()) return null;
+    const t = this.now();
+    return this.timedEvents().find((e) => e.startTime.getTime() > t) ?? null;
+  });
+
+  private sameEvent(a: CalendarEvent | null, b: CalendarEvent): boolean {
+    if (!a) return false;
+    return a.id && b.id ? a.id === b.id : a === b;
+  }
+
+  /** 'now' or 'next' for the one event worth emphasising, else null. */
+  focusLabel(event: CalendarEvent): 'now' | 'next' | null {
+    if (this.sameEvent(this.currentEvent(), event)) return 'now';
+    if (this.sameEvent(this.nextEvent(), event)) return 'next';
+    return null;
+  }
+
+  /** The countdown that goes with the focus badge, e.g. "22 min left". */
+  focusDetail(event: CalendarEvent): string | null {
+    const label = this.focusLabel(event);
+    if (!label) return null;
+    const t = this.now();
+    if (label === 'now') {
+      const mins = Math.round((event.endTime.getTime() - t) / 60000);
+      return mins <= 1 ? 'wrapping up' : `${this.formatDuration(mins)} left`;
+    }
+    const mins = Math.round((event.startTime.getTime() - t) / 60000);
+    return mins <= 1 ? 'starting now' : `in ${this.formatDuration(mins)}`;
+  }
+
+  private formatDuration(mins: number): string {
+    if (mins < 60) return `${mins} min`;
+    const hrs = Math.floor(mins / 60);
+    const rem = mins % 60;
+    return rem === 0 ? `${hrs}h` : `${hrs}h ${rem}m`;
+  }
+
+  /** Already over. Stays on the list, just stops competing for attention. */
+  isPastEvent(event: CalendarEvent): boolean {
+    if (event.allDay || isNaN(event.endTime.getTime())) return false;
+    return event.endTime.getTime() <= this.now();
+  }
+
   speakBriefing(): void {
     const b = this.briefing();
     if (!b || !this.featureFlags.enableTts()) return;

@@ -187,11 +187,19 @@
             @for (event of calendarEvents(); track event.id) {
               <div class="calendar-event"
                    [class.early]="isEarlyEvent(event)"
-                   [class.recently-changed]="isRecentlyChanged(event)">
+                   [class.recently-changed]="isRecentlyChanged(event)"
+                   [class.past]="isPastEvent(event)"
+                   [class.focus]="focusLabel(event) !== null">
+                @if (focusLabel(event); as focus) {
+                  <span class="event-badge event-badge-{{ focus }}">{{ focus }}</span>
+                }
                 <span class="event-time">
                   {{ formatEventTime(event.startTime) }} – {{ formatEventTime(event.endTime) }}
                 </span>
                 <span class="event-summary">{{ event.summary }}</span>
+                @if (focusDetail(event); as detail) {
+                  <span class="event-countdown">{{ detail }}</span>
+                }
                 @if (changeBadge(event); as badge) {
                   <span class="event-badge event-badge-{{ badge }}">{{ badge }}</span>
                 }
