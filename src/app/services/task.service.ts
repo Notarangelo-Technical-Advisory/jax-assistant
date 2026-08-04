@@ -31,6 +31,18 @@ function getNextOccurrence(recurrence: TaskRecurrence, fromDate: Date): string {
   return next.toISOString().split('T')[0];
 }
 
+/**
+ * Fields an inline task edit may change. `null` clears the field; leaving a key
+ * off leaves the stored value alone. Firestore has no `undefined`, so the two
+ * cases have to be distinct — see updateTask().
+ */
+export interface TaskUpdates {
+  title?: string;
+  category?: string;
+  dueDate?: string | null;
+  recurrence?: TaskRecurrence | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class TaskService {
   private firestore = inject(Firestore);
@@ -61,13 +73,18 @@ export class TaskService {
     });
   }
 
-  async updateTask(
-    taskId: string,
-    updates: Partial<Pick<Task, 'title' | 'dueDate' | 'category' | 'recurrence'>>,
-  ): Promise<void> {
+  async updateTask(taskId: string, updates: TaskUpdates): Promise<void> {
     const ref = doc(this.firestore, 'tasks', taskId);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await updateDoc(ref, updates as any);
+    // Firestore rejects `undefined` as a field value outright, and the inline
+    // task editor sends it for every field the user left blank — so a plain
+    // pass-through threw before writing anything, and the edit silently died.
+    // Absent keys are dropped here; an explicit null is the "clear this field"
+    // signal, which is what addTask() already writes.
+    const fields = Object.fromEntries(
+      Object.entries(updates).filter(([, v]) => v !== undefined),
+    );
+    if (Object.keys(fields).length === 0) return;
+    await updateDoc(ref, fields);
   }
 
   async completeTask(taskId: string): Promise<void> {

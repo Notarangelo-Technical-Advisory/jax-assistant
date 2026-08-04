@@ -7,7 +7,7 @@ import { marked } from 'marked';
 import { AuthService } from '../../services/auth.service';
 import { BriefingService } from '../../services/briefing.service';
 import { BillingService, BillingSummary, BillingEntry } from '../../services/billing.service';
-import { TaskService } from '../../services/task.service';
+import { TaskService, TaskUpdates } from '../../services/task.service';
 import { TaskCategoryService } from '../../services/task-category.service';
 import { AlertService } from '../../services/alert.service';
 import { ChatService } from '../../services/chat.service';
@@ -65,6 +65,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   renameValue = '';
 
   editingTaskId: string | null = null;
+  taskSaveError = signal<string | null>(null);
   editingTaskTitle = '';
   editingTaskDueDate = '';
   editingTaskRecurrenceType = '';
@@ -453,10 +454,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // ── Tasks ──────────────────────────────────────────────────
 
-  buildRecurrence(type: string, day: number | null): TaskRecurrence | undefined {
+  buildRecurrence(type: string, day: number | string | null): TaskRecurrence | undefined {
+    // The day controls hand back strings — `[value]="0"` binds the string "0",
+    // and a number input yields a string once it's typed into. Coerce before
+    // storing, or Firestore keeps "1" and getNextOccurrence does string maths.
+    const parsed = day === null || day === '' ? NaN : Number(day);
+    const dayNum = Number.isFinite(parsed) ? parsed : null;
     if (type === 'daily') return { type: 'daily' };
-    if (type === 'weekly' && day !== null) return { type: 'weekly', dayOfWeek: day };
-    if (type === 'monthly' && day !== null) return { type: 'monthly', dayOfMonth: day };
+    if (type === 'weekly' && dayNum !== null) return { type: 'weekly', dayOfWeek: dayNum };
+    if (type === 'monthly' && dayNum !== null) return { type: 'monthly', dayOfMonth: dayNum };
     return undefined;
   }
 
@@ -498,25 +504,40 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.editingTaskDueDate = task.dueDate || '';
     this.editingTaskRecurrenceType = task.recurrence?.type || '';
     this.editingTaskRecurrenceDay = task.recurrence?.dayOfWeek ?? task.recurrence?.dayOfMonth ?? null;
+    this.taskSaveError.set(null);
   }
 
   async saveTask(task: Task): Promise<void> {
-    if (task.id) {
-      const recurrence = this.buildRecurrence(this.editingTaskRecurrenceType, this.editingTaskRecurrenceDay);
-      const updates: Partial<Task> = {
-        dueDate: this.editingTaskDueDate || undefined,
-        recurrence,
-      };
-      if (this.editingTaskTitle.trim()) {
-        updates.title = this.editingTaskTitle.trim();
-      }
-      await this.taskService.updateTask(task.id, updates);
+    if (!task.id) {
+      this.editingTaskId = null;
+      return;
     }
-    this.editingTaskId = null;
+    const recurrence = this.buildRecurrence(this.editingTaskRecurrenceType, this.editingTaskRecurrenceDay);
+    // null, not undefined: clearing the due date or the recurrence has to write
+    // an actual value, and Firestore refuses undefined.
+    const updates: TaskUpdates = {
+      dueDate: this.editingTaskDueDate || null,
+      recurrence: recurrence ?? null,
+    };
+    if (this.editingTaskTitle.trim()) {
+      updates.title = this.editingTaskTitle.trim();
+    }
+    try {
+      await this.taskService.updateTask(task.id, updates);
+      this.taskSaveError.set(null);
+      this.editingTaskId = null;
+    } catch (err) {
+      // Keep the row open so the typing isn't thrown away, and say something.
+      // A save that failed in silence was the whole complaint: the checkmark
+      // looked dead because the throw skipped the close-the-editor line.
+      console.error('[saveTask] error:', err);
+      this.taskSaveError.set('Could not save that edit — it is still here, try again.');
+    }
   }
 
   cancelEditTask(): void {
     this.editingTaskId = null;
+    this.taskSaveError.set(null);
   }
 
   recurrenceLabel(task: Task): string {

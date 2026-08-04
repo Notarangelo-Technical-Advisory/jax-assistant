@@ -363,6 +363,9 @@
                         }
                         <button class="btn-save-inline" (click)="saveTask(task)" title="Save">&#10003;</button>
                         <button class="btn-cancel-inline" (click)="cancelEditTask()" title="Cancel">&#10005;</button>
+                        @if (taskSaveError(); as err) {
+                          <span class="task-save-error">{{ err }}</span>
+                        }
                       } @else {
                         <span class="task-title" (click)="startEditingTask(task)" title="Click to edit task">{{ task.title }}</span>
                         <span class="task-due"

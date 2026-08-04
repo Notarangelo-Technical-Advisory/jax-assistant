@@ -522,6 +522,9 @@ $border: #334155;
 .task-item {
   display: flex;
   align-items: center;
+  // Wraps so a save error can sit on its own line under the edit controls
+  // instead of squeezing them.
+  flex-wrap: wrap;
   gap: 0.75rem;
   padding: 0.4rem 0;
   border-bottom: 1px solid rgba($border, 0.3);
@@ -744,6 +747,12 @@ $border: #334155;
   line-height: 1;
 
   &:hover { border-color: $accent; color: $accent; }
+}
+
+.task-save-error {
+  font-size: 0.72rem;
+  color: $danger;
+  flex-basis: 100%;
 }
 
 // Sessions Panel
