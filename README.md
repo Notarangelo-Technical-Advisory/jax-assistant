@@ -31,11 +31,10 @@ its first occurrence, so a windowed query silently dropped every standing
 meeting on every calendar. Writes stay on AppleScript. The two use different
 macOS permissions; see "Permissions" below.
 
-MAISIE's six other cloud tools are deliberately absent from VS Code:
+MAISIE's four other cloud tools are deliberately absent from VS Code:
 `get_calendar` / `create_calendar_event` / `move_calendar_event` because
 AppleScript reads fresher and writes instantly; `code_with_github` because in
-VS Code you are already in the repo; `search_place` / `get_directions` because
-they are phone-shaped.
+VS Code you are already in the repo.
 
 ### Setup
 

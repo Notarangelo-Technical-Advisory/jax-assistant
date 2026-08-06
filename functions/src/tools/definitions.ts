@@ -58,15 +58,13 @@ export const WEB_TOOLS: Anthropic.Messages.ToolUnion[] = [
 /**
  * Tool names exposed to the MAISIE MCP server (VS Code).
  *
- * The six omitted tools are deliberate:
+ * The four omitted tools are deliberate:
  *   get_calendar, create_calendar_event, move_calendar_event
  *     — the desktop MCP server reads and writes Apple Calendar directly via
  *       AppleScript, which is fresher than the Firestore mirror and applies
  *       instantly instead of queueing.
  *   code_with_github
  *     — in VS Code you are already in the repo with Claude Code.
- *   search_place, get_directions
- *     — phone-shaped, not desk-shaped.
  */
 export const MCP_TOOL_NAMES = [
   "add_task",
@@ -372,38 +370,6 @@ export const buildTools = (
           },
         },
         required: ["task"],
-      },
-    },
-    {
-      name: "search_place",
-      description: "Search for a business or place by name and optional location context. Returns the name, address, hours, and whether it's open right now. Use when Jack asks 'is [place] open?', wants to find a restaurant or hotel, or needs to resolve a business name to an address (e.g. before calling get_directions).",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          query: {
-            type: "string",
-            description: "Business name and optional location context, e.g. 'Nobu restaurant Chicago' or 'Marriott Marquis Times Square NYC'",
-          },
-        },
-        required: ["query"],
-      },
-    },
-    {
-      name: "get_directions",
-      description: "Get walking and driving distance/time between two locations. Use when Jack asks 'how far is [place] from [another place]' or needs travel time estimates. Can accept addresses, business names, or coordinates.",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          origin: {
-            type: "string",
-            description: "Starting location — address, business name, or lat/lng coordinates (e.g. 'Times Square NYC', '123 Main St Chicago', '40.7580,-73.9855')",
-          },
-          destination: {
-            type: "string",
-            description: "Ending location — address, business name, or lat/lng coordinates",
-          },
-        },
-        required: ["origin", "destination"],
       },
     },
   ];

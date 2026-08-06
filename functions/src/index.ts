@@ -19,9 +19,6 @@ const db = admin.firestore();
  */
 const MODEL = "claude-sonnet-5";
 
-// Startup environment check — logs presence without exposing values
-console.log(`[startup] GOOGLE_MAPS_API_KEY: ${process.env.GOOGLE_MAPS_API_KEY ? "present" : "MISSING"}`);
-
 // ─── Eastern Time day math ─────────────────────────────────────
 //
 // The Cloud Functions runtime sets no TZ, so it is UTC. Every "what day is it"
