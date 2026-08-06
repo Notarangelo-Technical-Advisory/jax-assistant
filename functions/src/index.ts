@@ -22,6 +22,69 @@ const MODEL = "claude-sonnet-5";
 // Startup environment check — logs presence without exposing values
 console.log(`[startup] GOOGLE_MAPS_API_KEY: ${process.env.GOOGLE_MAPS_API_KEY ? "present" : "MISSING"}`);
 
+// ─── Eastern Time day math ─────────────────────────────────────
+//
+// The Cloud Functions runtime sets no TZ, so it is UTC. Every "what day is it"
+// question in a briefing is really "what day is it in Norwell", and the two
+// disagree from 8 PM ET onward (7 PM in winter): getDate/getDay/setHours and
+// toISOString all roll into tomorrow four hours early. That is what stamped the
+// 8 PM refresh with the next day's date, called a task due today overdue, and
+// pointed "today's" calendar window at [8 PM yesterday → 8 PM today].
+//
+// Everything below derives the day from the ET wall clock instead. Prefer these
+// over the Date accessors anywhere a calendar day or a due date is at stake.
+const ET_ZONE = "America/New_York";
+
+/** YYYY-MM-DD as it reads on a clock in Norwell. */
+function etDateKey(d: Date): string {
+  return d.toLocaleDateString("en-CA", {timeZone: ET_ZONE});
+}
+
+/** ET's UTC offset at a given instant, as "-04:00" / "-05:00". */
+function etOffsetAt(d: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: ET_ZONE, timeZoneName: "longOffset",
+  })
+    .formatToParts(d)
+    .find((p) => p.type === "timeZoneName")?.value
+    ?.replace("GMT", "") || "+00:00";
+}
+
+/**
+ * The instant ET midnight begins on `d`'s ET date.
+ *
+ * Read off the zone's own offset rather than assuming -05:00 or -04:00 — and
+ * read twice, because on a DST-change day the offset at `d` is not the offset
+ * that was in force at midnight. Resolving once from a 10 PM instant on
+ * spring-forward Sunday lands on 11 PM the previous day; the second pass, using
+ * the first guess, corrects it.
+ */
+function etDayStart(d: Date): Date {
+  const key = etDateKey(d);
+  const guess = new Date(`${key}T00:00:00${etOffsetAt(d)}`);
+  return new Date(`${key}T00:00:00${etOffsetAt(guess)}`);
+}
+
+/**
+ * The instant the *next* ET day begins.
+ *
+ * Snapping forward from midnight + 26h rather than adding 24h: a spring-forward
+ * ET day is 23 hours long and a fall-back day is 25, and 26 lands inside the
+ * following day either way.
+ */
+function etNextDayStart(d: Date): Date {
+  return etDayStart(new Date(etDayStart(d).getTime() + 26 * 60 * 60 * 1000));
+}
+
+/** Day of week (0 = Sunday) and day of month, on the ET calendar. */
+function etDayParts(d: Date): {dayOfWeek: number; dayOfMonth: number} {
+  const key = etDateKey(d);
+  // Noon UTC on the ET date — far enough from either midnight that no offset
+  // can shift which date this lands on.
+  const noon = new Date(`${key}T12:00:00Z`);
+  return {dayOfWeek: noon.getUTCDay(), dayOfMonth: Number(key.slice(8, 10))};
+}
+
 // ─── Auth helper ───────────────────────────────────────────────
 async function verifyAuth(
   req: {headers: {authorization?: string}}
@@ -484,8 +547,7 @@ async function computeBriefingState(
   reuseBilling?: BillingSlice | null
 ): Promise<Record<string, unknown> & {alerts: Array<{type: string; message: string}>}> {
     const today = new Date();
-    const dayOfWeek = today.getDay();
-    const dayOfMonth = today.getDate();
+    const {dayOfWeek, dayOfMonth} = etDayParts(today);
     const isFriday = dayOfWeek === 5;
     const isFirstWeek = dayOfMonth >= 5 && dayOfMonth <= 7;
     const etHour = parseInt(
@@ -493,13 +555,11 @@ async function computeBriefingState(
     );
     const isAfternoon = etHour >= 12;
     const timeOfDay = isAfternoon ? "afternoon" : "morning";
-    const todayStr = today.toISOString().split("T")[0];
+    const todayStr = etDateKey(today);
 
     // Get today's calendar events — afternoon run only shows remaining events
-    const todayStart = new Date(today);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(today);
-    todayEnd.setHours(23, 59, 59, 999);
+    const todayStart = etDayStart(today);
+    const todayEnd = new Date(etNextDayStart(today).getTime() - 1);
     const calendarWindowStart = isAfternoon ? today : todayStart;
 
     const [unbilledEntries, lastInvoice, calendarEvents, activeTasks, lastSyncDoc, existingTodayAlerts] =
@@ -522,10 +582,13 @@ async function computeBriefingState(
           .catch(() => new Set<string>()),
       ]);
 
-    // Get this week's time entries for status report
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay() + 1);
-    const weekStartStr = weekStart.toISOString().split("T")[0];
+    // Get this week's time entries for status report. Stepped off ET midday so
+    // a DST change cannot push the subtraction onto the wrong date.
+    const weekStartStr = etDateKey(new Date(
+      etDayStart(today).getTime() +
+      12 * 60 * 60 * 1000 -
+      (dayOfWeek - 1) * 24 * 60 * 60 * 1000
+    ));
 
     let totalUnbilled: number;
     let weekHours: number;
@@ -552,8 +615,8 @@ async function computeBriefingState(
     }
 
     // ── Task filtering ──────────────────────────────────────────
-    const todayDayOfWeek = today.getDay();   // 0 (Sun) – 6 (Sat)
-    const todayDayOfMonth = today.getDate(); // 1 – 31
+    const todayDayOfWeek = dayOfWeek;   // 0 (Sun) – 6 (Sat), ET
+    const todayDayOfMonth = dayOfMonth; // 1 – 31, ET
 
     const overdueTasks = activeTasks.filter((t) => {
       const due = t["dueDate"] as string | undefined;
@@ -615,12 +678,13 @@ async function computeBriefingState(
       date: string; location: string | null;
     }> = [];
     if (isFriday) {
-      const nextMonday = new Date(today);
-      nextMonday.setDate(today.getDate() + (8 - today.getDay()));
-      nextMonday.setHours(0, 0, 0, 0);
-      const nextFridayEnd = new Date(nextMonday);
-      nextFridayEnd.setDate(nextMonday.getDate() + 4);
-      nextFridayEnd.setHours(23, 59, 59, 999);
+      const day = 24 * 60 * 60 * 1000;
+      const nextMonday = etDayStart(
+        new Date(etDayStart(today).getTime() + 12 * 60 * 60 * 1000 + (8 - dayOfWeek) * day)
+      );
+      const nextFridayEnd = new Date(
+        etNextDayStart(new Date(nextMonday.getTime() + 12 * 60 * 60 * 1000 + 4 * day)).getTime() - 1
+      );
       const rawNextWeek = await getCalendarEvents(nextMonday, nextFridayEnd)
         .catch(() => []);
       nextWeekEvents = rawNextWeek.map((e) => ({
@@ -699,7 +763,7 @@ async function computeBriefingState(
     // ── Build briefing ──────────────────────────────────────────
     const briefingData = {
       date: todayStr,
-      dayOfWeek: today.toLocaleDateString("en-US", {weekday: "long"}),
+      dayOfWeek: today.toLocaleDateString("en-US", {weekday: "long", timeZone: ET_ZONE}),
       timeOfDay,
       unbilledHours: Math.round(totalUnbilled * 100) / 100,
       unbilledAmount: Math.round(totalUnbilled * 150 * 100) / 100,
@@ -863,11 +927,32 @@ async function syncAlerts(
 }
 
 /**
+ * Does the prose on `live` still describe the day the facts are about?
+ *
+ * A narrative is a point-in-time story — "rest of today is unchanged", "a new
+ * event landed on tomorrow's calendar" — while the facts under it get replaced
+ * every half hour. Once the ET date moves on, that prose is not stale by a
+ * degree, it is wrong: yesterday's "tomorrow" is today.
+ */
+function narrativeIsCurrent(
+  live: admin.firestore.DocumentData | null | undefined,
+  state: Record<string, unknown>
+): boolean {
+  if (!live?.["narrativeSummary"]) return false;
+  const narratedAt = live["narrativeAt"]?.toDate?.() as Date | undefined;
+  if (!narratedAt) return false;
+  return etDateKey(narratedAt) === (state["date"] as string);
+}
+
+/**
  * Update briefings/live with new facts while leaving the prose alone.
  *
  * Deliberately preserves narrativeSummary and narrativeAt: the dashboard keys
  * its TTS cache on narrativeAt, so bumping it here would re-synthesize audio
  * for words that did not change.
+ *
+ * Callers are responsible for not routing a day-old narrative through here —
+ * see narrativeIsCurrent.
  */
 async function writeFactsOnly(
   state: Record<string, unknown> & {alerts: Array<{type: string; message: string}>},
@@ -1140,10 +1225,11 @@ export const onCalendarChange = onDocumentWritten(
         );
       }
     }
-    // No prose at all yet — first run after deploy, or a previous generation
-    // failed. Narrate regardless of whether this particular change was material,
-    // otherwise the dashboard shows bare numbers until the next cron beat.
-    const hasNarrative = Boolean(live?.["narrativeSummary"]);
+    // No usable prose yet — first run after deploy, a previous generation that
+    // failed, or a narrative left over from yesterday. Narrate regardless of
+    // whether this particular change was material, otherwise the dashboard
+    // shows bare numbers (or a day-old story) until the next cron beat.
+    const hasNarrative = narrativeIsCurrent(live, state);
     const shouldNarrate =
       inWakingHours &&
       (!hasNarrative ||
@@ -1186,7 +1272,13 @@ export const refreshBriefingFacts = onSchedule(
     // Self-heal: if there is no prose on the live document — first run after
     // deploy, or a generation that failed — write a full briefing rather than
     // leaving the dashboard showing numbers with no narrative.
-    if (!liveSnap?.exists || !liveSnap.data()?.["narrativeSummary"]) {
+    //
+    // Prose from a previous day counts as no prose. A facts-only refresh keeps
+    // whatever narrative it finds, so the first run after midnight would
+    // otherwise pair today's facts with last night's story — "a new event
+    // landed on tomorrow's calendar" read aloud on the morning that tomorrow
+    // became today.
+    if (!liveSnap?.exists || !narrativeIsCurrent(liveSnap.data(), state)) {
       await writeBriefing(state, await generateNarrative(state));
       return;
     }
@@ -1247,8 +1339,9 @@ export const invoiceReminder = onSchedule(
       return; // Invoice already exists for last month
     }
 
-    // Check if we already sent a reminder today
-    const todayStr = today.toISOString().split("T")[0];
+    // Check if we already sent a reminder today. ET, to match the briefingDate
+    // the briefing paths write.
+    const todayStr = etDateKey(today);
     const existing = await db.collection("alerts")
       .where("type", "==", "invoice")
       .where("briefingDate", "==", todayStr)
