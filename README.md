@@ -24,6 +24,13 @@ Tool implementations are shared, not duplicated: `functions/src/tools/`
 `maisie` server, and `bridge/applescript/` backs the `desktop` server,
 `calendar-sync.ts`, and `desktop-bridge.ts`.
 
+Calendar **reads** are the exception: they live in `bridge/eventkit/` and go
+through EventKit, not AppleScript. Calendar.app's scripting dictionary cannot
+expand a recurring series — a weekly meeting is one object whose `start date` is
+its first occurrence, so a windowed query silently dropped every standing
+meeting on every calendar. Writes stay on AppleScript. The two use different
+macOS permissions; see "Permissions" below.
+
 MAISIE's six other cloud tools are deliberately absent from VS Code:
 `get_calendar` / `create_calendar_event` / `move_calendar_event` because
 AppleScript reads fresher and writes instantly; `code_with_github` because in
@@ -62,7 +69,28 @@ Then:
 2. Grant macOS automation permission for Mail and Calendar — run
    `cd bridge && npm run mcp:desktop` once from a terminal and accept the
    prompts.
-3. Restart Claude Code and check `/mcp`.
+3. Grant EventKit **Full Access to Calendars** (see "Permissions").
+4. Restart Claude Code and check `/mcp`.
+
+### Permissions
+
+Calendar work needs two separate TCC grants, and they are easy to confuse:
+
+| Grant | Where | Used by |
+| --- | --- | --- |
+| Automation → Calendar | Privacy & Security > Automation | `calendar_create`, `calendar_move`, all Mail tools |
+| Full Access to Calendars | Privacy & Security > Calendars | every calendar read |
+
+Both are attributed to the *responsible process* — the terminal, VS Code, or the
+launchd agent — so granting it in one place does not cover the others. Grant it
+by running the relevant entry point once from a terminal.
+
+A process holding only **write-only** calendar access sees exactly one calendar
+and returns no error, which looks identical to a quiet week. So the reader
+refuses to interpret that as data: it raises `CalendarReadError`, the MCP tool
+returns an explicit read failure, and `calendar-sync` skips the run and leaves
+the previous Firestore contents alone rather than deleting a mirror it could not
+verify. `EKAuthorizationStatus 4` in `/tmp/calendar-sync.log` means exactly this.
 
 Run either server by hand to debug: `cd functions && npm run mcp`, or
 `cd bridge && npm run mcp:desktop`. Both log to stderr; stdout is the protocol.

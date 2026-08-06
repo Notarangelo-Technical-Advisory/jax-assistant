@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 
 /**
  * Run an AppleScript via osascript and return trimmed stdout.
@@ -10,6 +10,23 @@ export function runAppleScript(script: string, timeoutMs = 30000): string {
   return execSync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, {
     encoding: "utf-8",
     timeout: timeoutMs,
+  }).trim();
+}
+
+/**
+ * Run a JXA (JavaScript for Automation) script via osascript and return trimmed
+ * stdout. Used for the EventKit calendar reader, which needs an ObjC bridge
+ * that AppleScript does not have — see `eventkit/read-events.ts`.
+ *
+ * execFileSync, not execSync: there is no shell in the middle, so the script
+ * needs no quote escaping at all. maxBuffer is raised because a week of Teams
+ * invites is a lot of JSON — the default 1MB is within reach.
+ */
+export function runJxa(script: string, timeoutMs = 60000): string {
+  return execFileSync("osascript", ["-l", "JavaScript", "-e", script], {
+    encoding: "utf-8",
+    timeout: timeoutMs,
+    maxBuffer: 64 * 1024 * 1024,
   }).trim();
 }
 

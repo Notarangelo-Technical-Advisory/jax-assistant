@@ -32,12 +32,22 @@ setup; `.mcp.json` is gitignored because it holds absolute paths.
   plus `get_maisie_context` and a `maisie` persona prompt. Shares
   `functions/src/tools/` with the cloud `chat` function, so there is one
   implementation per tool.
-- **`desktop`** (`bridge/mcp/desktop-server.ts`) — Apple Mail and Calendar over
-  AppleScript, from `bridge/applescript/`.
+- **`desktop`** (`bridge/mcp/desktop-server.ts`) — Apple Mail and Calendar.
+  Mail and calendar *writes* are AppleScript (`bridge/applescript/`); calendar
+  *reads* are EventKit (`bridge/eventkit/`), because AppleScript cannot expand a
+  recurring series and silently hid every standing meeting.
 
 When working in this repo, prefer the `desktop` server's `calendar_read` over
 MAISIE's `get_calendar`: it reads Apple Calendar live, while `get_calendar` reads
 the Firestore mirror that the launchd sync populates.
+
+**Reading a calendar answer correctly:** `calendar_read` reports the window it
+actually covered as `window_start`/`window_end` — check it before telling Jack a
+day is clear, because `days_ahead` counts today (1 = today, 2 = today and
+tomorrow). Treat `all_day: true` as "all day", not as a midnight appointment. A
+non-empty `warnings` array means the read was partial — say so rather than
+presenting it as complete. A read that fails returns an explicit error, never an
+empty list; if you see one, the calendar is unknown, not empty.
 
 **Email:** `mail_draft` creates an unsent draft; `mail_send` actually sends.
 Default to drafting and let Jack send. The cloud MAISIE has no send capability

@@ -14,6 +14,12 @@
   The first run will prompt for macOS automation permission to control Mail and
   Calendar. Because launchd runs headless, grant it once by running
   `npm run desktop` from a terminal before loading this agent.
+
+  Calendar READS need a second, separate grant: EventKit "Full Access to
+  Calendars" (System Settings > Privacy & Security > Calendars). Automation
+  permission alone is not enough — a process with only write-only calendar
+  access sees a single calendar and returns no error, which is why the reader
+  fails loudly instead. See eventkit/read-events.ts.
 -->
 <plist version="1.0">
 <dict>

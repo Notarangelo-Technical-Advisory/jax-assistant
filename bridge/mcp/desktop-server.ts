@@ -22,6 +22,7 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { readEvents, createEvent, moveEvent, CALENDAR_NAME, READ_CALENDARS } from "../applescript/calendar.js";
+import { CalendarReadError } from "../eventkit/read-events.js";
 import { searchMessages, readMessage, createDraft, sendMessage } from "../applescript/mail.js";
 
 const server = new Server(
@@ -32,13 +33,16 @@ const server = new Server(
 const TOOLS = [
   {
     name: "calendar_read",
-    description: `Read events across all of Jack's tracked Apple Calendars, live: ${READ_CALENDARS.map((c) => c.label).join(", ")}. Every event carries the calendar it came from, so say which one when it matters — "IHRDC" is client work, "Grace Pres" is church. Prefer this over MAISIE's get_calendar: it reflects the calendars right now, whereas the Firestore mirror can be up to a minute stale (or much staler if the launchd sync is not running).`,
+    description: `Read events across all of Jack's tracked Apple Calendars, live: ${READ_CALENDARS.map((c) => c.label).join(", ")}. Recurring series are expanded into real occurrences, so a standing weekly meeting shows up on the day it actually falls. Every event carries the calendar it came from, so say which one when it matters — "IHRDC" is client work, "Grace Pres" is church. Prefer this over MAISIE's get_calendar: it reflects the calendars right now, whereas the Firestore mirror can be up to a minute stale (or much staler if the launchd sync is not running).
+
+The reply states the window it actually read as window_start/window_end — trust that, not the days_ahead you asked for, before telling Jack a day is clear. An all_day event has no meaningful clock time; present it as all day. A non-empty warnings array means part of the calendar could not be read, so the list is incomplete — say so rather than reporting what came back as complete.`,
     inputSchema: {
       type: "object" as const,
       properties: {
         days_ahead: {
           type: "number",
-          description: "How many days forward from now to read. Default 7.",
+          description:
+            "How many days to read, counting today. 1 is today only, 2 is today and tomorrow, 7 is the coming week. The window always starts at midnight today, so events earlier today are included. Default 7.",
         },
       },
       required: [],
@@ -149,16 +153,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
     case "calendar_read": {
-      const events = readEvents((args["days_ahead"] as number) ?? 7);
+      const read = readEvents((args["days_ahead"] as number) ?? 7);
+      const warnings = read.missingCalendars.length
+        ? [
+            `These allowlisted calendars matched nothing on this Mac, so anything on them is missing from this list: ${read.missingCalendars.join(", ")}. Tell Jack the read was incomplete.`,
+          ]
+        : [];
       return ok({
         calendars: READ_CALENDARS.map((c) => c.label),
-        source: "Apple Calendar (live)",
-        count: events.length,
-        events: events.map((e) => ({
+        source: "Apple Calendar via EventKit (live, recurring series expanded)",
+        window_start: read.windowStart.toISOString(),
+        window_end: read.windowEnd.toISOString(),
+        count: read.events.length,
+        warnings,
+        events: read.events.map((e) => ({
           calendar: e.calendarName,
           summary: e.summary,
           start: e.startTime.toISOString(),
           end: e.endTime.toISOString(),
+          all_day: e.allDay,
+          recurring: e.recurring,
           location: e.location || null,
           notes: e.notes || null,
         })),
@@ -265,6 +279,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    // A failed calendar read must never be reportable as a clear day. Say so
+    // in the error itself, because the model sees this string and nothing else.
+    if (err instanceof CalendarReadError) {
+      return fail(
+        `Tool "${name}" could NOT read the calendar: ${message} ` +
+          "This is a read failure, not an empty calendar — do not tell Jack he has nothing scheduled."
+      );
+    }
     // osascript exits non-zero when automation permission is missing.
     const hint = /not authori[sz]ed|not allowed assistive|-1743/i.test(message)
       ? " — this usually means macOS automation permission is missing. Grant it in System Settings > Privacy & Security > Automation for your terminal or VS Code."

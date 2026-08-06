@@ -1,5 +1,10 @@
 /**
- * Calendar Bridge: Reads Apple Calendar events via AppleScript and syncs them to Firestore.
+ * Calendar Bridge: reads Apple Calendar and syncs it to Firestore.
+ *
+ * Reads go through EventKit (eventkit/read-events.ts) because AppleScript
+ * cannot expand a recurring series; the queued write actions this also applies
+ * stay on AppleScript. Reads need the EventKit "Full Access to Calendars"
+ * grant — see the note on the launchd plist.
  *
  * Usage:
  *   cd bridge && npm run sync
@@ -17,6 +22,7 @@ import {
   readEvents,
   createEventScript,
   moveEventScript,
+  CalendarReadError,
   READ_CALENDARS,
   type ParsedEvent,
 } from "./applescript/calendar.js";
@@ -49,8 +55,15 @@ const SYNC_DAYS_AHEAD = 7;
  * 1 → doc id was `calendarName__summary__startISO` (a move looked like
  *     delete + create, so nothing downstream could recognise a reschedule)
  * 2 → doc id is a hash of the Apple Calendar uid, which survives a move
+ * 3 → recurring occurrences key on RECURRENCE-ID instead of their current start
+ *     date, so dragging one occurrence is a move rather than delete + create.
+ *     The reader also moved to EventKit, which expands recurring series that the
+ *     AppleScript reader could not see at all, and the window now starts at
+ *     midnight rather than at the moment of the run — so this re-key run picks
+ *     up a backlog of standing meetings and earlier-today events that were
+ *     never in the mirror. Suppressing change reporting for it is the point.
  */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /**
  * A change is "material" — worth re-narrating the briefing for — only when it
@@ -84,9 +97,17 @@ function localDateKey(d: Date): string {
  * two allowlisted calendars shares one uid, and both copies should survive.
  *
  * Recurring series: every occurrence shares a single uid, so the occurrence's
- * own date is folded in. The consequence is that dragging one occurrence to a
- * different day still reads as delete + create. Expanding series properly would
- * mean tracking RECURRENCE-ID, which AppleScript does not expose.
+ * RECURRENCE-ID — the slot it occupies in the series — is folded in. That is a
+ * property of the series, not of where the occurrence currently sits, so
+ * dragging one occurrence to another day updates its document in place and the
+ * briefing can say "Thursday's stand-up moved to Friday". Keying on the current
+ * start date instead, as v2 did, made that look like a cancellation plus a new
+ * meeting. EventKit supplies the RECURRENCE-ID as `occurrenceDate`; AppleScript
+ * never exposed it, which is why v2 could not do this.
+ *
+ * Falls back to the start time if a recurring occurrence somehow arrives with no
+ * occurrenceTime — a stable-enough key, and better than colliding every
+ * occurrence of the series onto one document.
  *
  * Events with no uid fall back to content-based identity under a separate
  * prefix, so they cannot collide with the uid-keyed space.
@@ -94,7 +115,7 @@ function localDateKey(d: Date): string {
 function eventDocId(e: ParsedEvent): string {
   const key = e.uid
     ? e.recurring
-      ? `uid|${e.calendarName}|${e.uid}|${localDateKey(e.startTime)}`
+      ? `uid|${e.calendarName}|${e.uid}|${localDateKey(e.occurrenceTime ?? e.startTime)}`
       : `uid|${e.calendarName}|${e.uid}`
     : `content|${e.calendarName}|${e.summary}|${e.startTime.toISOString()}`;
   return createHash("sha1").update(key).digest("hex");
@@ -152,11 +173,22 @@ async function applyPendingActions(): Promise<void> {
   }
 }
 
-// ─── Read Apple Calendar via AppleScript ─────────────────────────
-// Script builders and parsing live in applescript/calendar.ts so the desktop
-// MCP server and the desktop bridge share exactly one definition.
+// ─── Read Apple Calendar ─────────────────────────────────────────
+// Reading is EventKit (eventkit/read-events.ts), writing is AppleScript
+// (applescript/calendar.ts). Both are re-exported from applescript/calendar.ts
+// so the desktop MCP server and this bridge share exactly one definition.
+//
+// Throws CalendarReadError on a failed read rather than returning nothing —
+// see the note in main() on why that distinction matters here.
 function readCalendarEvents(): ParsedEvent[] {
-  return readEvents(SYNC_DAYS_AHEAD);
+  const read = readEvents(SYNC_DAYS_AHEAD);
+  if (read.missingCalendars.length > 0) {
+    console.warn(
+      `[calendar-sync] WARNING: allowlisted calendars matched nothing: ` +
+      `${read.missingCalendars.join(", ")}. Everything on them is missing from this sync.`
+    );
+  }
+  return read.events;
 }
 
 // ─── Sync to Firestore ──────────────────────────────────────────
@@ -168,6 +200,11 @@ interface ChangeEntry {
   kind: ChangeKind;
   startISO: string;
   calendarName: string;
+  /**
+   * All-day event — startISO is local midnight and carries no time of day, so
+   * the narrator must say "all day Thursday" rather than "Thursday at 12:00 AM".
+   */
+  allDay: boolean;
 }
 
 /** How many changed events to name in the beacon — enough for prose, bounded. */
@@ -198,9 +235,11 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
   let deleted = 0;
   let unchanged = 0;
 
-  const record = (kind: ChangeKind, summary: string, startISO: string, calendarName: string) => {
+  const record = (
+    kind: ChangeKind, summary: string, startISO: string, calendarName: string, allDay: boolean
+  ) => {
     if (changes.length < MAX_CHANGE_ENTRIES) {
-      changes.push({ kind, summary, startISO, calendarName });
+      changes.push({ kind, summary, startISO, calendarName, allDay });
     }
   };
 
@@ -219,6 +258,7 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
       calendarName: event.calendarName,
       uid: event.uid || null,
       recurring: event.recurring,
+      allDay: event.allDay,
     };
 
     const prev = existingById.get(docId);
@@ -231,7 +271,7 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
         changeKind: "added" as const,
       });
       added++;
-      record("added", event.summary, event.startTime.toISOString(), event.calendarName);
+      record("added", event.summary, event.startTime.toISOString(), event.calendarName, event.allDay);
       continue;
     }
 
@@ -247,7 +287,8 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
       (prev["location"] ?? null) !== fields.location ||
       (prev["notes"] ?? null) !== fields.notes ||
       (prev["uid"] ?? null) !== fields.uid ||
-      Boolean(prev["recurring"]) !== fields.recurring;
+      Boolean(prev["recurring"]) !== fields.recurring ||
+      Boolean(prev["allDay"]) !== fields.allDay;
 
     if (!timeChanged && !detailChanged) {
       unchanged++;
@@ -262,7 +303,7 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
       changeKind: kind,
     });
     if (timeChanged) moved++; else updated++;
-    record(kind, event.summary, event.startTime.toISOString(), event.calendarName);
+    record(kind, event.summary, event.startTime.toISOString(), event.calendarName, event.allDay);
   }
 
   // Delete events that are gone from Apple Calendar
@@ -272,7 +313,7 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
     deleted++;
     const start = data["startTime"]?.toDate?.() ?? new Date(0);
     record("deleted", (data["summary"] as string) ?? "Untitled", start.toISOString(),
-      (data["calendarName"] as string) ?? "");
+      (data["calendarName"] as string) ?? "", Boolean(data["allDay"]));
   }
 
   await batch.commit();
@@ -321,7 +362,7 @@ async function syncToFirestore(events: ParsedEvent[]): Promise<void> {
   }
 
   const doneTs = new Date().toLocaleString("en-US", { timeZone: "America/New_York", hour12: false });
-  const suffix = isRekey ? " (re-key to schema v2, change reporting suppressed)" : "";
+  const suffix = isRekey ? ` (re-key to schema v${SCHEMA_VERSION}, change reporting suppressed)` : "";
   console.log(
     `[${doneTs}] Sync complete: ${added} added, ${moved} moved, ${updated} updated, ` +
     `${deleted} deleted, ${unchanged} unchanged. Total: ${events.length} events.` +
@@ -396,7 +437,25 @@ async function main(): Promise<void> {
     await applyPendingActions();
 
     console.log(`[${ts}] Syncing ${READ_CALENDARS.length} calendars (${READ_CALENDARS.map((c) => c.label).join(", ")}) for the next ${SYNC_DAYS_AHEAD} days...`);
-    const events = readCalendarEvents();
+
+    // syncToFirestore deletes every document the read did not return, so a read
+    // that failed and returned nothing would wipe the mirror and report the week
+    // as empty. Abort the sync instead and leave the last good data in place —
+    // stale is recoverable, silently blank is not.
+    let events: ParsedEvent[];
+    try {
+      events = readCalendarEvents();
+    } catch (err) {
+      if (err instanceof CalendarReadError) {
+        console.error(
+          `[${ts}] Calendar read FAILED (${err.code}): ${err.message} ` +
+          `Skipping this sync — the Firestore mirror keeps its previous contents.`
+        );
+        return;
+      }
+      throw err;
+    }
+
     await syncToFirestore(events);
   } finally {
     releaseLock();

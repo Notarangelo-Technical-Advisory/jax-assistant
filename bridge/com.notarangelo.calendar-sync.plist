@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  PERMISSIONS: reads need EventKit "Full Access to Calendars", which is a
+  separate TCC grant from the Automation permission the writes use. A process
+  holding only write-only access sees one calendar and reports no error, so the
+  reader treats anything short of full access as a hard failure and skips the
+  sync rather than emptying the Firestore mirror. If the log shows
+  "EKAuthorizationStatus 4", that is this: grant Full Access under System
+  Settings > Privacy & Security > Calendars for the process running this agent,
+  then run `npm run sync` once from a terminal to confirm.
+-->
 <plist version="1.0">
 <dict>
     <key>Label</key>

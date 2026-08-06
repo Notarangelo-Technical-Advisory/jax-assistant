@@ -443,7 +443,7 @@ export const getUnbilledSummary = onRequest(
 // The implementation lives in tools/calendar-read so the MCP server can share it.
 async function getCalendarEvents(
   startOfDay: Date, endOfDay: Date
-): Promise<Array<{summary: string; startTime: Date; endTime: Date; location?: string}>> {
+): Promise<Array<{summary: string; startTime: Date; endTime: Date; location?: string; allDay?: boolean}>> {
   return readCalendarEvents(db, startOfDay, endOfDay);
 }
 
@@ -611,7 +611,7 @@ async function computeBriefingState(
 
     // ── Friday lookahead ────────────────────────────────────────
     let nextWeekEvents: Array<{
-      summary: string; startTime: string; endTime: string;
+      summary: string; startTime: string; endTime: string; allDay: boolean;
       date: string; location: string | null;
     }> = [];
     if (isFriday) {
@@ -627,6 +627,7 @@ async function computeBriefingState(
         summary: e.summary,
         startTime: formatEventTime(e.startTime),
         endTime: formatEventTime(e.endTime),
+        allDay: e.allDay ?? false,
         date: e.startTime.toLocaleDateString("en-US", {
           weekday: "short", month: "short", day: "numeric",
           timeZone: "America/New_York",
@@ -656,6 +657,10 @@ async function computeBriefingState(
     // Early meeting alerts — morning run only
     if (!isAfternoon) {
       const earlyEvents = calendarEvents.filter((e) => {
+        // An all-day event starts at local midnight, which is not an early
+        // meeting — it is not a meeting at all. Without this every holiday and
+        // every travel day would alert as a 12:00 AM appointment.
+        if (e.allDay) return false;
         const etH = new Date(e.startTime.toLocaleString("en-US", {timeZone: "America/New_York"}));
         return etH.getHours() <= 9;
       });
@@ -705,6 +710,7 @@ async function computeBriefingState(
         summary: e.summary,
         startTime: formatEventTime(e.startTime),
         endTime: formatEventTime(e.endTime),
+        allDay: e.allDay ?? false,
         location: e.location || null,
       })),
       overdueTasks,
@@ -927,16 +933,27 @@ interface CalendarChangeEntry {
   kind: "added" | "moved" | "updated" | "deleted";
   startISO: string;
   calendarName: string;
+  /** All-day event — startISO is local midnight and carries no time of day. */
+  allDay?: boolean;
 }
 
-/** "today at 4:15 PM", "tomorrow at 9 AM", "Thursday at 2 PM". */
-function describeWhen(start: Date, now: Date): string {
+/**
+ * "today at 4:15 PM", "tomorrow at 9 AM", "Thursday at 2 PM" — or, for an
+ * all-day event, "all day today", since its start is local midnight and saying
+ * "today at 12:00 AM" out loud is just wrong.
+ */
+function describeWhen(start: Date, now: Date, allDay = false): string {
   const et = (d: Date) => d.toLocaleDateString("en-CA", {timeZone: "America/New_York"});
   const time = formatEventTime(start);
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const day = start.toLocaleDateString("en-US", {weekday: "long", timeZone: "America/New_York"});
+  if (allDay) {
+    if (et(start) === et(now)) return "all day today";
+    if (et(start) === et(tomorrow)) return "all day tomorrow";
+    return `all day ${day}`;
+  }
   if (et(start) === et(now)) return `today at ${time}`;
   if (et(start) === et(tomorrow)) return `tomorrow at ${time}`;
-  const day = start.toLocaleDateString("en-US", {weekday: "long", timeZone: "America/New_York"});
   return `${day} at ${time}`;
 }
 
@@ -963,7 +980,7 @@ function buildAnnouncement(
 
   const sentences = imminent.map((c) => {
     const start = new Date(c.startISO);
-    const when = describeWhen(start, now);
+    const when = describeWhen(start, now, c.allDay ?? false);
     const cal = c.calendarName && c.calendarName !== "Jax" ? ` on your ${c.calendarName} calendar` : "";
     if (c.kind === "added") return `New invite${cal}: ${c.summary}, ${when}.`;
     if (c.kind === "moved") return `${c.summary} moved to ${when}.`;

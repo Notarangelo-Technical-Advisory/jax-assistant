@@ -15,6 +15,14 @@ export interface CalendarEvent {
    * which is where the Teams join link lives — see extractMeetingLink.
    */
   notes?: string;
+  /**
+   * All-day event. startTime is local midnight and endTime is 23:59:59, so the
+   * clock times are an artefact — never format them as a time range, and never
+   * treat the midnight start as an early meeting. Use formatEventWhen.
+   *
+   * Undefined for docs written before the EventKit reader landed.
+   */
+  allDay?: boolean;
 }
 
 /**
@@ -41,6 +49,7 @@ export async function readCalendarEvents(
       location: data.location || undefined,
       calendarName: data.calendarName || undefined,
       notes: data.notes || undefined,
+      allDay: data.allDay || undefined,
     };
   });
 }
@@ -49,6 +58,17 @@ export function formatEventTime(date: Date): string {
   return date.toLocaleTimeString("en-US", {
     hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
   });
+}
+
+/**
+ * How to say *when* an event is. Prefer this over two formatEventTime calls
+ * joined by a dash: an all-day event runs local midnight to 23:59:59, so the
+ * naive version renders it "12:00 AM–11:59 PM" and reads like an overnight
+ * ordeal.
+ */
+export function formatEventWhen(e: Pick<CalendarEvent, "startTime" | "endTime" | "allDay">): string {
+  if (e.allDay) return "all day";
+  return `${formatEventTime(e.startTime)}–${formatEventTime(e.endTime)}`;
 }
 
 /**

@@ -7,7 +7,7 @@ import {
   Customer,
   Invoice,
 } from "../fta-client";
-import {readCalendarEvents, formatEventTime, CalendarEvent} from "./calendar-read";
+import {readCalendarEvents, formatEventWhen, CalendarEvent} from "./calendar-read";
 import {Category, DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS} from "./definitions";
 import {CustomerInfo} from "./execute";
 
@@ -179,7 +179,7 @@ export function buildStateBlock(ctx: MaisieContext): string {
 - Calendar (today & tomorrow), tagged with the source calendar: ${ctx.calendarEvents.length > 0 ? ctx.calendarEvents.map((e) => {
     const day = e.startTime.toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York"});
     const cal = e.calendarName ? `[${e.calendarName}] ` : "";
-    return `${day} ${formatEventTime(e.startTime)}–${formatEventTime(e.endTime)}: ${cal}${e.summary}${e.location ? ` (${e.location})` : ""}`;
+    return `${day} ${formatEventWhen(e)}: ${cal}${e.summary}${e.location ? ` (${e.location})` : ""}`;
   }).join("; ") : "No upcoming events"}
 - Task categories: ${ctx.categories.map((c) => `${c.key} (${c.label})`).join(", ")}
 
