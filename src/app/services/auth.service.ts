@@ -1,5 +1,5 @@
 import { Injectable, signal, inject } from '@angular/core';
-import { Auth, signInWithEmailAndPassword, signOut, onAuthStateChanged, User } from '@angular/fire/auth';
+import { Auth, signInWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged, User } from '@angular/fire/auth';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -17,6 +17,10 @@ export class AuthService {
 
   async login(email: string, password: string): Promise<void> {
     await signInWithEmailAndPassword(this.auth, email, password);
+  }
+
+  async sendPasswordReset(email: string): Promise<void> {
+    await sendPasswordResetEmail(this.auth, email);
   }
 
   async logout(): Promise<void> {

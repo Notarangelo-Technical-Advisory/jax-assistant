@@ -11,30 +11,59 @@ import { AuthService } from '../../services/auth.service';
     <div class="login-container">
       <div class="login-card">
         <h1>Jax Assistant</h1>
-        <p class="subtitle">Executive Assistant Dashboard</p>
+        <p class="subtitle">
+          {{ mode() === 'signin' ? 'Executive Assistant Dashboard' : 'Reset your password' }}
+        </p>
 
-        <form (ngSubmit)="login()">
-          <input
-            type="email"
-            [(ngModel)]="email"
-            name="email"
-            placeholder="Email"
-            required
-          />
-          <input
-            type="password"
-            [(ngModel)]="password"
-            name="password"
-            placeholder="Password"
-            required
-          />
-          @if (error()) {
-            <p class="error">{{ error() }}</p>
-          }
-          <button type="submit" [disabled]="loading()">
-            {{ loading() ? 'Signing in...' : 'Sign In' }}
+        @if (mode() === 'signin') {
+          <form (ngSubmit)="login()">
+            <input
+              type="email"
+              [(ngModel)]="email"
+              name="email"
+              placeholder="Email"
+              required
+            />
+            <input
+              type="password"
+              [(ngModel)]="password"
+              name="password"
+              placeholder="Password"
+              required
+            />
+            @if (error()) {
+              <p class="error">{{ error() }}</p>
+            }
+            <button type="submit" [disabled]="loading()">
+              {{ loading() ? 'Signing in...' : 'Sign In' }}
+            </button>
+          </form>
+          <button type="button" class="link" (click)="showReset()">
+            Forgot password?
           </button>
-        </form>
+        } @else {
+          <form (ngSubmit)="sendReset()">
+            <input
+              type="email"
+              [(ngModel)]="email"
+              name="email"
+              placeholder="Email"
+              required
+            />
+            @if (error()) {
+              <p class="error">{{ error() }}</p>
+            }
+            @if (notice()) {
+              <p class="notice">{{ notice() }}</p>
+            }
+            <button type="submit" [disabled]="loading()">
+              {{ loading() ? 'Sending...' : 'Send reset link' }}
+            </button>
+          </form>
+          <button type="button" class="link" (click)="showSignIn()">
+            Back to sign in
+          </button>
+        }
       </div>
     </div>
   `,
@@ -98,6 +127,22 @@ import { AuthService } from '../../services/auth.service';
       font-size: 0.875rem;
       margin: 0 0 1rem;
     }
+    .notice {
+      color: #4ade80;
+      font-size: 0.875rem;
+      margin: 0 0 1rem;
+    }
+    button.link {
+      width: auto;
+      margin-top: 1rem;
+      padding: 0;
+      background: none;
+      color: #94a3b8;
+      font-size: 0.875rem;
+      font-weight: 400;
+      text-decoration: underline;
+    }
+    button.link:hover { background: none; color: #f8fafc; }
   `]
 })
 export class LoginComponent {
@@ -106,8 +151,10 @@ export class LoginComponent {
 
   email = '';
   password = '';
+  mode = signal<'signin' | 'reset'>('signin');
   loading = signal(false);
   error = signal('');
+  notice = signal('');
 
   async login(): Promise<void> {
     this.loading.set(true);
@@ -121,5 +168,40 @@ export class LoginComponent {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  async sendReset(): Promise<void> {
+    this.loading.set(true);
+    this.error.set('');
+    this.notice.set('');
+
+    try {
+      await this.authService.sendPasswordReset(this.email);
+    } catch (err: unknown) {
+      // Deliberately swallowed: reporting auth/user-not-found would let
+      // anyone probe which emails have accounts. Only a malformed address
+      // is worth surfacing, since the user can act on it.
+      if ((err as { code?: string }).code === 'auth/invalid-email') {
+        this.error.set('Enter a valid email address.');
+        this.loading.set(false);
+        return;
+      }
+    }
+
+    this.notice.set('If that email has an account, a reset link is on its way.');
+    this.loading.set(false);
+  }
+
+  showReset(): void {
+    this.mode.set('reset');
+    this.password = '';
+    this.error.set('');
+    this.notice.set('');
+  }
+
+  showSignIn(): void {
+    this.mode.set('signin');
+    this.error.set('');
+    this.notice.set('');
   }
 }
