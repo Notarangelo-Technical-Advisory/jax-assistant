@@ -1,0 +1,35 @@
+name: Run Headlines Now
+
+# Runs the headlinesBriefing scheduled function immediately, outside its
+# 6:45 AM / 12:45 PM ET schedule. It triggers the existing Cloud Scheduler
+# job; it does not deploy anything.
+on:
+  workflow_dispatch:
+
+env:
+  FIREBASE_PROJECT: "jax-assistant-cb47f"
+
+jobs:
+  run:
+    name: Trigger headlinesBriefing
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to Google Cloud via Workload Identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Firebase names the scheduler job for a v2 scheduled function
+      # firebase-schedule-<functionName>-<region>.
+      - name: Run the scheduler job
+        run: |
+          gcloud scheduler jobs run firebase-schedule-headlinesBriefing-us-central1 \
+            --location=us-central1 \
+            --project="$FIREBASE_PROJECT"
