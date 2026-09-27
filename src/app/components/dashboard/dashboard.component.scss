@@ -282,6 +282,17 @@ $border: #334155;
 
 .headline-why { color: $text-secondary; font-style: italic; }
 
+.headline-card.futures { border-left-color: $warning; }
+
+.headline-tag {
+  display: inline-block;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: $warning;
+  margin-bottom: 0.2rem;
+}
+
 .headline-meta {
   display: block;
   margin-top: 0.3rem;

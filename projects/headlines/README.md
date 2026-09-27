@@ -26,6 +26,7 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
   - **The day is marked significant** when SPY moves 1% or more, one of those companies moves 3% or more, or one of them reports earnings that week. The model is then asked to find the cause of each move.
   - **The free plan has no VIX, no bond yields and no index levels.** Adding them would need a paid Finnhub plan.
   - **The key is in the GitHub secret `FINNHUB_API_KEY`.** Without it, the markets strip is simply not shown.
+- **Pre-market futures (from news):** on weekdays before 9:30 AM ET, which in practice means the 6:45 AM run, the model adds one Markets item on S&P 500 futures, taken from a news report and linked to it. The dashboard labels it "Futures · from news", because the number can be 30 to 60 minutes old. The free Finnhub plan has no futures data.
 
 ## X (Twitter)
 

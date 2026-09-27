@@ -1319,6 +1319,24 @@ export const morningBriefing = onSchedule(
   }
 );
 
+/**
+ * Before the 9:30 AM ET open on a weekday. Only then is a futures report
+ * useful: at 12:45 the market is trading and Finnhub has the real price, and
+ * on a weekend there is no open to report on.
+ *
+ * Market holidays are not excluded; on those mornings the model finds no
+ * pre-market report for the day and leaves the item out.
+ */
+function isPreMarket(d: Date): boolean {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: ET_ZONE, weekday: "short", hour: "numeric", minute: "numeric", hourCycle: "h23",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  if (get("weekday") === "Sat" || get("weekday") === "Sun") return false;
+  const minutes = Number(get("hour")) * 60 + Number(get("minute"));
+  return minutes < 9 * 60 + 30;
+}
+
 // ─── Scheduled: Headlines (daily 6:45am & 12:45pm ET) ───────────
 //
 // Its own document, not a field on briefings/live: the facts refresh rewrites
@@ -1349,7 +1367,7 @@ export const headlinesBriefing = onSchedule(
         })
         : null;
       const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
-      const result = await generateHeadlines(anthropic, MODEL, todayLabel, market);
+      const result = await generateHeadlines(anthropic, MODEL, todayLabel, market, isPreMarket(now));
       if (result.unverified.length > 0) {
         console.warn(`[headlines] dropped ${result.unverified.length} item(s) with unverified URLs`);
       }

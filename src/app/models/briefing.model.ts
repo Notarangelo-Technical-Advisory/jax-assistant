@@ -79,6 +79,8 @@ export interface HeadlineItem {
   sourceName: string;
   url: string;
   publishedAt: string | null;
+  /** A pre-market futures report taken from the news, not from live data. Absent on older documents. */
+  futures?: boolean;
 }
 
 /** From Finnhub. The S&P 500 is read through SPY, the ETF that tracks it. */

@@ -49,6 +49,8 @@ export interface HeadlineItem {
   sourceName: string;
   url: string;
   publishedAt: string | null;
+  /** A pre-market futures report taken from the news, not from live data. */
+  futures: boolean;
 }
 
 export interface HeadlinesResult {
@@ -73,7 +75,7 @@ const SUBMIT_TOOL: Anthropic.Messages.Tool = {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["section", "headline", "summary", "whyItMatters", "sourceName", "url", "publishedAt"],
+          required: ["section", "headline", "summary", "whyItMatters", "sourceName", "url", "publishedAt", "futures"],
           properties: {
             section: {type: "string", enum: HEADLINE_SECTIONS.map((s) => s.key)},
             headline: {type: "string", description: "One line, under 100 characters."},
@@ -84,6 +86,10 @@ const SUBMIT_TOOL: Anthropic.Messages.Tool = {
             publishedAt: {
               type: ["string", "null"],
               description: "YYYY-MM-DD if the source states a date, otherwise null.",
+            },
+            futures: {
+              type: "boolean",
+              description: "True only for the pre-market S&P 500 futures report. False for every other item.",
             },
           },
         },
@@ -120,6 +126,8 @@ Jack is a technical advisor on AI adoption. Find what is new in the last 24-48 h
 ${people}
 2. ai — significant news from these AI companies: ${HEADLINE_AI_COMPANIES.join(", ")}. Model releases, major product launches, pricing changes, policy or legal news. Skip minor feature updates.
 3. markets — only events that moved, or are expected to move, the S&P 500: a move of more than 1% in a day, a Federal Reserve decision, a CPI or jobs report, or earnings from one of the largest companies in the index. The user message may include marketData with the latest prices and a list of reasons the day is significant; when it does, find and explain the cause of each move it lists. Take every number from marketData, never from search results, and do not repeat prices the dashboard already shows. If nothing significant happened, return no markets items.
+
+Pre-market futures: when the user message says the US market has not opened yet, search for the latest news report on S&P 500 futures (for example from CNBC, Reuters, Bloomberg, MarketWatch or Yahoo Finance) and add exactly one markets item for it, with futures set to true. Put the direction and size of the move in the headline, such as "S&P 500 futures down 0.6% before the open", and say in the summary what the report gives as the reason and what time the report was published. This is the one item whose numbers come from the news rather than from marketData. Add it even on a quiet morning. If you cannot find a report from today, leave it out.
 
 Rules:
 - Every item must link to a URL that appeared in your web_search or web_fetch results. Never write a URL from memory. Items with other URLs are discarded.
@@ -180,11 +188,18 @@ export async function generateHeadlines(
   anthropic: Anthropic,
   model: string,
   todayLabel: string,
-  marketData?: MarketSnapshot | null
+  marketData?: MarketSnapshot | null,
+  preMarket = false
 ): Promise<HeadlinesResult> {
-  const ask = marketData
-    ? `Prepare today's headlines.\n\nmarketData:\n${JSON.stringify(marketData)}`
-    : "Prepare today's headlines. No market data is available today.";
+  // Kept out of the system prompt so the prompt stays the same on every run.
+  const parts = ["Prepare today's headlines."];
+  if (preMarket) {
+    parts.push("The US market has not opened yet. Include the pre-market futures report.");
+  }
+  parts.push(marketData
+    ? `marketData (the latest prices; before the open these are the previous close):\n${JSON.stringify(marketData)}`
+    : "No market data is available today.");
+  const ask = parts.join("\n\n");
   const messages: Anthropic.Messages.MessageParam[] = [{role: "user", content: ask}];
   const request = (): Anthropic.Messages.MessageCreateParamsNonStreaming => ({
     model,
