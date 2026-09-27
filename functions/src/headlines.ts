@@ -53,7 +53,7 @@ export interface HeadlineItem {
 export interface HeadlinesResult {
   sections: Array<{key: SectionKey; title: string; items: HeadlineItem[]}>;
   /** Items the model returned whose URL never appeared in a search or fetch result. */
-  droppedUnverified: number;
+  unverified: HeadlineItem[];
 }
 
 const SUBMIT_TOOL: Anthropic.Messages.Tool = {
@@ -129,19 +129,43 @@ Rules:
 - When you are finished, call submit_headlines once with all the items.`;
 }
 
-/** Every URL the server-side tools actually returned in this conversation. */
+/**
+ * Every URL the server-side tools actually returned in this conversation.
+ *
+ * The `_20260209` web tools filter results with code execution before the
+ * model reads them, so many results reach the model as code-execution output
+ * rather than as `web_search_tool_result` blocks. Matching only those two block
+ * types dropped nearly every item on the first run. Instead, scan every block
+ * the model did not write itself for URLs.
+ */
 function collectSeenUrls(content: Anthropic.Messages.ContentBlock[], into: Set<string>): void {
   for (const block of content) {
-    if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
-      for (const r of block.content) into.add(normalizeUrl(r.url));
-    } else if (block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result") {
-      into.add(normalizeUrl(block.content.url));
+    if (block.type === "text" || block.type === "thinking" || block.type === "tool_use" ||
+        block.type === "server_tool_use" || block.type === "redacted_thinking") {
+      continue;
+    }
+    for (const match of JSON.stringify(block).matchAll(URL_PATTERN)) {
+      into.add(normalizeUrl(match[0]));
     }
   }
 }
 
+const URL_PATTERN = /https?:\/\/[^\s"'<>\\)\]]+/g;
+
+/**
+ * Compare URLs by host and path only. The model often drops tracking
+ * parameters, "www." or the trailing slash when it copies a link, and none of
+ * those make a different page.
+ */
 function normalizeUrl(url: string): string {
-  return url.trim().replace(/#.*$/, "").replace(/\/+$/, "");
+  try {
+    const u = new URL(url.trim());
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    const path = decodeURIComponent(u.pathname).replace(/\/+$/, "");
+    return host + path;
+  } catch {
+    return url.trim().toLowerCase();
+  }
 }
 
 /**
@@ -198,6 +222,6 @@ export async function generateHeadlines(
       title: s.title,
       items: verified.filter((it) => it.section === s.key),
     })),
-    droppedUnverified: items.length - verified.length,
+    unverified: items.filter((it) => !seenUrls.has(normalizeUrl(it.url))),
   };
 }

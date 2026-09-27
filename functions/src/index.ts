@@ -1340,12 +1340,15 @@ export const headlinesBriefing = onSchedule(
     try {
       const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
       const result = await generateHeadlines(anthropic, MODEL, todayLabel);
-      if (result.droppedUnverified > 0) {
-        console.warn(`[headlines] dropped ${result.droppedUnverified} item(s) with unverified URLs`);
+      if (result.unverified.length > 0) {
+        console.warn(`[headlines] dropped ${result.unverified.length} item(s) with unverified URLs`);
       }
       await ref.set({
         date: etDateKey(now),
         sections: result.sections,
+        // Kept off the dashboard but on the document, so a thin run can be
+        // diagnosed from Firestore without reading function logs.
+        unverified: result.unverified.map((it) => ({headline: it.headline, url: it.url})),
         generatedAt: admin.firestore.FieldValue.serverTimestamp(),
         lastError: null,
       });
