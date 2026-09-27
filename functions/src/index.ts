@@ -9,6 +9,7 @@ import {buildTools, WEB_TOOLS} from "./tools/definitions";
 import {executeTool, toolLabel} from "./tools/execute";
 import {loadMaisieContext, MAISIE_PERSONA, buildStateBlock, historyToMessages} from "./tools/context";
 import {readCalendarEvents, formatEventTime} from "./tools/calendar-read";
+import {generateHeadlines} from "./headlines";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -1314,6 +1315,48 @@ export const morningBriefing = onSchedule(
   },
   async () => {
     await runBriefing();
+  }
+);
+
+// ─── Scheduled: Headlines (daily 6:45am & 12:45pm ET) ───────────
+//
+// Its own document, not a field on briefings/live: the facts refresh rewrites
+// that one every 30 minutes, and headlines cost web searches to rebuild.
+// Runs every day, not just weekdays — the news does not stop on Saturday.
+export const headlinesBriefing = onSchedule(
+  {
+    schedule: "45 6,12 * * *",
+    timeZone: "America/New_York",
+    region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const ref = db.collection("briefings").doc("headlines");
+    const now = new Date();
+    const todayLabel = now.toLocaleDateString("en-US", {
+      timeZone: ET_ZONE, weekday: "long", year: "numeric", month: "long", day: "numeric",
+    });
+    try {
+      const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
+      const result = await generateHeadlines(anthropic, MODEL, todayLabel);
+      if (result.droppedUnverified > 0) {
+        console.warn(`[headlines] dropped ${result.droppedUnverified} item(s) with unverified URLs`);
+      }
+      await ref.set({
+        date: etDateKey(now),
+        sections: result.sections,
+        generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastError: null,
+      });
+    } catch (err) {
+      // Keep the last good headlines on screen; record the failure beside them.
+      console.error("[headlines] generation failed:", err);
+      await ref.set({
+        lastError: String(err instanceof Error ? err.message : err),
+        lastErrorAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+    }
   }
 );
 

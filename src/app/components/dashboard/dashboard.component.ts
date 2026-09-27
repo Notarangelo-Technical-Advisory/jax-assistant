@@ -16,7 +16,7 @@ import { CalendarService } from '../../services/calendar.service';
 import { TtsService } from '../../services/tts.service';
 import { SttService } from '../../services/stt.service';
 import { FeatureFlagService } from '../../services/feature-flag.service';
-import { Briefing } from '../../models/briefing.model';
+import { Briefing, Headlines } from '../../models/briefing.model';
 import { Task, TaskRecurrence } from '../../models/task.model';
 import { TaskCategory } from '../../models/task-category.model';
 import { Alert } from '../../models/alert.model';
@@ -48,6 +48,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   @ViewChild('messagesContainer') private messagesContainer!: ElementRef;
 
   briefing = signal<Briefing | null>(null);
+  headlines = signal<Headlines | null>(null);
+  briefingTab = signal<'today' | 'headlines'>(
+    localStorage.getItem('maisie-briefing-tab') === 'headlines' ? 'headlines' : 'today'
+  );
   billingSummary = signal<BillingSummary | null>(null);
   billingEntriesOpen = signal(false);
   calendarEvents = signal<CalendarEvent[]>([]);
@@ -131,7 +135,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
   briefingAge = computed(() => {
     const b = this.briefing();
     if (!b) return null;
-    const updated = this.toDate(b.updatedAt) ?? this.toDate(b.createdAt);
+    return this.ageLabel(this.toDate(b.updatedAt) ?? this.toDate(b.createdAt));
+  });
+
+  headlinesAge = computed(() => this.ageLabel(this.toDate(this.headlines()?.generatedAt)));
+
+  /** Sections with at least one item; empty ones are hidden rather than shown as blank. */
+  headlineSections = computed(() =>
+    (this.headlines()?.sections ?? []).filter((s) => s.items.length > 0)
+  );
+
+  selectBriefingTab(tab: 'today' | 'headlines'): void {
+    this.briefingTab.set(tab);
+    localStorage.setItem('maisie-briefing-tab', tab);
+  }
+
+  private ageLabel(updated: Date | null): string | null {
     if (!updated) return null;
     const mins = Math.floor((this.now() - updated.getTime()) / 60000);
     if (mins < 1) return 'just now';
@@ -139,7 +158,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (mins < 60) return `${mins} min ago`;
     const hrs = Math.round(mins / 60);
     return hrs === 1 ? '1 hour ago' : `${hrs} hours ago`;
-  });
+  }
 
   /** Firestore Timestamp, Date, or absent — normalise to a Date. */
   private toDate(v: unknown): Date | null {
@@ -223,6 +242,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private setupSubscriptions(): void {
     this.subs.push(
       this.briefingService.getLatestBriefing().subscribe((b) => this.briefing.set(b)),
+      this.briefingService.getHeadlines().subscribe((h) => this.headlines.set(h)),
       this.calendarService.getTodayEvents().subscribe((e) => this.calendarEvents.set(e)),
       this.taskService.getActiveTasks().subscribe((t) => this.tasks.set(t)),
       this.taskCategoryService.getCategories().subscribe((c) => this.categories.set(c)),

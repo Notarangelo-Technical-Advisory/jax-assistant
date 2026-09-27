@@ -219,6 +219,82 @@ $border: #334155;
   &:hover { color: $text-primary; background: rgba(255, 255, 255, 0.1); }
 }
 
+// Briefing tabs — Today / Headlines
+.briefing-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-right: auto;
+
+  button {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    color: $text-secondary;
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.65rem;
+
+    &:hover { color: $text-primary; }
+    &.active {
+      color: $text-primary;
+      border-color: rgba($accent, 0.5);
+      background: rgba($accent, 0.12);
+    }
+  }
+
+  // The freshness pill normally takes the free space; with tabs present the
+  // tabs take it and the pill sits beside them.
+  + .freshness { margin-right: 0; }
+}
+
+// Headlines tab
+.headline-section {
+  margin-bottom: 1rem;
+
+  h3 {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 0.5rem;
+  }
+}
+
+.headline-card {
+  padding: 0.65rem 0.9rem;
+  border-left: 3px solid rgba($accent, 0.6);
+  background: rgba($accent, 0.04);
+  border-radius: 0 8px 8px 0;
+  margin-bottom: 0.5rem;
+
+  p { margin: 0.25rem 0 0; font-size: 0.85rem; line-height: 1.45; }
+}
+
+.headline-title {
+  color: $text-primary;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+
+  &:hover { text-decoration: underline; }
+}
+
+.headline-why { color: $text-secondary; font-style: italic; }
+
+.headline-meta {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  color: $text-secondary;
+}
+
+.headlines-error {
+  font-size: 0.8rem;
+  color: $warning;
+  margin: 0 0 0.75rem;
+}
+
 // Narrative Summary
 .narrative-summary {
   margin: 0 0 1rem;

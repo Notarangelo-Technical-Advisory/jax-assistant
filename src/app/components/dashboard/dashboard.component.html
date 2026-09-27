@@ -81,10 +81,16 @@
       <section class="section">
         <div class="section-header">
           <h2>Briefing</h2>
-          @if (briefingAge(); as age) {
-            <span class="freshness" [title]="'Facts last refreshed ' + age">{{ age }}</span>
+          <div class="briefing-tabs" role="tablist">
+            <button role="tab" [class.active]="briefingTab() === 'today'" [attr.aria-selected]="briefingTab() === 'today'"
+                    (click)="selectBriefingTab('today')">Today</button>
+            <button role="tab" [class.active]="briefingTab() === 'headlines'" [attr.aria-selected]="briefingTab() === 'headlines'"
+                    (click)="selectBriefingTab('headlines')">Headlines</button>
+          </div>
+          @if (briefingTab() === 'today' ? briefingAge() : headlinesAge(); as age) {
+            <span class="freshness" [title]="(briefingTab() === 'today' ? 'Facts last refreshed ' : 'Headlines gathered ') + age">{{ age }}</span>
           }
-          @if (briefing() && featureFlags.enableTts()) {
+          @if (briefingTab() === 'today' && briefing() && featureFlags.enableTts()) {
             <button class="btn-icon" (click)="speakBriefing()" title="Read briefing aloud">
               @if (ttsService.speakingId() && ttsService.speakingId()!.startsWith('briefing-')) {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
@@ -98,6 +104,32 @@
           }
         </div>
 
+        @if (briefingTab() === 'headlines') {
+          @if (headlines()?.lastError) {
+            <p class="headlines-error">The last update failed. Showing the most recent headlines that succeeded.</p>
+          }
+          @for (section of headlineSections(); track section.key) {
+            <div class="headline-section">
+              <h3>{{ section.title }}</h3>
+              @for (item of section.items; track item.url) {
+                <article class="headline-card">
+                  <a class="headline-title" [href]="item.url" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a>
+                  <p class="headline-summary">{{ item.summary }}</p>
+                  @if (item.whyItMatters) {
+                    <p class="headline-why">{{ item.whyItMatters }}</p>
+                  }
+                  <span class="headline-meta">{{ item.sourceName }}@if (item.publishedAt) { · {{ item.publishedAt }} }</span>
+                </article>
+              }
+            </div>
+          } @empty {
+            @if (headlines()?.sections) {
+              <p class="empty-state">Nothing significant since the last update.</p>
+            } @else {
+              <p class="empty-state">No headlines yet. They are gathered at 6:45 AM and 12:45 PM.</p>
+            }
+          }
+        } @else {
         @if (briefing(); as b) {
           @if (b.narrativeSummary) {
             <blockquote class="narrative-summary">{{ b.narrativeSummary }}</blockquote>
@@ -175,6 +207,7 @@
           }
         } @else {
           <p class="empty-state">No briefing yet. Waiting on the first calendar sync.</p>
+        }
         }
       </section>
 

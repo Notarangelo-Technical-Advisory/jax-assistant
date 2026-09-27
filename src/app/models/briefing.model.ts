@@ -56,3 +56,26 @@ export interface BriefingAlert {
   type: string;
   message: string;
 }
+
+/** `briefings/headlines` — written by the headlinesBriefing function. */
+export interface Headlines {
+  date?: string;
+  sections?: HeadlineSection[];
+  generatedAt?: Date | null;
+  lastError?: string | null;
+}
+
+export interface HeadlineSection {
+  key: string;
+  title: string;
+  items: HeadlineItem[];
+}
+
+export interface HeadlineItem {
+  headline: string;
+  summary: string;
+  whyItMatters: string;
+  sourceName: string;
+  url: string;
+  publishedAt: string | null;
+}

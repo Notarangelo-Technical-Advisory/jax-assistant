@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Firestore, doc, docData } from '@angular/fire/firestore';
 import { HttpClient } from '@angular/common/http';
 import { Observable, map, firstValueFrom } from 'rxjs';
-import { Briefing } from '../models/briefing.model';
+import { Briefing, Headlines } from '../models/briefing.model';
 import { AuthService } from './auth.service';
 
 @Injectable({ providedIn: 'root' })
@@ -25,6 +25,12 @@ export class BriefingService {
     return docData(ref, { idField: 'id' }).pipe(
       map((d) => (d ? (d as Briefing) : null))
     );
+  }
+
+  /** The Headlines tab. A separate document so the facts refresh never touches it. */
+  getHeadlines(): Observable<Headlines | null> {
+    const ref = doc(this.firestore, 'briefings', 'headlines');
+    return docData(ref).pipe(map((d) => (d ? (d as Headlines) : null)));
   }
 
   async triggerRefresh(): Promise<void> {
