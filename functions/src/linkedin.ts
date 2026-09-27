@@ -284,9 +284,22 @@ async function buildWeek(tuesday: string, now: Date, previousUrl: string | null)
   };
 }
 
-/** Read the coming Tuesday from GitHub and save it as the dashboard card. */
+/**
+ * The Tuesday the card should show: the coming Tuesday, unless its post is
+ * already live, in which case the next one that is not. Jack sometimes posts
+ * early, and a card that stays on a finished post gives him nothing to do.
+ */
+export function cardTuesday(rows: QueueRow[], now: Date): string {
+  const coming = comingTuesday(now);
+  const next = rows
+    .filter((r) => r.date >= coming && r.status !== "posted")
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+  return next?.date ?? coming;
+}
+
+/** Read the queue from GitHub and save the Tuesday Jack works on next as the dashboard card. */
 export async function refreshWeek(db: admin.firestore.Firestore, now = new Date()): Promise<LinkedInWeek> {
-  const tuesday = comingTuesday(now);
+  const tuesday = cardTuesday((await loadQueue()).rows, now);
   const previous = (await db.collection("linkedin").doc("week").get()).data() as LinkedInWeek | undefined;
   const week = await buildWeek(tuesday, now, previous?.tuesday === tuesday ? previous.postUrl ?? null : null);
   await db.collection("linkedin").doc("week").set({

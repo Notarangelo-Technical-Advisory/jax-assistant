@@ -9,7 +9,7 @@ MAISIE helps Jack publish one LinkedIn post every Tuesday for Notarangelo Techni
   - `operations/marketing/linkedin-posts/`: one draft per post, named by date.
   - `operations/skills/marketing-linkedin/SKILL.md`: the writing rules.
 - **MAISIE's code** is `functions/src/linkedin.ts`. It reads and writes those files through the GitHub API, so the repository is the only record and Jack can still edit the files by hand.
-- **Firestore** holds only `linkedin/week`, which is a copy of the coming Tuesday for the dashboard card.
+- **Firestore** holds only `linkedin/week`, the dashboard card. The card shows the coming Tuesday, unless that post is already posted; then it shows the next Tuesday that is not posted.
 
 ## Every week (all times ET)
 
