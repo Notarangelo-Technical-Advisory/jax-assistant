@@ -11,15 +11,12 @@ import {loadMaisieContext, MAISIE_PERSONA, buildStateBlock, historyToMessages} f
 import {readCalendarEvents, formatEventTime} from "./tools/calendar-read";
 import {generateHeadlines} from "./headlines";
 import {getMarketSnapshot} from "./markets";
+import {MODEL} from "./model";
+import {refreshWeek, draftIfIdea, approvePost, markPosted, writeDraft, describeWeek, textJack} from "./linkedin";
 
 admin.initializeApp();
 const db = admin.firestore();
 
-/**
- * The model behind every MAISIE call — chat, briefing, and SMS.
- * Kept in one place so the next migration is a one-line change.
- */
-const MODEL = "claude-sonnet-5";
 
 // ─── Eastern Time day math ─────────────────────────────────────
 //
@@ -1403,6 +1400,84 @@ async function runHeadlines(): Promise<void> {
     }, {merge: true});
   }
 }
+
+// ─── LinkedIn: the weekly Tuesday post ─────────────────────────
+//
+// The queue lives in the fractional-tech-advisory repository; see linkedin.ts.
+// Thursday drafts next Tuesday's post if it is still an idea, Friday asks Jack
+// to approve it, Tuesday reminds him to post it. Jack posts it himself.
+const LINKEDIN_OPTS = {
+  timeZone: "America/New_York",
+  region: "us-central1",
+  memory: "512MiB",
+  timeoutSeconds: 300,
+} as const;
+
+/** Run a scheduled LinkedIn step, and tell Jack by text if it fails. */
+async function linkedinStep(name: string, step: () => Promise<unknown>): Promise<void> {
+  try {
+    await step();
+  } catch (err) {
+    console.error(`[linkedin] ${name} failed:`, err);
+    await textJack(`MAISIE could not complete the LinkedIn ${name} step: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+// Keeps the dashboard card in step with edits Jack makes in GitHub by hand.
+export const linkedinRefresh = onSchedule(
+  {...LINKEDIN_OPTS, schedule: "30 6 * * *"},
+  () => linkedinStep("refresh", () => refreshWeek(db))
+);
+
+export const linkedinDraft = onSchedule(
+  {...LINKEDIN_OPTS, schedule: "0 9 * * 4"},
+  () => linkedinStep("Thursday draft", () => draftIfIdea(db))
+);
+
+export const linkedinApprovalRequest = onSchedule(
+  {...LINKEDIN_OPTS, schedule: "0 9 * * 5"},
+  () => linkedinStep("Friday approval", async () => {
+    const week = await refreshWeek(db);
+    if (week.stage !== "approved") await textJack(describeWeek(week));
+  })
+);
+
+export const linkedinPostReminder = onSchedule(
+  {...LINKEDIN_OPTS, schedule: "45 7 * * 2"},
+  () => linkedinStep("Tuesday reminder", async () => {
+    await textJack(describeWeek(await refreshWeek(db)));
+  })
+);
+
+// Buttons on the dashboard card. Every action re-reads the queue from GitHub
+// before changing it, so the rules in linkedin.ts hold whatever the card showed.
+export const linkedinAction = onRequest(
+  {cors: true, region: "us-central1", memory: "512MiB", timeoutSeconds: 300},
+  async (req, res) => {
+    try {
+      await verifyAuth(req);
+    } catch {
+      res.status(401).json({error: "Unauthorized"});
+      return;
+    }
+    const {action, date, url, instructions} = (req.body ?? {}) as {
+      action?: string; date?: string; url?: string; instructions?: string;
+    };
+    try {
+      let week;
+      if (action === "refresh") week = await refreshWeek(db);
+      else if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("A date (YYYY-MM-DD) is required.");
+      else if (action === "approve") week = await approvePost(db, date);
+      else if (action === "posted") week = await markPosted(db, date, url);
+      else if (action === "draft") week = await writeDraft(db, date, instructions);
+      else throw new Error(`Unknown action "${action}".`);
+      res.json({ok: true, week});
+    } catch (err) {
+      console.error("[linkedinAction] error:", err);
+      res.status(400).json({error: err instanceof Error ? err.message : String(err)});
+    }
+  }
+);
 
 // ─── Scheduled: Invoice Reminder (first 7 days of month, weekdays 9am ET)
 export const invoiceReminder = onSchedule(

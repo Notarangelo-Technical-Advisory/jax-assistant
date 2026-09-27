@@ -16,6 +16,8 @@ import { CalendarService } from '../../services/calendar.service';
 import { TtsService } from '../../services/tts.service';
 import { SttService } from '../../services/stt.service';
 import { FeatureFlagService } from '../../services/feature-flag.service';
+import { LinkedInService, LinkedInAction } from '../../services/linkedin.service';
+import { LinkedInWeek } from '../../models/linkedin.model';
 import { Briefing, Headlines } from '../../models/briefing.model';
 import { Task, TaskRecurrence } from '../../models/task.model';
 import { TaskCategory } from '../../models/task-category.model';
@@ -43,12 +45,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ttsService = inject(TtsService);
   sttService = inject(SttService);
   featureFlags = inject(FeatureFlagService);
+  private linkedInService = inject(LinkedInService);
   private sanitizer = inject(DomSanitizer);
 
   @ViewChild('messagesContainer') private messagesContainer!: ElementRef;
 
   briefing = signal<Briefing | null>(null);
   headlines = signal<Headlines | null>(null);
+  linkedIn = signal<LinkedInWeek | null>(null);
+  linkedInBusy = signal<LinkedInAction | null>(null);
+  linkedInError = signal<string | null>(null);
+  linkedInCopied = signal<'post' | 'comment' | null>(null);
+  linkedInUrl = '';
   briefingTab = signal<'today' | 'headlines'>(
     localStorage.getItem('maisie-briefing-tab') === 'headlines' ? 'headlines' : 'today'
   );
@@ -243,6 +251,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.subs.push(
       this.briefingService.getLatestBriefing().subscribe((b) => this.briefing.set(b)),
       this.briefingService.getHeadlines().subscribe((h) => this.headlines.set(h)),
+      this.linkedInService.getWeek().subscribe((w) => this.linkedIn.set(w)),
       this.calendarService.getTodayEvents().subscribe((e) => this.calendarEvents.set(e)),
       this.taskService.getActiveTasks().subscribe((t) => this.tasks.set(t)),
       this.taskCategoryService.getCategories().subscribe((c) => this.categories.set(c)),
@@ -425,6 +434,37 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   openChat(): void {
     this.chatOpen.set(true);
+  }
+
+  // ─── LinkedIn card ─────────────────────────────────────────
+
+  async linkedInAct(action: LinkedInAction, extra: { url?: string } = {}): Promise<void> {
+    this.linkedInBusy.set(action);
+    this.linkedInError.set(null);
+    try {
+      await this.linkedInService.act(action, this.linkedIn()?.tuesday, extra);
+      if (action === 'posted') this.linkedInUrl = '';
+    } catch (err: any) {
+      this.linkedInError.set(err?.error?.error ?? 'That did not work. Please try again.');
+    } finally {
+      this.linkedInBusy.set(null);
+    }
+  }
+
+  async copyLinkedIn(which: 'post' | 'comment'): Promise<void> {
+    const d = this.linkedIn()?.draft;
+    if (!d) return;
+    await navigator.clipboard.writeText(which === 'post' ? d.post : d.firstComment);
+    this.linkedInCopied.set(which);
+    setTimeout(() => this.linkedInCopied.set(null), 2000);
+  }
+
+  /** Changes go through chat, so Jack can say what he wants in his own words. */
+  askLinkedInChanges(): void {
+    const w = this.linkedIn();
+    if (!w) return;
+    this.chatInput = `Please revise the LinkedIn post for ${w.tuesday}: `;
+    this.openChat();
   }
 
   toggleMic(): void {

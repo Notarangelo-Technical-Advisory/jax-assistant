@@ -6,6 +6,7 @@ import {
 } from "../fta-client";
 import {readCalendarEvents, formatEventTime, extractMeetingLink, extractPasscode} from "./calendar-read";
 import {Category, DEFAULT_CATEGORY_KEYS} from "./definitions";
+import {refreshWeek, approvePost, markPosted, writeDraft, describeWeek, LinkedInWeek} from "../linkedin";
 
 export interface CustomerInfo {
   name: string;
@@ -478,6 +479,38 @@ export async function executeTool(
     });
   }
 
+  // ─── LinkedIn queue ──────────────────────────────────────────
+  case "get_linkedin_week":
+  case "approve_linkedin_post":
+  case "mark_linkedin_posted":
+  case "write_linkedin_draft": {
+    const input = rawInput as {date?: string; url?: string; instructions?: string};
+    try {
+      let week: LinkedInWeek;
+      if (name === "get_linkedin_week") week = await refreshWeek(ctx.db);
+      else if (!input.date) return {success: false, error: "date is required (YYYY-MM-DD)"};
+      else if (name === "approve_linkedin_post") week = await approvePost(ctx.db, input.date);
+      else if (name === "mark_linkedin_posted") week = await markPosted(ctx.db, input.date, input.url);
+      else week = await writeDraft(ctx.db, input.date, input.instructions);
+      return {
+        success: true,
+        summary: describeWeek(week),
+        tuesday: week.tuesday,
+        title: week.title,
+        status: week.status,
+        post: week.draft?.post ?? null,
+        first_comment: week.draft?.firstComment ?? null,
+        image: week.draft?.image ?? null,
+        extras: week.draft?.extras ?? [],
+        placeholders: week.draft?.placeholders ?? [],
+        draft_url: week.draftUrl,
+        topics_left: week.remaining,
+      };
+    } catch (err) {
+      return {success: false, error: err instanceof Error ? err.message : String(err)};
+    }
+  }
+
   // ─── Coding delegation ───────────────────────────────────────
   case "code_with_github": {
     const input = rawInput as {task: string};
@@ -541,6 +574,10 @@ export const toolLabel = (name: string, input: Record<string, unknown>): string 
   case "mail_search": return "Searching your mail...";
   case "mail_read": return "Opening the message...";
   case "mail_draft": return `Drafting "${input["subject"]}"...`;
+  case "get_linkedin_week": return "Checking your LinkedIn queue...";
+  case "approve_linkedin_post": return "Approving the LinkedIn post...";
+  case "mark_linkedin_posted": return "Marking the LinkedIn post as posted...";
+  case "write_linkedin_draft": return "Writing the LinkedIn draft...";
   case "code_with_github": return "Sending task to coding agent...";
   default: return `Running ${name}...`;
   }

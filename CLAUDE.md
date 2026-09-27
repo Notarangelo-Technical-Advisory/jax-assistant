@@ -58,6 +58,7 @@ at all.
 - **Daily:** Proactively review tomorrow's calendar. Flag anything at 9am or earlier — Jack tends to miss early appointments.
 - **Weekly:** Generate and send Brad Donohue a status report (via fta-time-tracker). Schedule Friday IHRDC demo sessions.
 - **Monthly:** First week of each month, generate invoice for IHRDC's prior month unbilled time (via fta-time-tracker).
+- **Weekly (LinkedIn):** Thursday draft, Friday approval, Tuesday 7:45am post reminder for Jack's LinkedIn queue in `fractional-tech-advisory`. Jack posts himself. See `projects/linkedin/README.md`.
 - **Always:** Flag emails and Teams messages from Brad Donohue.
 
 ## Skills

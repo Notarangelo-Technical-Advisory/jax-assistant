@@ -156,6 +156,7 @@ jobs:
           echo "TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}" >> functions/.env
           echo "JACK_PHONE_NUMBER=${{ secrets.JACK_PHONE_NUMBER }}" >> functions/.env
           echo "FINNHUB_API_KEY=${{ secrets.FINNHUB_API_KEY }}" >> functions/.env
+          echo "LINKEDIN_QUEUE_PAT=${{ secrets.LINKEDIN_QUEUE_PAT }}" >> functions/.env
 
       - name: Deploy to Firebase
         env:

@@ -359,6 +359,44 @@ export const buildTools = (
       },
     },
     {
+      name: "get_linkedin_week",
+      description: "Get the coming Tuesday's LinkedIn post from Jack's queue: its status, the post text, the first comment and the image idea. Use when Jack asks about his LinkedIn post, what he posts this week, or the queue.",
+      input_schema: {type: "object" as const, properties: {}, required: []},
+    },
+    {
+      name: "approve_linkedin_post",
+      description: "Mark a drafted LinkedIn post as approved. Use ONLY when Jack has said, in his own words in this conversation, that he approves that specific post. Never approve on his behalf or because it looks ready. Refused if the post still has a [PLACEHOLDER].",
+      input_schema: {
+        type: "object" as const,
+        properties: {date: {type: "string", description: "The post's Tuesday, YYYY-MM-DD"}},
+        required: ["date"],
+      },
+    },
+    {
+      name: "mark_linkedin_posted",
+      description: "Mark an approved LinkedIn post as posted, after Jack says he has published it. Include the post's link if he gives one.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          date: {type: "string", description: "The post's Tuesday, YYYY-MM-DD"},
+          url: {type: "string", description: "Optional link to the live LinkedIn post"},
+        },
+        required: ["date"],
+      },
+    },
+    {
+      name: "write_linkedin_draft",
+      description: "Write the draft for a Tuesday that is still an idea, or revise an existing draft as Jack asks, using his marketing-linkedin skill. The draft is saved to GitHub with status 'drafted'. Revising an approved post sets it back to 'drafted', so Jack must approve it again. Show Jack the result and ask him to approve it.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          date: {type: "string", description: "The post's Tuesday, YYYY-MM-DD"},
+          instructions: {type: "string", description: "What Jack wants changed. Required to revise an existing draft."},
+        },
+        required: ["date"],
+      },
+    },
+    {
       name: "code_with_github",
       description: "Delegate ANY coding task — bug fix, feature, refactor, or file change — to the cloud coding agent. Use this whenever Jack asks to fix a bug, add a feature, or change any code. The agent creates a branch, makes the changes, and opens a PR. Returns the GitHub issue URL immediately; Jack gets a notification when the PR is ready.",
       input_schema: {
