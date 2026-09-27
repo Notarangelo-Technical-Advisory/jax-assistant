@@ -347,6 +347,14 @@ $border: #334155;
   border-radius: 999px;
   padding: 0.1rem 0.5rem;
   background: rgba($text-secondary, 0.12);
+
+  &.fed { background: rgba($accent, 0.18); }
+}
+
+.market-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.7rem;
+  color: $warning;
 }
 
 .headlines-error {

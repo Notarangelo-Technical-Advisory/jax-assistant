@@ -39,11 +39,65 @@ export interface EarningsEvent {
   hour: string;
 }
 
+// ─── Economic calendar ─────────────────────────────────────────
+//
+// Finnhub's free plan has no economic calendar, so these come from the
+// official schedules: the Fed's FOMC calendar
+// (federalreserve.gov/monetarypolicy/fomccalendars.htm) and the BLS release
+// schedules (bls.gov/schedule/news_release/cpi.htm and empsit.htm).
+// Entered 2026-09-27. Each date was checked against at least two sources,
+// except the 2026-11-10 CPI date, which only one source gave.
+//
+// The Fed posts the next year's meetings in summer; BLS posts the next
+// year's releases late in the year. When either list is within 30 days of
+// running out, the snapshot sets calendarNeedsUpdate and the dashboard says so.
+
+export interface EconomicEvent {
+  date: string;
+  /** Eastern Time, as printed on the official schedule. */
+  time: string;
+  kind: "fomc" | "cpi" | "jobs";
+  label: string;
+}
+
+const FOMC: EconomicEvent[] = [
+  {date: "2026-10-28", time: "2:00 PM", kind: "fomc", label: "Fed rate decision"},
+  {date: "2026-12-09", time: "2:00 PM", kind: "fomc", label: "Fed rate decision and projections"},
+  // 2027 dates are tentative until the Fed confirms each at the meeting before.
+  {date: "2027-01-27", time: "2:00 PM", kind: "fomc", label: "Fed rate decision"},
+  {date: "2027-03-17", time: "2:00 PM", kind: "fomc", label: "Fed rate decision and projections"},
+];
+
+const BLS: EconomicEvent[] = [
+  {date: "2026-10-02", time: "8:30 AM", kind: "jobs", label: "Jobs report (September)"},
+  {date: "2026-10-14", time: "8:30 AM", kind: "cpi", label: "CPI (September)"},
+  {date: "2026-11-06", time: "8:30 AM", kind: "jobs", label: "Jobs report (October)"},
+  {date: "2026-11-10", time: "8:30 AM", kind: "cpi", label: "CPI (October)"},
+  {date: "2026-12-04", time: "8:30 AM", kind: "jobs", label: "Jobs report (November)"},
+  {date: "2026-12-10", time: "8:30 AM", kind: "cpi", label: "CPI (November)"},
+];
+
+const CALENDAR_WARNING_DAYS = 30;
+
+function upcomingEconomicEvents(todayKey: string): {events: EconomicEvent[]; needsUpdate: boolean} {
+  const until = addDays(todayKey, EARNINGS_DAYS_AHEAD);
+  const events = [...FOMC, ...BLS]
+    .filter((e) => e.date >= todayKey && e.date <= until)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const warnFrom = addDays(todayKey, CALENDAR_WARNING_DAYS);
+  const needsUpdate = [FOMC, BLS].some((list) => list[list.length - 1].date < warnFrom);
+  return {events, needsUpdate};
+}
+
 export interface MarketSnapshot {
   index: Quote | null;
   /** Mega caps that moved more than MEGA_CAP_MOVE_PCT, largest move first. */
   movers: Quote[];
   upcomingEarnings: EarningsEvent[];
+  /** Fed decisions, CPI and jobs reports in the next 7 days. */
+  upcomingEvents: EconomicEvent[];
+  /** True when the hand-entered economic calendar is about to run out. */
+  calendarNeedsUpdate: boolean;
   significant: boolean;
   /** Plain-English reasons the day counts as significant; empty when it does not. */
   reasons: string[];
@@ -107,7 +161,16 @@ export async function getMarketSnapshot(apiKey: string, todayKey: string): Promi
   for (const m of movers) reasons.push(`${m.symbol} moved ${signed(m.changePct)}%.`);
   for (const e of upcomingEarnings) reasons.push(`${e.symbol} reports earnings on ${e.date}.`);
 
-  return {index, movers, upcomingEarnings, significant: reasons.length > 0, reasons};
+  const {events: upcomingEvents, needsUpdate: calendarNeedsUpdate} = upcomingEconomicEvents(todayKey);
+  for (const e of upcomingEvents) reasons.push(`${e.label} on ${e.date} at ${e.time} ET.`);
+  if (calendarNeedsUpdate) {
+    console.warn("[markets] the economic calendar in markets.ts is within 30 days of running out");
+  }
+
+  return {
+    index, movers, upcomingEarnings, upcomingEvents, calendarNeedsUpdate,
+    significant: reasons.length > 0, reasons,
+  };
 }
 
 function signed(n: number): string {

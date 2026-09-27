@@ -88,6 +88,9 @@ export interface MarketSnapshot {
   index: MarketQuote | null;
   movers: MarketQuote[];
   upcomingEarnings: Array<{ symbol: string; date: string; hour: string }>;
+  /** Fed decisions, CPI and jobs reports in the next 7 days. Absent on older documents. */
+  upcomingEvents?: Array<{ date: string; time: string; kind: 'fomc' | 'cpi' | 'jobs'; label: string }>;
+  calendarNeedsUpdate?: boolean;
   significant: boolean;
   reasons: string[];
 }

@@ -132,6 +132,14 @@
                   }
                 </div>
               }
+              @if (m.upcomingEvents?.length) {
+                <div class="market-row">
+                  <span class="market-row-label">This week</span>
+                  @for (e of m.upcomingEvents; track e.date + e.kind) {
+                    <span class="market-chip" [class.fed]="e.kind === 'fomc'">{{ e.label }} · {{ e.date | date:'EEE MMM d':'UTC' }}, {{ e.time }}</span>
+                  }
+                </div>
+              }
               @if (m.upcomingEarnings.length > 0) {
                 <div class="market-row">
                   <span class="market-row-label">Earnings</span>
@@ -139,6 +147,9 @@
                     <span class="market-chip">{{ e.symbol }} {{ e.date | date:'EEE MMM d':'UTC' }}@if (e.hour === 'bmo') { (before open) } @else if (e.hour === 'amc') { (after close) }</span>
                   }
                 </div>
+              }
+              @if (m.calendarNeedsUpdate) {
+                <p class="market-note">The Fed and BLS dates in the economic calendar run out soon and need updating.</p>
               }
             </div>
           }

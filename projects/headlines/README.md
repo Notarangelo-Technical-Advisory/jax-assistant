@@ -27,6 +27,11 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
   - **The day is marked significant** when SPY moves 1% or more, one of those companies moves 3% or more, or one of them reports earnings that week. The model is then asked to find the cause of each move.
   - **The free plan has no VIX, no bond yields and no index levels.** Adding them would need a paid Finnhub plan.
   - **The key is in the GitHub secret `FINNHUB_API_KEY`.** Without it, the markets strip is simply not shown.
+- **Economic calendar:** Fed rate decisions, CPI and jobs reports for the next 7 days are shown in the strip. Any of them in the week marks the day significant.
+  - **Where the dates come from:** they are entered by hand in `functions/src/markets.ts`, from the Fed and BLS official schedules, because the free Finnhub plan has no economic calendar.
+  - **Coverage:** the BLS dates run to December 2026 and the Fed dates to March 2027.
+  - **When they run out:** 30 days before either list ends, the strip shows a note saying the dates need updating.
+  - **One date to check:** the 10 November 2026 CPI date came from only one source. Jack should confirm it on bls.gov.
 - **Pre-market futures (from news):** on weekdays before 9:30 AM ET, which in practice means the 6:45 AM run, the model adds one Markets item on S&P 500 futures, taken from a news report and linked to it. The dashboard labels it "Futures · from news", because the number can be 30 to 60 minutes old. The free Finnhub plan has no futures data.
 
 ## X (Twitter)
@@ -39,7 +44,8 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
 
 - **Phase 2:**
   - Done: Finnhub market prices and the earnings calendar.
-  - Still to do: Fed, CPI and jobs-report dates (Finnhub's free plan does not include them), and the X API if the two-week check shows it is needed.
+  - Done: Fed, CPI and jobs-report dates, from the official schedules.
+  - Still to do: the X API, if the two-week check shows it is needed.
 - **Phase 3:**
   - The source list moves to Firestore (`headlineSources`), so Jack can edit it from chat.
   - A `get_headlines` chat and MCP tool.
