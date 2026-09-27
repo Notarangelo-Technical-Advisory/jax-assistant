@@ -57,6 +57,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   linkedInError = signal<string | null>(null);
   linkedInCopied = signal<'post' | 'comment' | null>(null);
   linkedInUrl = '';
+  linkedInCollapsed = signal(localStorage.getItem('maisie-linkedin-collapsed') === 'true');
   briefingTab = signal<'today' | 'headlines'>(
     localStorage.getItem('maisie-briefing-tab') === 'headlines' ? 'headlines' : 'today'
   );
@@ -450,6 +451,28 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.linkedInBusy.set(null);
     }
   }
+
+  toggleLinkedIn(): void {
+    const next = !this.linkedInCollapsed();
+    this.linkedInCollapsed.set(next);
+    localStorage.setItem('maisie-linkedin-collapsed', String(next));
+  }
+
+  /** The one line shown when the card is collapsed. */
+  linkedInSummary = computed(() => {
+    const w = this.linkedIn();
+    if (!w) return 'Not loaded yet';
+    const stage: Record<string, string> = {
+      'needs-approval': 'Needs your approval',
+      'not-drafted': 'No draft yet',
+      'approved': 'Approved',
+      'post-today': 'Post today',
+      'missing-today': 'Nothing approved for today',
+      'posted': 'Posted',
+      'no-row': 'Not in the queue',
+    };
+    return [stage[w.stage] ?? w.stage, w.title].filter(Boolean).join(' · ');
+  });
 
   async copyLinkedIn(which: 'post' | 'comment'): Promise<void> {
     const d = this.linkedIn()?.draft;

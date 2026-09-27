@@ -322,7 +322,11 @@
       <!-- LinkedIn: the coming Tuesday's post -->
       <section class="section linkedin-section" [class.attention]="linkedIn()?.stage === 'needs-approval' || linkedIn()?.stage === 'post-today' || linkedIn()?.stage === 'missing-today'">
         <div class="section-header">
-          <h2>LinkedIn</h2>
+          <button class="li-collapse" (click)="toggleLinkedIn()" [attr.aria-expanded]="!linkedInCollapsed()"
+                  [title]="linkedInCollapsed() ? 'Show the LinkedIn post' : 'Hide the LinkedIn post'">
+            <span class="li-chevron" [class.open]="!linkedInCollapsed()">&#9656;</span>
+            <h2>LinkedIn</h2>
+          </button>
           @if (linkedIn(); as w) {
             <span class="freshness">Tue {{ w.tuesday | date:'MMM d':'UTC' }}</span>
           }
@@ -331,6 +335,9 @@
           </button>
         </div>
 
+        @if (linkedInCollapsed()) {
+          <p class="li-stage li-{{ linkedIn()?.stage }} li-summary" (click)="toggleLinkedIn()">{{ linkedInSummary() }}</p>
+        } @else {
         @if (linkedIn(); as w) {
           <p class="li-stage li-{{ w.stage }}">
             @switch (w.stage) {
@@ -410,6 +417,7 @@
             The LinkedIn card loads at 6:30 AM each day.
             <button class="li-btn" (click)="linkedInAct('refresh')" [disabled]="linkedInBusy() !== null">Load it now</button>
           </p>
+        }
         }
         @if (linkedInError(); as e) {
           <p class="li-warning">{{ e }}</p>

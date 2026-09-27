@@ -1521,3 +1521,29 @@ $border: #334155;
   color: $warning;
   margin: 0.5rem 0 0;
 }
+
+// Keeps the h2's own bottom margin, so the header spacing matches the
+// other sections; baseline keeps the chevron level with the heading text.
+.li-collapse {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.li-chevron {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: $text-secondary;
+  transition: transform 0.15s;
+
+  &.open { transform: rotate(90deg); }
+}
+
+.li-summary { cursor: pointer; margin: 0; }
