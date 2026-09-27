@@ -24,6 +24,7 @@ MAISIE helps Jack publish one LinkedIn post every Tuesday for Notarangelo Techni
 ## How Jack acts
 
 - **On the dashboard's LinkedIn card:** Copy post, Copy first comment, Approve, Edit, Ask MAISIE for changes, I posted it, and Draft it now for an idea. The card folds to one line with the arrow beside "LinkedIn".
+- **Ask MAISIE for changes** opens a box on the card. Jack types what to change, and MAISIE rewrites the draft with the skill, in about a minute. The rewritten post is `drafted`, ready for approval. (The button first opened the chat panel, which on a narrow screen appears below everything else, so it seemed to do nothing.)
 - **Edit** saves Jack's own text for the post and first comment to the draft file. The post goes back to `drafted`, even if it was approved, so the words approved are always the words posted. A poll's question and options are edited in GitHub or through MAISIE.
 - **In chat or by text:** "Show me Tuesday's LinkedIn post", "I approve the Sep 29 post", "Change the first line of the Oct 6 post to …", "I posted it".
 

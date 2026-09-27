@@ -58,6 +58,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   linkedInCopied = signal<'post' | 'comment' | null>(null);
   linkedInUrl = '';
   linkedInEditing = signal(false);
+  linkedInAsking = signal(false);
+  linkedInChangeRequest = '';
   linkedInEditPost = '';
   linkedInEditComment = '';
   linkedInCollapsed = signal(localStorage.getItem('maisie-linkedin-collapsed') === 'true');
@@ -442,7 +444,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // ─── LinkedIn card ─────────────────────────────────────────
 
-  async linkedInAct(action: LinkedInAction, extra: { url?: string; post?: string; firstComment?: string } = {}): Promise<void> {
+  async linkedInAct(action: LinkedInAction, extra: { url?: string; post?: string; firstComment?: string; instructions?: string } = {}): Promise<void> {
     this.linkedInBusy.set(action);
     this.linkedInError.set(null);
     try {
@@ -498,12 +500,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
     setTimeout(() => this.linkedInCopied.set(null), 2000);
   }
 
-  /** Changes go through chat, so Jack can say what he wants in his own words. */
-  askLinkedInChanges(): void {
-    const w = this.linkedIn();
-    if (!w) return;
-    this.chatInput = `Please revise the LinkedIn post for ${w.tuesday}: `;
-    this.openChat();
+  /**
+   * MAISIE rewrites the draft on the card itself. It used to open the chat
+   * panel, which on a narrow screen opens below everything else, out of sight.
+   */
+  async sendLinkedInChanges(): Promise<void> {
+    const instructions = this.linkedInChangeRequest.trim();
+    if (!instructions) return;
+    await this.linkedInAct('draft', { instructions });
+    if (!this.linkedInError()) {
+      this.linkedInChangeRequest = '';
+      this.linkedInAsking.set(false);
+    }
   }
 
   toggleMic(): void {
