@@ -1337,60 +1337,72 @@ function isPreMarket(d: Date): boolean {
   return minutes < 9 * 60 + 30;
 }
 
-// ─── Scheduled: Headlines (daily 6:45am & 12:45pm ET) ───────────
+// ─── Scheduled: Headlines ───────────────────────────────────────
 //
 // Its own document, not a field on briefings/live: the facts refresh rewrites
 // that one every 30 minutes, and headlines cost web searches to rebuild.
-// Runs every day, not just weekdays — the news does not stop on Saturday.
+//
+// Three runs: 6:45am (with the pre-market futures report), 9:45am (the first
+// 15 minutes of trading) and 12:45pm. The 6:45 and 12:45 runs happen every
+// day, because the news does not stop on Saturday. The 9:45 run is weekdays
+// only, because it exists for the market open.
+const HEADLINES_OPTS = {
+  timeZone: "America/New_York",
+  region: "us-central1",
+  memory: "512MiB",
+  timeoutSeconds: 540,
+} as const;
+
 export const headlinesBriefing = onSchedule(
-  {
-    schedule: "45 6,12 * * *",
-    timeZone: "America/New_York",
-    region: "us-central1",
-    memory: "512MiB",
-    timeoutSeconds: 540,
-  },
-  async () => {
-    const ref = db.collection("briefings").doc("headlines");
-    const now = new Date();
-    const todayLabel = now.toLocaleDateString("en-US", {
-      timeZone: ET_ZONE, weekday: "long", year: "numeric", month: "long", day: "numeric",
-    });
-    try {
-      // Market data is optional: without a key, or if Finnhub is down, the
-      // headlines still run and the markets strip is simply absent.
-      const finnhubKey = process.env.FINNHUB_API_KEY;
-      const market = finnhubKey
-        ? await getMarketSnapshot(finnhubKey, etDateKey(now)).catch((err) => {
-          console.warn("[headlines] market snapshot failed:", err);
-          return null;
-        })
-        : null;
-      const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
-      const result = await generateHeadlines(anthropic, MODEL, todayLabel, market, isPreMarket(now));
-      if (result.unverified.length > 0) {
-        console.warn(`[headlines] dropped ${result.unverified.length} item(s) with unverified URLs`);
-      }
-      await ref.set({
-        date: etDateKey(now),
-        sections: result.sections,
-        market,
-        // Kept off the dashboard but on the document, so a thin run can be
-        // diagnosed from Firestore without reading function logs.
-        unverified: result.unverified.map((it) => ({headline: it.headline, url: it.url})),
-        generatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastError: null,
-      });
-    } catch (err) {
-      // Keep the last good headlines on screen; record the failure beside them.
-      console.error("[headlines] generation failed:", err);
-      await ref.set({
-        lastError: String(err instanceof Error ? err.message : err),
-        lastErrorAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, {merge: true});
-    }
-  }
+  {...HEADLINES_OPTS, schedule: "45 6,12 * * *"},
+  () => runHeadlines()
 );
+
+export const headlinesMarketOpen = onSchedule(
+  {...HEADLINES_OPTS, schedule: "45 9 * * 1-5"},
+  () => runHeadlines()
+);
+
+async function runHeadlines(): Promise<void> {
+  const ref = db.collection("briefings").doc("headlines");
+  const now = new Date();
+  const todayLabel = now.toLocaleDateString("en-US", {
+    timeZone: ET_ZONE, weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+  try {
+    // Market data is optional: without a key, or if Finnhub is down, the
+    // headlines still run and the markets strip is simply absent.
+    const finnhubKey = process.env.FINNHUB_API_KEY;
+    const market = finnhubKey
+      ? await getMarketSnapshot(finnhubKey, etDateKey(now)).catch((err) => {
+        console.warn("[headlines] market snapshot failed:", err);
+        return null;
+      })
+      : null;
+    const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
+    const result = await generateHeadlines(anthropic, MODEL, todayLabel, market, isPreMarket(now));
+    if (result.unverified.length > 0) {
+      console.warn(`[headlines] dropped ${result.unverified.length} item(s) with unverified URLs`);
+    }
+    await ref.set({
+      date: etDateKey(now),
+      sections: result.sections,
+      market,
+      // Kept off the dashboard but on the document, so a thin run can be
+      // diagnosed from Firestore without reading function logs.
+      unverified: result.unverified.map((it) => ({headline: it.headline, url: it.url})),
+      generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastError: null,
+    });
+  } catch (err) {
+    // Keep the last good headlines on screen; record the failure beside them.
+    console.error("[headlines] generation failed:", err);
+    await ref.set({
+      lastError: String(err instanceof Error ? err.message : err),
+      lastErrorAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, {merge: true});
+  }
+}
 
 // ─── Scheduled: Invoice Reminder (first 7 days of month, weekdays 9am ET)
 export const invoiceReminder = onSchedule(
