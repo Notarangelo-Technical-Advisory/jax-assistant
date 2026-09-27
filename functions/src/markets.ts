@@ -45,8 +45,8 @@ export interface EarningsEvent {
 // official schedules: the Fed's FOMC calendar
 // (federalreserve.gov/monetarypolicy/fomccalendars.htm) and the BLS release
 // schedules (bls.gov/schedule/news_release/cpi.htm and empsit.htm).
-// Entered 2026-09-27. Each date was checked against at least two sources,
-// except the 2026-11-10 CPI date, which only one source gave.
+// Entered 2026-09-27. Each date was checked against at least two sources;
+// Jack confirmed the 2026-11-10 CPI date on bls.gov.
 //
 // The Fed posts the next year's meetings in summer; BLS posts the next
 // year's releases late in the year. When either list is within 30 days of

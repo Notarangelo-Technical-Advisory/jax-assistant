@@ -31,7 +31,6 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
   - **Where the dates come from:** they are entered by hand in `functions/src/markets.ts`, from the Fed and BLS official schedules, because the free Finnhub plan has no economic calendar.
   - **Coverage:** the BLS dates run to December 2026 and the Fed dates to March 2027.
   - **When they run out:** 30 days before either list ends, the strip shows a note saying the dates need updating.
-  - **One date to check:** the 10 November 2026 CPI date came from only one source. Jack should confirm it on bls.gov.
 - **Pre-market futures (from news):** on weekdays before 9:30 AM ET, which in practice means the 6:45 AM run, the model adds one Markets item on S&P 500 futures, taken from a news report and linked to it. The dashboard labels it "Futures · from news", because the number can be 30 to 60 minutes old. The free Finnhub plan has no futures data.
 
 ## X (Twitter)
