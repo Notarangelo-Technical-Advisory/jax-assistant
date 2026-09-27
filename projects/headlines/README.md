@@ -4,13 +4,15 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
 
 ## Status
 
-- **Phase 1 is built** on branch `claude/maisie-headlines-tab-ktip8n`. It is not yet deployed.
+- **Phase 1 is live** since 2026-09-27.
+- **Two-week check, 2026-10-11:** Jack decides whether posts on X are missing, and so whether to add the X API.
+- **To run the headlines outside the schedule:** in GitHub, go to Actions, then "Run Headlines Now", then "Run workflow".
 
 ## How it works
 
 - **`headlinesBriefing`** (`functions/src/index.ts`) runs every day at 6:45 AM and 12:45 PM ET.
 - **`generateHeadlines`** (`functions/src/headlines.ts`) makes one Claude call with web search and web fetch. The model returns its items through a strict `submit_headlines` tool.
-- **Every item must have a URL that the search or fetch actually returned.** The code drops any other item and logs how many it dropped.
+- **Every item must have a URL that the search or fetch actually returned.** The code drops any other item and saves it in the `unverified` field of `briefings/headlines`.
 - **Results go to `briefings/headlines`**, not `briefings/live`, so the 30-minute facts refresh never overwrites them.
 - **If a run fails**, the last good headlines stay on screen, and `lastError` is recorded beside them.
 - **The dashboard** now has "Today" and "Headlines" tabs in the Briefing section. The browser remembers which tab was open last.
