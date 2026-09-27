@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type {MarketSnapshot} from "./markets";
 
 // ─── Headlines ──────────────────────────────────────────────────
 //
@@ -118,7 +119,7 @@ Jack is a technical advisor on AI adoption. Find what is new in the last 24-48 h
 1. people — what these people have said, published or done:
 ${people}
 2. ai — significant news from these AI companies: ${HEADLINE_AI_COMPANIES.join(", ")}. Model releases, major product launches, pricing changes, policy or legal news. Skip minor feature updates.
-3. markets — only events that moved, or are expected to move, the S&P 500: a move of more than 1% in a day, a Federal Reserve decision, a CPI or jobs report, or earnings from one of the largest companies in the index. Do not state index levels or prices; those will come from a market data source later. If nothing significant happened, return no markets items.
+3. markets — only events that moved, or are expected to move, the S&P 500: a move of more than 1% in a day, a Federal Reserve decision, a CPI or jobs report, or earnings from one of the largest companies in the index. The user message may include marketData with the latest prices and a list of reasons the day is significant; when it does, find and explain the cause of each move it lists. Take every number from marketData, never from search results, and do not repeat prices the dashboard already shows. If nothing significant happened, return no markets items.
 
 Rules:
 - Every item must link to a URL that appeared in your web_search or web_fetch results. Never write a URL from memory. Items with other URLs are discarded.
@@ -178,11 +179,13 @@ function normalizeUrl(url: string): string {
 export async function generateHeadlines(
   anthropic: Anthropic,
   model: string,
-  todayLabel: string
+  todayLabel: string,
+  marketData?: MarketSnapshot | null
 ): Promise<HeadlinesResult> {
-  const messages: Anthropic.Messages.MessageParam[] = [
-    {role: "user", content: "Prepare today's headlines."},
-  ];
+  const ask = marketData
+    ? `Prepare today's headlines.\n\nmarketData:\n${JSON.stringify(marketData)}`
+    : "Prepare today's headlines. No market data is available today.";
+  const messages: Anthropic.Messages.MessageParam[] = [{role: "user", content: ask}];
   const request = (): Anthropic.Messages.MessageCreateParamsNonStreaming => ({
     model,
     max_tokens: 16000,

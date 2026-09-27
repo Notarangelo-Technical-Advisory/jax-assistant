@@ -10,6 +10,7 @@ import {executeTool, toolLabel} from "./tools/execute";
 import {loadMaisieContext, MAISIE_PERSONA, buildStateBlock, historyToMessages} from "./tools/context";
 import {readCalendarEvents, formatEventTime} from "./tools/calendar-read";
 import {generateHeadlines} from "./headlines";
+import {getMarketSnapshot} from "./markets";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -1338,14 +1339,24 @@ export const headlinesBriefing = onSchedule(
       timeZone: ET_ZONE, weekday: "long", year: "numeric", month: "long", day: "numeric",
     });
     try {
+      // Market data is optional: without a key, or if Finnhub is down, the
+      // headlines still run and the markets strip is simply absent.
+      const finnhubKey = process.env.FINNHUB_API_KEY;
+      const market = finnhubKey
+        ? await getMarketSnapshot(finnhubKey, etDateKey(now)).catch((err) => {
+          console.warn("[headlines] market snapshot failed:", err);
+          return null;
+        })
+        : null;
       const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
-      const result = await generateHeadlines(anthropic, MODEL, todayLabel);
+      const result = await generateHeadlines(anthropic, MODEL, todayLabel, market);
       if (result.unverified.length > 0) {
         console.warn(`[headlines] dropped ${result.unverified.length} item(s) with unverified URLs`);
       }
       await ref.set({
         date: etDateKey(now),
         sections: result.sections,
+        market,
         // Kept off the dashboard but on the document, so a thin run can be
         // diagnosed from Firestore without reading function logs.
         unverified: result.unverified.map((it) => ({headline: it.headline, url: it.url})),

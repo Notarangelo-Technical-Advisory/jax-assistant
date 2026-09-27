@@ -108,6 +108,40 @@
           @if (headlines()?.lastError) {
             <p class="headlines-error">The last update failed. Showing the most recent headlines that succeeded.</p>
           }
+          @if (headlines()?.market; as m) {
+            <div class="market-strip" [class.significant]="m.significant">
+              @if (m.index) {
+                <div class="market-index">
+                  <span class="market-label" title="Read through SPY, the fund that tracks the S&P 500">S&amp;P 500 (SPY)</span>
+                  <span class="market-price">{{ m.index.price | number:'1.2-2' }}</span>
+                  <span class="market-change" [class.up]="m.index.changePct > 0" [class.down]="m.index.changePct < 0">
+                    {{ m.index.changePct > 0 ? '+' : '' }}{{ m.index.changePct | number:'1.2-2' }}%
+                  </span>
+                  @if (m.index.asOf) {
+                    <span class="market-asof">as of {{ m.index.asOf | date:'EEE h:mm a' }}</span>
+                  }
+                </div>
+              }
+              @if (m.movers.length > 0) {
+                <div class="market-row">
+                  <span class="market-row-label">Big moves</span>
+                  @for (q of m.movers; track q.symbol) {
+                    <span class="market-chip" [class.up]="q.changePct > 0" [class.down]="q.changePct < 0">
+                      {{ q.symbol }} {{ q.changePct > 0 ? '+' : '' }}{{ q.changePct | number:'1.1-1' }}%
+                    </span>
+                  }
+                </div>
+              }
+              @if (m.upcomingEarnings.length > 0) {
+                <div class="market-row">
+                  <span class="market-row-label">Earnings</span>
+                  @for (e of m.upcomingEarnings; track e.symbol + e.date) {
+                    <span class="market-chip">{{ e.symbol }} {{ e.date | date:'EEE MMM d':'UTC' }}@if (e.hour === 'bmo') { (before open) } @else if (e.hour === 'amc') { (after close) }</span>
+                  }
+                </div>
+              }
+            </div>
+          }
           @for (section of headlineSections(); track section.key) {
             <div class="headline-section">
               <h3>{{ section.title }}</h3>

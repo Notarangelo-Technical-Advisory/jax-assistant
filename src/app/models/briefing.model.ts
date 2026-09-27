@@ -61,6 +61,7 @@ export interface BriefingAlert {
 export interface Headlines {
   date?: string;
   sections?: HeadlineSection[];
+  market?: MarketSnapshot | null;
   generatedAt?: Date | null;
   lastError?: string | null;
 }
@@ -78,4 +79,20 @@ export interface HeadlineItem {
   sourceName: string;
   url: string;
   publishedAt: string | null;
+}
+
+/** From Finnhub. The S&P 500 is read through SPY, the ETF that tracks it. */
+export interface MarketSnapshot {
+  index: MarketQuote | null;
+  movers: MarketQuote[];
+  upcomingEarnings: Array<{ symbol: string; date: string; hour: string }>;
+  significant: boolean;
+  reasons: string[];
+}
+
+export interface MarketQuote {
+  symbol: string;
+  price: number;
+  changePct: number;
+  asOf: string | null;
 }

@@ -21,7 +21,11 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
 
 - **People:** Paweł Huryn, David Sacks, Chamath Palihapitiya, Benny Johnson.
 - **AI companies:** Anthropic, OpenAI, Google DeepMind / Gemini, Meta AI, xAI, Microsoft AI, NVIDIA.
-- **Markets:** only events that move the S&P 500, such as a daily move above 1%, a Fed decision, CPI, a jobs report, or earnings from the largest companies. It shows no prices until Phase 2.
+- **Markets:** only events that move the S&P 500, such as a daily move above 1%, a Fed decision, CPI, a jobs report, or earnings from the largest companies.
+- **Market prices (Phase 2, from Finnhub):** `functions/src/markets.ts` reads SPY, the fund that tracks the S&P 500, plus the eight largest companies (AAPL, MSFT, NVDA, AMZN, GOOGL, META, AVGO, TSLA) and their earnings dates for the next 7 days.
+  - **The day is marked significant** when SPY moves 1% or more, one of those companies moves 3% or more, or one of them reports earnings that week. The model is then asked to find the cause of each move.
+  - **The free plan has no VIX, no bond yields and no index levels.** Adding them would need a paid Finnhub plan.
+  - **The key is in the GitHub secret `FINNHUB_API_KEY`.** Without it, the markets strip is simply not shown.
 
 ## X (Twitter)
 
@@ -32,9 +36,8 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
 ## Next phases
 
 - **Phase 2:**
-  - A market data API for the S&P 500, VIX, 10-year yield and oil, with rules for what counts as "significant".
-  - An events calendar for the coming week.
-  - The X API, if the two-week check shows it is needed.
+  - Done: Finnhub market prices and the earnings calendar.
+  - Still to do: Fed, CPI and jobs-report dates (Finnhub's free plan does not include them), and the X API if the two-week check shows it is needed.
 - **Phase 3:**
   - The source list moves to Firestore (`headlineSources`), so Jack can edit it from chat.
   - A `get_headlines` chat and MCP tool.
@@ -43,5 +46,4 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
 
 ## Open decisions
 
-- **Jack:** which market data provider to use. The recommendation is a free tier such as Finnhub or Alpha Vantage, because the function makes only two calls a day.
 - **Jack:** whether to add the X API after the two-week check.

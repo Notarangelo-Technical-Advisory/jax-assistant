@@ -289,6 +289,55 @@ $border: #334155;
   color: $text-secondary;
 }
 
+// Markets strip at the top of the Headlines tab
+.market-strip {
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  background: rgba($text-secondary, 0.08);
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+
+  &.significant { background: rgba($warning, 0.1); }
+}
+
+.market-index {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.market-label { font-weight: 600; }
+.market-price { font-size: 1rem; font-weight: 600; }
+.market-asof { color: $text-secondary; font-size: 0.7rem; }
+
+.market-change, .market-chip {
+  &.up { color: $success; }
+  &.down { color: $danger; }
+}
+
+.market-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.market-row-label {
+  color: $text-secondary;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 0.25rem;
+}
+
+.market-chip {
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  background: rgba($text-secondary, 0.12);
+}
+
 .headlines-error {
   font-size: 0.8rem;
   color: $warning;
