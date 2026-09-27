@@ -1547,3 +1547,19 @@ $border: #334155;
 }
 
 .li-summary { cursor: pointer; margin: 0; }
+
+.li-edit {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  padding: 0.65rem 0.9rem;
+  background: $bg-input;
+  color: $text-primary;
+  border: 1px solid $border;
+  border-radius: 8px;
+
+  &:focus { outline: none; border-color: $accent; }
+}

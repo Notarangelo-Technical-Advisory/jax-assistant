@@ -5,7 +5,7 @@ import { Observable, map, firstValueFrom } from 'rxjs';
 import { LinkedInWeek } from '../models/linkedin.model';
 import { AuthService } from './auth.service';
 
-export type LinkedInAction = 'refresh' | 'approve' | 'posted' | 'draft';
+export type LinkedInAction = 'refresh' | 'approve' | 'posted' | 'draft' | 'save';
 
 @Injectable({ providedIn: 'root' })
 export class LinkedInService {
@@ -25,7 +25,7 @@ export class LinkedInService {
    * GitHub and enforces the rules, so a refused action comes back as an error
    * with the reason.
    */
-  async act(action: LinkedInAction, date?: string, extra: { url?: string; instructions?: string } = {}): Promise<void> {
+  async act(action: LinkedInAction, date?: string, extra: { url?: string; instructions?: string; post?: string; firstComment?: string } = {}): Promise<void> {
     const token = await this.authService.getIdToken();
     await firstValueFrom(
       this.http.post(

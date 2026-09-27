@@ -57,6 +57,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   linkedInError = signal<string | null>(null);
   linkedInCopied = signal<'post' | 'comment' | null>(null);
   linkedInUrl = '';
+  linkedInEditing = signal(false);
+  linkedInEditPost = '';
+  linkedInEditComment = '';
   linkedInCollapsed = signal(localStorage.getItem('maisie-linkedin-collapsed') === 'true');
   briefingTab = signal<'today' | 'headlines'>(
     localStorage.getItem('maisie-briefing-tab') === 'headlines' ? 'headlines' : 'today'
@@ -439,17 +442,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // ─── LinkedIn card ─────────────────────────────────────────
 
-  async linkedInAct(action: LinkedInAction, extra: { url?: string } = {}): Promise<void> {
+  async linkedInAct(action: LinkedInAction, extra: { url?: string; post?: string; firstComment?: string } = {}): Promise<void> {
     this.linkedInBusy.set(action);
     this.linkedInError.set(null);
     try {
       await this.linkedInService.act(action, this.linkedIn()?.tuesday, extra);
       if (action === 'posted') this.linkedInUrl = '';
+      if (action === 'save') this.linkedInEditing.set(false);
     } catch (err: any) {
       this.linkedInError.set(err?.error?.error ?? 'That did not work. Please try again.');
     } finally {
       this.linkedInBusy.set(null);
     }
+  }
+
+  startLinkedInEdit(): void {
+    const d = this.linkedIn()?.draft;
+    if (!d) return;
+    this.linkedInEditPost = d.post;
+    this.linkedInEditComment = d.firstComment;
+    this.linkedInEditing.set(true);
+  }
+
+  saveLinkedInEdit(): Promise<void> {
+    return this.linkedInAct('save', { post: this.linkedInEditPost, firstComment: this.linkedInEditComment });
   }
 
   toggleLinkedIn(): void {

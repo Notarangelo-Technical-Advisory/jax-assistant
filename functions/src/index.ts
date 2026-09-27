@@ -12,7 +12,7 @@ import {readCalendarEvents, formatEventTime} from "./tools/calendar-read";
 import {generateHeadlines} from "./headlines";
 import {getMarketSnapshot} from "./markets";
 import {MODEL} from "./model";
-import {refreshWeek, draftIfIdea, approvePost, markPosted, writeDraft, describeWeek, textJack} from "./linkedin";
+import {refreshWeek, draftIfIdea, approvePost, markPosted, writeDraft, saveDraftText, describeWeek, textJack} from "./linkedin";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -1460,8 +1460,8 @@ export const linkedinAction = onRequest(
       res.status(401).json({error: "Unauthorized"});
       return;
     }
-    const {action, date, url, instructions} = (req.body ?? {}) as {
-      action?: string; date?: string; url?: string; instructions?: string;
+    const {action, date, url, instructions, post, firstComment} = (req.body ?? {}) as {
+      action?: string; date?: string; url?: string; instructions?: string; post?: string; firstComment?: string;
     };
     try {
       let week;
@@ -1470,6 +1470,7 @@ export const linkedinAction = onRequest(
       else if (action === "approve") week = await approvePost(db, date);
       else if (action === "posted") week = await markPosted(db, date, url);
       else if (action === "draft") week = await writeDraft(db, date, instructions);
+      else if (action === "save") week = await saveDraftText(db, date, post ?? "", firstComment ?? "");
       else throw new Error(`Unknown action "${action}".`);
       res.json({ok: true, week});
     } catch (err) {

@@ -364,6 +364,25 @@
                 <pre class="li-text">{{ x.text }}</pre>
               </div>
             }
+            @if (linkedInEditing()) {
+              <div class="li-block">
+                <span class="li-label">Post</span>
+                <textarea class="li-edit" rows="14" [(ngModel)]="linkedInEditPost"></textarea>
+              </div>
+              <div class="li-block">
+                <span class="li-label">First comment</span>
+                <textarea class="li-edit" rows="3" [(ngModel)]="linkedInEditComment"></textarea>
+              </div>
+              @if (w.status === 'approved') {
+                <p class="li-warning">Saving changes the approved words, so you will approve the post again.</p>
+              }
+              <div class="li-actions">
+                <button class="li-btn primary" (click)="saveLinkedInEdit()" [disabled]="linkedInBusy() !== null || !linkedInEditPost.trim()">
+                  {{ linkedInBusy() === 'save' ? 'Saving...' : 'Save' }}
+                </button>
+                <button class="li-btn" (click)="linkedInEditing.set(false)" [disabled]="linkedInBusy() !== null">Cancel</button>
+              </div>
+            } @else {
             <div class="li-block">
               <span class="li-label">Post</span>
               <pre class="li-text">{{ d.post }}</pre>
@@ -383,9 +402,11 @@
                 </button>
               }
               @if (w.status !== 'posted') {
-                <button class="li-btn" (click)="askLinkedInChanges()">Ask for changes</button>
+                <button class="li-btn" (click)="startLinkedInEdit()">Edit</button>
+                <button class="li-btn" (click)="askLinkedInChanges()">Ask MAISIE for changes</button>
               }
             </div>
+            }
 
             @if (w.status === 'approved') {
               <div class="li-posted">

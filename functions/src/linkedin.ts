@@ -365,6 +365,49 @@ export async function markPosted(db: admin.firestore.Firestore, date: string, ur
   return afterChange(db, date, link ?? null);
 }
 
+// ─── Jack's own edits ──────────────────────────────────────────
+
+/** Replace the body of one "## Heading" section, keeping everything else. */
+function replaceSection(md: string, heading: string, body: string): string {
+  const re = new RegExp(`(^## ${heading}[ \\t]*\\n)([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, "m");
+  if (!re.test(md)) throw new Error(`The draft has no "${heading}" section.`);
+  return md.replace(re, (_m, head: string) => `${head}\n${body}\n\n`);
+}
+
+/**
+ * Save the post and first comment exactly as Jack typed them on the card.
+ *
+ * The post goes back to "drafted" even when it was approved, and Jack
+ * approves it again: the rule is that the words approved are the words
+ * posted, and a one-click re-approval keeps that true without exceptions.
+ */
+export async function saveDraftText(
+  db: admin.firestore.Firestore,
+  date: string,
+  post: string,
+  firstComment: string
+): Promise<LinkedInWeek> {
+  if (!post.trim()) throw new Error("The post cannot be empty.");
+  const [{file: queueFile, rows}, loaded] = await Promise.all([loadQueue(), loadDraft(date)]);
+  const row = rows.find((r) => r.date === date);
+  if (!row) throw new Error(`The queue has no row for ${date}.`);
+  if (row.status === "posted") throw new Error(`The post for ${date} is already live on LinkedIn.`);
+  if (!loaded) throw new Error(`There is no draft for ${date} to edit. Draft it first.`);
+
+  let md = replaceSection(loaded.file.content, "Post", "```\n" + post.trim() + "\n```");
+  md = replaceSection(md, "First comment", firstComment.trim());
+  md = setDraftStatus(md, "drafted");
+  if (md === loaded.file.content) return afterChange(db, date);
+
+  // Queue first, for the same reason as writeDraft.
+  if (row.status !== "drafted") {
+    await writeFile(QUEUE_PATH, setQueueStatus(queueFile.content, date, "drafted"), queueFile.sha,
+      `chore(linkedin): mark ${date} drafted after Jack's edit (via MAISIE)`);
+  }
+  await writeFile(loaded.draft.path, md, loaded.file.sha, `docs(linkedin): Jack's edit to the ${date} post (via MAISIE)`);
+  return afterChange(db, date);
+}
+
 // ─── Writing a draft ───────────────────────────────────────────
 
 const SUBMIT_DRAFT: Anthropic.Messages.Tool = {
