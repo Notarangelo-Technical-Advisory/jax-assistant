@@ -364,13 +364,15 @@ export const chat = onRequest(
       // Clear thinking indicator now that we have a final response
       await thinkingRef.delete().catch(() => {/* ignore if doesn't exist */});
 
-      const rawText = response.content
-        .filter((b) => b.type === "text")
-        .map((b) => {
-          if (b.type === "text") return b.text;
-          return "";
-        })
-        .join("");
+      const rawText = response.stop_reason === "refusal" ?
+        "I can't help with that one, Jack. Could you put it another way?" :
+        response.content
+          .filter((b) => b.type === "text")
+          .map((b) => {
+            if (b.type === "text") return b.text;
+            return "";
+          })
+          .join("");
 
       // Strip all emoji characters regardless of system prompt compliance.
       // Whitespace cleanup is deliberately horizontal-only: the old /\s{2,}/
@@ -818,9 +820,12 @@ async function generateNarrative(
 
       const aiResponse = await anthropic.messages.create({
         model: MODEL,
-        max_tokens: 1024,
-        // Pure summarization of JSON assembled above — thinking buys nothing here.
-        thinking: {type: "disabled"},
+        // Room for a short think as well as the reply: thinking counts toward
+        // max_tokens.
+        max_tokens: 2048,
+        // Pure summarization of JSON assembled above. Sonnet 5.5 rejects
+        // disabled thinking; at low effort it skips thinking on simple requests.
+        thinking: {type: "adaptive"},
         output_config: {effort: "low"},
         system: systemMsg + changeMsg,
         messages: [{
@@ -1337,7 +1342,7 @@ function isPreMarket(d: Date): boolean {
 // ─── Scheduled: Headlines ───────────────────────────────────────
 //
 // Its own document, not a field on briefings/live: the facts refresh rewrites
-// that one every 30 minutes, and headlines cost web searches to rebuild.
+// that one every 30 minutes, and headlines cost a model call to rebuild.
 //
 // Three runs: 6:45am (with the pre-market futures report), 9:45am (the first
 // 15 minutes of trading) and 12:45pm. The 6:45 and 12:45 runs happen every
@@ -1347,7 +1352,8 @@ const HEADLINES_OPTS = {
   timeZone: "America/New_York",
   region: "us-central1",
   memory: "512MiB",
-  timeoutSeconds: 540,
+  // Reading the feeds takes seconds and the model call under a minute.
+  timeoutSeconds: 300,
 } as const;
 
 export const headlinesBriefing = onSchedule(
@@ -1378,16 +1384,17 @@ async function runHeadlines(): Promise<void> {
       : null;
     const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
     const result = await generateHeadlines(anthropic, MODEL, todayLabel, market, isPreMarket(now));
-    if (result.unverified.length > 0) {
-      console.warn(`[headlines] dropped ${result.unverified.length} item(s) with unverified URLs`);
-    }
+    const {usage} = result;
+    console.log(`[headlines] ${usage.candidates} candidates, ${usage.inputTokens} input and ` +
+      `${usage.outputTokens} output tokens, about $${usage.estimatedCostUsd}`);
     await ref.set({
       date: etDateKey(now),
       sections: result.sections,
       market,
-      // Kept off the dashboard but on the document, so a thin run can be
-      // diagnosed from Firestore without reading function logs.
-      unverified: result.unverified.map((it) => ({headline: it.headline, url: it.url})),
+      // Kept off the dashboard but on the document, so the cost of a run and
+      // any feed that stopped working can be seen without reading the logs.
+      usage,
+      sourceErrors: result.sourceErrors,
       generatedAt: admin.firestore.FieldValue.serverTimestamp(),
       lastError: null,
     });
@@ -1635,11 +1642,12 @@ ${taskListStr}`;
       console.log("[receiveSms] calling Haiku for intent parse");
       const aiResponse = await anthropic.messages.create({
         model: MODEL,
-        max_tokens: 512,
-        // Thinking off on both SMS calls: Twilio's webhook timeout is ~15s and
-        // this handler makes two sequential model calls. Latency is the binding
-        // constraint here, not reasoning depth.
-        thinking: {type: "disabled"},
+        max_tokens: 1024,
+        // Low effort on both SMS calls: Twilio's webhook timeout is ~15s and
+        // this handler makes two sequential model calls. Sonnet 5.5 rejects
+        // disabled thinking; at low effort it skips thinking on simple
+        // requests. max_tokens leaves room for a short think if it does.
+        thinking: {type: "adaptive"},
         output_config: {effort: "low"},
         system: systemPrompt,
         messages: [{role: "user", content: messageBody}],
@@ -1719,8 +1727,10 @@ ${taskListStr}`;
       console.log("[receiveSms] calling Haiku for personalized reply");
       const replyResponse = await anthropic.messages.create({
         model: MODEL,
-        max_tokens: 320,
-        thinking: {type: "disabled"},
+        // The system prompt keeps the reply to 1-2 sentences; the headroom is
+        // for a short think, which counts toward max_tokens.
+        max_tokens: 1024,
+        thinking: {type: "adaptive"},
         output_config: {effort: "low"},
         system: `You are Maisie, Jack Notarangelo's personal executive assistant, replying to Jack via SMS.
 Be concise and personal — warm with a dry wit, like a trusted colleague who knows Jack well. Use his first name occasionally but not in every message. Never use emojis. Keep replies short (1-2 sentences max) — this is SMS. No markdown.

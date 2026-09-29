@@ -1,36 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
+import {XMLParser} from "fast-xml-parser";
 import type {MarketSnapshot} from "./markets";
 
 // ─── Headlines ──────────────────────────────────────────────────
 //
-// The Headlines tab on the dashboard. One model call with web search gathers
-// what the people and companies Jack follows have said or done since the last
-// run, and hands it back through `submit_headlines` as structured items.
+// The Headlines tab on the dashboard. Code gathers the candidate stories from
+// news feeds; one model call, with no web tools, chooses the ones that matter
+// and writes the summaries, handing them back through `submit_headlines`.
 //
-// Structured output (output_config.format) is not used: web search results
-// carry citations, and citations and output_config.format together are a 400.
-// A strict tool gives the same schema guarantee without that conflict.
-
-/**
- * Who and what Jack follows. Phase 1 keeps this in code; moving it to
- * Firestore so Jack can edit it from chat is Phase 3 in
- * projects/headlines/README.md.
- *
- * `where` names the places the person actually publishes. Most of them post
- * first on X, which web search reads poorly, so the podcasts and newsletters
- * are listed to give the model something it can reach.
- */
-export const HEADLINE_PEOPLE = [
-  {name: "Paweł Huryn", where: "The Product Compass newsletter (productcompass.pm), LinkedIn, X @PawelHuryn — AI for product managers"},
-  {name: "David Sacks", where: "All-In podcast, X @DavidSacks — technology, AI policy, venture capital"},
-  {name: "Chamath Palihapitiya", where: "All-In podcast, his Substack, X @chamath — markets, technology, venture capital"},
-  {name: "Benny Johnson", where: "The Benny Show (podcast and YouTube), X @bennyjohnson — US politics"},
-];
-
-export const HEADLINE_AI_COMPANIES = [
-  "Anthropic", "OpenAI", "Google DeepMind / Gemini", "Meta AI", "xAI",
-  "Microsoft AI", "NVIDIA",
-];
+// Until 2026-09-29 the model found the stories itself with web search, which
+// cost $2-5 a run and took up to nine minutes. Now every link comes from a
+// feed: the model names a candidate by id and the code copies the link from
+// that candidate, so the model cannot write a link that does not exist.
 
 /** Section keys in display order. The dashboard renders them in this order. */
 export const HEADLINE_SECTIONS = [
@@ -40,6 +21,58 @@ export const HEADLINE_SECTIONS = [
 ] as const;
 
 type SectionKey = typeof HEADLINE_SECTIONS[number]["key"];
+
+/**
+ * Feeds read directly. Moving the list to Firestore so Jack can edit it from
+ * chat is Phase 3 in projects/headlines/README.md.
+ */
+export const HEADLINE_FEEDS: Array<{section: SectionKey; name: string; url: string}> = [
+  {section: "people", name: "The Product Compass (Paweł Huryn)", url: "https://www.productcompass.pm/feed"},
+  {section: "people", name: "All-In podcast", url: "https://rss.libsyn.com/shows/254861/destinations/1928300.xml"},
+  {section: "people", name: "Chamath Palihapitiya (Substack)", url: "https://chamath.substack.com/feed"},
+  {section: "people", name: "The Benny Show", url: "https://feeds.megaphone.fm/BENNYMED7549931483"},
+  {section: "ai", name: "OpenAI", url: "https://openai.com/news/rss.xml"},
+  {section: "ai", name: "Google DeepMind", url: "https://deepmind.google/blog/rss.xml"},
+  {section: "ai", name: "Google AI blog", url: "https://blog.google/technology/ai/rss/"},
+  {section: "ai", name: "NVIDIA blog", url: "https://blogs.nvidia.com/feed/"},
+];
+
+/**
+ * Google News searches. They cover what has no feed of its own (Anthropic;
+ * Microsoft's blog refuses automated readers), press coverage of the
+ * companies, and posts on X, which reach the dashboard only when the press
+ * reports them.
+ */
+export const HEADLINE_NEWS_QUERIES: Array<{section: SectionKey; query: string}> = [
+  {section: "people", query: "\"David Sacks\""},
+  {section: "people", query: "\"Chamath Palihapitiya\""},
+  {section: "people", query: "\"Benny Johnson\""},
+  {section: "people", query: "\"Paweł Huryn\" OR \"Pawel Huryn\""},
+  {section: "ai", query: "Anthropic Claude"},
+  {section: "ai", query: "OpenAI"},
+  {section: "ai", query: "\"Google DeepMind\" OR \"Google Gemini\""},
+  {section: "ai", query: "\"Meta AI\""},
+  {section: "ai", query: "xAI Grok"},
+  {section: "ai", query: "\"Microsoft AI\" OR \"Microsoft Copilot\""},
+  {section: "ai", query: "NVIDIA AI"},
+  {section: "markets", query: "\"stock market today\""},
+  {section: "markets", query: "\"Federal Reserve\" OR \"CPI report\" OR \"jobs report\""},
+];
+
+/** Only stories from this many hours back are candidates. */
+const WINDOW_HOURS = 48;
+/** Feed items kept per feed, newest first. */
+const ITEMS_PER_FEED = 5;
+/** Google News results kept per search, in Google's order. */
+const ITEMS_PER_SEARCH = 8;
+/** The dashboard shows at most this many items per section. */
+const ITEMS_PER_SECTION = 4;
+const FETCH_TIMEOUT_MS = 15_000;
+const DESCRIPTION_CHARS = 400;
+const USER_AGENT = "Mozilla/5.0 (compatible; MAISIE-headlines/2.0; +https://notarangelo.com)";
+
+/** List price of MODEL per million tokens, for the cost recorded on each run. Update with MODEL. */
+const PRICE_PER_MTOK = {input: 2, output: 10};
 
 export interface HeadlineItem {
   section: SectionKey;
@@ -53,17 +86,218 @@ export interface HeadlineItem {
   futures: boolean;
 }
 
+export interface HeadlinesUsage {
+  candidates: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** At the list price in PRICE_PER_MTOK. */
+  estimatedCostUsd: number;
+}
+
 export interface HeadlinesResult {
   sections: Array<{key: SectionKey; title: string; items: HeadlineItem[]}>;
-  /** Items the model returned whose URL never appeared in a search or fetch result. */
-  unverified: HeadlineItem[];
+  usage: HeadlinesUsage;
+  /** Feeds and searches that could not be read on this run, with the reason. */
+  sourceErrors: string[];
 }
+
+interface Candidate {
+  id: string;
+  section: SectionKey;
+  title: string;
+  description: string;
+  sourceName: string;
+  url: string;
+  published: Date;
+  /** Came from the pre-market futures search; only these may be marked futures. */
+  futures: boolean;
+}
+
+// ─── Gathering candidates ──────────────────────────────────────
+
+const xml = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "@_",
+  htmlEntities: true,
+  isArray: (name) => name === "item" || name === "entry" || name === "link",
+});
+
+/** The text of a parsed node, whether the parser gave a string, a number or an object with attributes. */
+function textOf(node: unknown): string {
+  if (node == null) return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return textOf(node[0]);
+  if (typeof node === "object") return textOf((node as Record<string, unknown>)["#text"]);
+  return "";
+}
+
+function plainText(html: string): string {
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function truncate(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max - 1).trimEnd() + "…";
+}
+
+interface FeedEntry {
+  title: string;
+  url: string;
+  published: Date;
+  description: string;
+  /** Google News names the publisher of each result; ordinary feeds do not. */
+  source: string | null;
+  /** False when the entry had no link and `url` is the feed's own page. */
+  ownLink: boolean;
+}
+
+/** RSS 2.0 or Atom. Entries without a title, link or valid date are skipped. */
+function parseFeed(body: string): FeedEntry[] {
+  const doc = xml.parse(body) as Record<string, any>;
+  const rssItems: any[] = doc.rss?.channel?.item ?? [];
+  // Some podcast feeds, such as The Benny Show's, give episodes no web link;
+  // those link to the show's page instead.
+  const channelLink = textOf(doc.rss?.channel?.link).trim();
+  const atomEntries: any[] = doc.feed?.entry ?? [];
+
+  const entries: FeedEntry[] = [];
+  for (const it of rssItems) {
+    const guid = it.guid?.["@_isPermaLink"] === "false" ? "" : textOf(it.guid).trim();
+    const own = textOf(it.link).trim() || (/^https?:\/\//.test(guid) ? guid : "");
+    entries.push({
+      title: plainText(textOf(it.title)),
+      url: own || channelLink,
+      ownLink: own !== "",
+      published: new Date(textOf(it.pubDate) || textOf(it["dc:date"])),
+      description: plainText(textOf(it.description) || textOf(it["itunes:summary"])),
+      source: it.source ? textOf(it.source).trim() || null : null,
+    });
+  }
+  for (const e of atomEntries) {
+    const links: any[] = e.link ?? [];
+    const link = links.find((l) => !l["@_rel"] || l["@_rel"] === "alternate") ?? links[0];
+    entries.push({
+      title: plainText(textOf(e.title)),
+      url: String(link?.["@_href"] ?? "").trim(),
+      published: new Date(textOf(e.published) || textOf(e.updated)),
+      description: plainText(textOf(e.summary) || textOf(e.content)),
+      source: null,
+      ownLink: true,
+    });
+  }
+  return entries.filter((e) => e.title && /^https?:\/\//.test(e.url) && !isNaN(e.published.getTime()));
+}
+
+async function fetchFeed(url: string): Promise<FeedEntry[]> {
+  const res = await fetch(url, {
+    headers: {"User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml"},
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`returned HTTP ${res.status}`);
+  return parseFeed(await res.text());
+}
+
+function googleNewsUrl(query: string): string {
+  const q = encodeURIComponent(`${query} when:${WINDOW_HOURS / 24}d`);
+  return `https://news.google.com/rss/search?q=${q}&hl=en-US&gl=US&ceid=US:en`;
+}
+
+/** A title reduced to lower-case letters and digits, to spot the same story from two sources. */
+function titleKey(title: string): string {
+  return title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().slice(0, 90);
+}
+
+interface Source {
+  label: string;
+  section: SectionKey;
+  url: string;
+  limit: number;
+  /** The feed's own name, for items that do not name a publisher. */
+  name: string;
+  futures: boolean;
+}
+
+function buildSources(market: MarketSnapshot | null | undefined, preMarket: boolean): Source[] {
+  const sources: Source[] = HEADLINE_FEEDS.map((f) => ({
+    label: f.name, section: f.section, url: f.url, limit: ITEMS_PER_FEED, name: f.name, futures: false,
+  }));
+  const search = (section: SectionKey, query: string, futures = false): Source => ({
+    label: `Google News: ${query}`, section, url: googleNewsUrl(query), limit: ITEMS_PER_SEARCH,
+    name: "Google News", futures,
+  });
+  for (const q of HEADLINE_NEWS_QUERIES) sources.push(search(q.section, q.query));
+  // One search per large move, so the model has the story behind each move
+  // that marketData lists as a reason the day is significant.
+  for (const m of market?.movers ?? []) sources.push(search("markets", `${m.symbol} stock`));
+  if (preMarket) sources.push(search("markets", "\"S&P 500 futures\"", true));
+  return sources;
+}
+
+/**
+ * Read every source in parallel and return the recent, de-duplicated stories.
+ * A source that fails is reported in `errors` and the rest still count.
+ */
+export async function gatherCandidates(
+  market: MarketSnapshot | null | undefined,
+  preMarket: boolean,
+  now = new Date()
+): Promise<{candidates: Candidate[]; errors: string[]}> {
+  const sources = buildSources(market, preMarket);
+  const results = await Promise.allSettled(sources.map((s) => fetchFeed(s.url)));
+  const cutoff = now.getTime() - WINDOW_HOURS * 3600_000;
+
+  const candidates: Candidate[] = [];
+  const errors: string[] = [];
+  const byUrl = new Map<string, Candidate>();
+  const byTitle = new Map<string, Candidate>();
+
+  results.forEach((result, i) => {
+    const source = sources[i];
+    if (result.status === "rejected") {
+      errors.push(`${source.label}: ${result.reason instanceof Error ? result.reason.message : result.reason}`);
+      return;
+    }
+    let entries = result.value.filter((e) => e.published.getTime() >= cutoff && e.published.getTime() <= now.getTime() + 3600_000);
+    // Feeds are newest first by convention but not always; Google News is kept in its own order.
+    if (!source.url.startsWith("https://news.google.com/")) {
+      entries = entries.sort((a, b) => b.published.getTime() - a.published.getTime());
+    }
+    for (const e of entries.slice(0, source.limit)) {
+      const sourceName = e.source ?? source.name;
+      const title = e.source && e.title.endsWith(` - ${e.source}`) ?
+        e.title.slice(0, -(e.source.length + 3)) : e.title;
+      const key = titleKey(title);
+      const seen = (e.ownLink ? byUrl.get(e.url) : undefined) ?? byTitle.get(key);
+      if (seen) {
+        // An earlier search found this story first; keep its futures mark.
+        if (source.futures) seen.futures = true;
+        continue;
+      }
+      const candidate: Candidate = {
+        id: `c${candidates.length + 1}`,
+        section: source.section,
+        title,
+        // A Google News description only repeats the title and publisher.
+        description: e.source ? "" : truncate(e.description, DESCRIPTION_CHARS),
+        sourceName,
+        url: e.url,
+        published: e.published,
+        futures: source.futures,
+      };
+      candidates.push(candidate);
+      if (e.ownLink) byUrl.set(e.url, candidate);
+      byTitle.set(key, candidate);
+    }
+  });
+  return {candidates, errors};
+}
+
+// ─── Choosing and summarising ──────────────────────────────────
 
 const SUBMIT_TOOL: Anthropic.Messages.Tool = {
   name: "submit_headlines",
   description:
-    "Submit the finished headlines. Call this exactly once, after your research is done. " +
-    "Every item must use a URL that appeared in a web_search or web_fetch result in this conversation.",
+    "Submit the chosen headlines. Call this exactly once, with every item you chose. " +
+    "Each item names one candidate by its id.",
   strict: true,
   input_schema: {
     type: "object",
@@ -75,18 +309,13 @@ const SUBMIT_TOOL: Anthropic.Messages.Tool = {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["section", "headline", "summary", "whyItMatters", "sourceName", "url", "publishedAt", "futures"],
+          required: ["id", "section", "headline", "summary", "whyItMatters", "futures"],
           properties: {
+            id: {type: "string", description: "The candidate's id, such as \"c12\"."},
             section: {type: "string", enum: HEADLINE_SECTIONS.map((s) => s.key)},
             headline: {type: "string", description: "One line, under 100 characters."},
             summary: {type: "string", description: "One or two plain sentences on what happened."},
             whyItMatters: {type: "string", description: "One sentence on why Jack in particular should care."},
-            sourceName: {type: "string", description: "The publication or person, e.g. \"All-In podcast\" or \"Anthropic blog\"."},
-            url: {type: "string"},
-            publishedAt: {
-              type: ["string", "null"],
-              description: "YYYY-MM-DD if the source states a date, otherwise null.",
-            },
             futures: {
               type: "boolean",
               description: "True only for the pre-market S&P 500 futures report. False for every other item.",
@@ -98,91 +327,37 @@ const SUBMIT_TOOL: Anthropic.Messages.Tool = {
   },
 };
 
-// Own copy of the web tools rather than WEB_TOOLS: this call needs more
-// searches than a chat turn, and web_fetch citations would only add blocks
-// this code throws away.
-const HEADLINE_WEB_TOOLS: Anthropic.Messages.ToolUnion[] = [
-  {
-    type: "web_search_20260209",
-    name: "web_search",
-    max_uses: 15,
-    user_location: {type: "approximate", country: "US", timezone: "America/New_York"},
-  },
-  {
-    type: "web_fetch_20260209",
-    name: "web_fetch",
-    max_uses: 5,
-    max_content_tokens: 20000,
-  },
-];
-
 function buildSystemPrompt(todayLabel: string): string {
-  const people = HEADLINE_PEOPLE.map((p) => `- ${p.name}: ${p.where}`).join("\n");
   return `You are Maisie, Jack Notarangelo's executive assistant, preparing the Headlines tab of his briefing. Today is ${todayLabel} (Eastern Time).
 
-Jack is a technical advisor on AI adoption. Find what is new in the last 24-48 hours in three sections:
+Jack is a technical advisor on AI adoption. The user message lists candidate stories from news feeds and news searches, all from the last ${WINDOW_HOURS} hours. Choose the ones Jack should see, in three sections:
 
-1. people — what these people have said, published or done:
-${people}
-2. ai — significant news from these AI companies: ${HEADLINE_AI_COMPANIES.join(", ")}. Model releases, major product launches, pricing changes, policy or legal news. Skip minor feature updates.
-3. markets — only events that moved, or are expected to move, the S&P 500: a move of more than 1% in a day, a Federal Reserve decision, a CPI or jobs report, or earnings from one of the largest companies in the index. The user message may include marketData with the latest prices and a list of reasons the day is significant; when it does, find and explain the cause of each move it lists. Take every number from marketData, never from search results, and do not repeat prices the dashboard already shows. If nothing significant happened, return no markets items.
+1. people — what David Sacks, Chamath Palihapitiya, Benny Johnson (the US political commentator) and Paweł Huryn (AI for product managers) have said, published or done. Skip stories about other people with the same name.
+2. ai — significant news from Anthropic, OpenAI, Google DeepMind / Gemini, Meta AI, xAI, Microsoft AI and NVIDIA: model releases, major product launches, pricing changes, policy or legal news. Skip minor feature updates.
+3. markets — only events that moved, or are expected to move, the S&P 500: a move of more than 1% in a day, a Federal Reserve decision, a CPI or jobs report, or earnings from one of the largest companies in the index. The user message may include marketData with the latest prices and a list of reasons the day is significant; when it does, use the candidates to explain the cause of each move it lists. Take every number from marketData, never from a headline, and do not repeat prices the dashboard already shows. If nothing significant happened, choose no markets items.
 
-Pre-market futures: when the user message says the US market has not opened yet, search for the latest news report on S&P 500 futures (for example from CNBC, Reuters, Bloomberg, MarketWatch or Yahoo Finance) and add exactly one markets item for it, with futures set to true. Put the direction and size of the move in the headline, such as "S&P 500 futures down 0.6% before the open", and say in the summary what the report gives as the reason and what time the report was published. This is the one item whose numbers come from the news rather than from marketData. Add it even on a quiet morning. If you cannot find a report from today, leave it out.
+Pre-market futures: when the user message says the US market has not opened yet, choose the most recent candidate marked "futures": true that reports on S&P 500 futures, and set futures to true on it. Put the direction and size of the move in the headline, such as "S&P 500 futures down 0.6% before the open", taking the figure from that candidate. This is the one item whose numbers come from the news rather than from marketData. If there is no such candidate from today, leave it out.
 
 Rules:
-- Every item must link to a URL that appeared in your web_search or web_fetch results. Never write a URL from memory. Items with other URLs are discarded.
-- Only include items from the last 48 hours. If a source has nothing new, leave it out rather than include older news.
-- At most 4 items per section. Prefer fewer, more important items.
+- Use only the facts in each candidate's title and description, and in marketData. Do not add details from memory.
+- When several candidates report the same story, choose one: the company's own announcement or the most established outlet.
+- At most ${ITEMS_PER_SECTION} items per section. Prefer fewer, more important items. Choosing nothing for a section is fine.
 - Write in plain English. No markdown.
 - Report what people said without adding your own opinion of it.
-- When you are finished, call submit_headlines once with all the items.`;
+- When you have chosen, call submit_headlines once with all the items, or with an empty list if nothing qualifies.`;
+}
+
+/** YYYY-MM-DD in Eastern Time. */
+function etDateKey(d: Date): string {
+  return d.toLocaleDateString("en-CA", {timeZone: "America/New_York"});
 }
 
 /**
- * Every URL the server-side tools actually returned in this conversation.
+ * Gather the candidates, have the model choose, and return the headlines.
  *
- * The `_20260209` web tools filter results with code execution before the
- * model reads them, so many results reach the model as code-execution output
- * rather than as `web_search_tool_result` blocks. Matching only those two block
- * types dropped nearly every item on the first run. Instead, scan every block
- * the model did not write itself for URLs.
- */
-function collectSeenUrls(content: Anthropic.Messages.ContentBlock[], into: Set<string>): void {
-  for (const block of content) {
-    if (block.type === "text" || block.type === "thinking" || block.type === "tool_use" ||
-        block.type === "server_tool_use" || block.type === "redacted_thinking") {
-      continue;
-    }
-    for (const match of JSON.stringify(block).matchAll(URL_PATTERN)) {
-      into.add(normalizeUrl(match[0]));
-    }
-  }
-}
-
-const URL_PATTERN = /https?:\/\/[^\s"'<>\\)\]]+/g;
-
-/**
- * Compare URLs by host and path only. The model often drops tracking
- * parameters, "www." or the trailing slash when it copies a link, and none of
- * those make a different page.
- */
-function normalizeUrl(url: string): string {
-  try {
-    const u = new URL(url.trim());
-    const host = u.hostname.toLowerCase().replace(/^www\./, "");
-    const path = decodeURIComponent(u.pathname).replace(/\/+$/, "");
-    return host + path;
-  } catch {
-    return url.trim().toLowerCase();
-  }
-}
-
-/**
- * Run the research call and return the verified headlines.
- *
- * Throws on API failure or when the model never calls submit_headlines, so the
- * caller can keep the previous headlines instead of overwriting them with
- * nothing.
+ * Throws when no source could be read, on API failure, on a refusal, or when
+ * the model never calls submit_headlines, so the caller can keep the previous
+ * headlines instead of overwriting them with nothing.
  */
 export async function generateHeadlines(
   anthropic: Anthropic,
@@ -191,55 +366,97 @@ export async function generateHeadlines(
   marketData?: MarketSnapshot | null,
   preMarket = false
 ): Promise<HeadlinesResult> {
-  // Kept out of the system prompt so the prompt stays the same on every run.
-  const parts = ["Prepare today's headlines."];
-  if (preMarket) {
-    parts.push("The US market has not opened yet. Include the pre-market futures report.");
+  const {candidates, errors} = await gatherCandidates(marketData, preMarket);
+  if (errors.length > 0) console.warn(`[headlines] ${errors.length} source(s) failed:\n${errors.join("\n")}`);
+  if (candidates.length === 0) {
+    throw new Error(`No candidate stories were found. Source errors: ${errors.join("; ") || "none"}`);
   }
-  parts.push(marketData
-    ? `marketData (the latest prices; before the open these are the previous close):\n${JSON.stringify(marketData)}`
-    : "No market data is available today.");
-  const ask = parts.join("\n\n");
-  const messages: Anthropic.Messages.MessageParam[] = [{role: "user", content: ask}];
+
+  const parts = ["Prepare today's headlines from these candidates."];
+  if (preMarket) parts.push("The US market has not opened yet. Include the pre-market futures report.");
+  parts.push(
+    marketData ?
+      `marketData (the latest prices; before the open these are the previous close):\n${JSON.stringify(marketData)}` :
+      "No market data is available today.",
+    `Candidates:\n${JSON.stringify(candidates.map((c) => ({
+      id: c.id,
+      section: c.section,
+      source: c.sourceName,
+      published: c.published.toISOString(),
+      title: c.title,
+      ...(c.description ? {description: c.description} : {}),
+      ...(c.futures ? {futures: true} : {}),
+    })))}`
+  );
+  const messages: Anthropic.Messages.MessageParam[] = [{role: "user", content: parts.join("\n\n")}];
   const request = (): Anthropic.Messages.MessageCreateParamsNonStreaming => ({
     model,
     max_tokens: 16000,
     thinking: {type: "adaptive"},
-    output_config: {effort: "medium"},
+    // Choosing from a list and summarising it: low is the recommended level
+    // for classification and content generation.
+    output_config: {effort: "low"},
     system: buildSystemPrompt(todayLabel),
-    tools: [...HEADLINE_WEB_TOOLS, SUBMIT_TOOL],
+    tools: [SUBMIT_TOOL],
     messages,
   });
 
-  const seenUrls = new Set<string>();
-  let response = await anthropic.messages.create(request());
-  collectSeenUrls(response.content, seenUrls);
+  const usage = {inputTokens: 0, outputTokens: 0};
+  let submit: Anthropic.Messages.ToolUseBlock | undefined;
+  // tool_choice cannot force the call on this model, so ask once more if the
+  // first reply ends without it.
+  for (let attempt = 0; attempt < 2 && !submit; attempt++) {
+    const response = await anthropic.messages.create(request());
+    usage.inputTokens += response.usage.input_tokens;
+    usage.outputTokens += response.usage.output_tokens;
+    if (response.stop_reason === "refusal") {
+      throw new Error(`The model declined the headlines request (${response.stop_details?.category ?? "no category"}).`);
+    }
+    submit = response.content.find(
+      (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use" && b.name === SUBMIT_TOOL.name
+    );
+    if (!submit) {
+      if (response.stop_reason === "max_tokens") throw new Error("The headlines reply reached max_tokens.");
+      messages.push({role: "assistant", content: response.content});
+      messages.push({role: "user", content: "Please call submit_headlines now with the items you chose."});
+    }
+  }
+  if (!submit) throw new Error("submit_headlines was not called after two attempts.");
 
-  // Server-side search runs inside one request but pauses after ~10 internal
-  // iterations with "pause_turn"; resuming needs only the assistant content.
-  const MAX_CONTINUATIONS = 4;
-  for (let i = 0; response.stop_reason === "pause_turn" && i < MAX_CONTINUATIONS; i++) {
-    messages.push({role: "assistant", content: response.content});
-    response = await anthropic.messages.create(request());
-    collectSeenUrls(response.content, seenUrls);
+  type Pick = {id: string; section: SectionKey; headline: string; summary: string; whyItMatters: string; futures: boolean};
+  const picks = (submit.input as {items?: Pick[]}).items ?? [];
+  const byId = new Map(candidates.map((c) => [c.id, c]));
+  const used = new Set<string>();
+  const items: HeadlineItem[] = [];
+  for (const p of picks) {
+    const c = byId.get(p.id);
+    if (!c || used.has(p.id)) {
+      console.warn(`[headlines] ignored a pick with ${c ? "a repeated" : "an unknown"} id: ${p.id}`);
+      continue;
+    }
+    used.add(p.id);
+    items.push({
+      section: p.section,
+      headline: p.headline,
+      summary: p.summary,
+      whyItMatters: p.whyItMatters,
+      sourceName: c.sourceName,
+      url: c.url,
+      publishedAt: etDateKey(c.published),
+      futures: preMarket && c.futures && p.futures && p.section === "markets",
+    });
   }
 
-  const submit = response.content.find(
-    (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use" && b.name === SUBMIT_TOOL.name
-  );
-  if (!submit) {
-    throw new Error(`submit_headlines was not called (stop_reason: ${response.stop_reason})`);
-  }
-
-  const items = ((submit.input as {items?: HeadlineItem[]}).items ?? []);
-  const verified = items.filter((it) => seenUrls.has(normalizeUrl(it.url)));
-
+  const estimatedCostUsd = Math.round(
+    (usage.inputTokens * PRICE_PER_MTOK.input + usage.outputTokens * PRICE_PER_MTOK.output) / 1e6 * 10_000
+  ) / 10_000;
   return {
     sections: HEADLINE_SECTIONS.map((s) => ({
       key: s.key,
       title: s.title,
-      items: verified.filter((it) => it.section === s.key),
+      items: items.filter((it) => it.section === s.key).slice(0, ITEMS_PER_SECTION),
     })),
-    unverified: items.filter((it) => !seenUrls.has(normalizeUrl(it.url))),
+    usage: {candidates: candidates.length, ...usage, estimatedCostUsd},
+    sourceErrors: errors,
   };
 }
