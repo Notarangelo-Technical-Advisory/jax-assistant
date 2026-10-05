@@ -20,7 +20,8 @@ export class TaskCategoryService {
     { key: 'ppk',     label: 'PPK',     order: 3 },
     { key: 'church',  label: 'Church',  order: 4 },
     { key: 'embassy', label: 'Embassy Series', order: 5 },
-    { key: 'general', label: 'General', order: 6 },
+    { key: 'cox',     label: 'Cox Engineering', order: 6 },
+    { key: 'general', label: 'General', order: 7 },
   ];
 
   /**

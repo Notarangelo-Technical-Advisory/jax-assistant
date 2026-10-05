@@ -13,6 +13,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   {key: "ppk", label: "PPK"},
   {key: "church", label: "Church"},
   {key: "embassy", label: "Embassy Series"},
+  {key: "cox", label: "Cox Engineering"},
   {key: "general", label: "General"},
 ];
 
@@ -194,7 +195,7 @@ export const buildTools = (
     },
     {
       name: "delete_task_category",
-      description: "Delete a custom task category. Cannot delete built-in categories (ihrdc, solomon, dial, ppk, church, embassy, general). Will fail if there are active tasks under that category — those must be completed or reassigned first.",
+      description: "Delete a custom task category. Cannot delete built-in categories (ihrdc, solomon, dial, ppk, church, embassy, cox, general). Will fail if there are active tasks under that category — those must be completed or reassigned first.",
       input_schema: {
         type: "object" as const,
         properties: {
