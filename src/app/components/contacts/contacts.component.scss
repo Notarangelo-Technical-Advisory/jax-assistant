@@ -1,0 +1,185 @@
+// Same palette as the dashboard.
+$bg-dark: #0f172a;
+$bg-card: #1e293b;
+$bg-input: #0f172a;
+$text-primary: #f8fafc;
+$text-secondary: #94a3b8;
+$accent: #3b82f6;
+$accent-hover: #2563eb;
+$danger: #f87171;
+$border: #334155;
+
+:host {
+  display: block;
+  min-height: 100vh;
+  background: $bg-dark;
+  color: $text-primary;
+}
+
+.contacts-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem 2rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid $border;
+
+  h1 { flex: 1; margin: 0; font-size: 1.5rem; }
+}
+
+.back {
+  color: $text-secondary;
+  text-decoration: none;
+  font-size: 0.9rem;
+  &:hover { color: $text-primary; }
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1rem;
+  padding-top: 1rem;
+
+  @media (max-width: 760px) { grid-template-columns: 1fr; }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.search, input, textarea {
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid $border;
+  border-radius: 6px;
+  background: $bg-input;
+  color: $text-primary;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.count { margin: 0.25rem 0; color: $text-secondary; font-size: 0.75rem; }
+
+.row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: $text-primary;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover { background: rgba(255, 255, 255, 0.04); }
+  &.active { background: $bg-card; border-color: $border; }
+}
+
+.row-name { font-size: 0.92rem; }
+.row-sub { color: $text-secondary; font-size: 0.78rem; }
+
+.detail { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+
+.card {
+  background: $bg-card;
+  border: 1px solid $border;
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+
+  h2 { margin: 0; font-size: 1.25rem; }
+  h3 { margin: 1rem 0 0.5rem; font-size: 0.95rem; color: $text-secondary; }
+  h3:first-child { margin-top: 0; }
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.sub { margin: 0.25rem 0 0; color: $text-secondary; font-size: 0.88rem; }
+
+a, .link { color: $accent; cursor: pointer; text-decoration: none; }
+a:hover, .link:hover { text-decoration: underline; }
+
+dl {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 1rem 0 0;
+  font-size: 0.9rem;
+
+  dt { color: $text-secondary; }
+  dd { margin: 0; word-break: break-all; }
+}
+
+.tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.8rem; }
+.tag {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba($accent, 0.15);
+  color: $accent;
+  font-size: 0.75rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+
+  label { display: flex; flex-direction: column; gap: 0.3rem; color: $text-secondary; font-size: 0.8rem; }
+  .wide { grid-column: 1 / -1; }
+
+  @media (max-width: 560px) { grid-template-columns: 1fr; }
+}
+
+.actions { display: flex; gap: 0.5rem; margin-top: 0.9rem; }
+.card-head .actions { margin-top: 0; }
+
+%btn {
+  padding: 0.42rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+.btn-primary { @extend %btn; background: $accent; color: #fff; &:hover:not(:disabled) { background: $accent-hover; } }
+.btn-secondary { @extend %btn; background: none; border-color: $border; color: $text-primary; &:hover { background: rgba(255, 255, 255, 0.05); } }
+.btn-danger { @extend %btn; background: none; border-color: rgba($danger, 0.5); color: $danger; &:hover { background: rgba($danger, 0.1); } }
+.btn-link { background: none; border: none; color: $text-secondary; font-size: 0.75rem; cursor: pointer; &:hover { color: $danger; } }
+
+.note-new {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.note {
+  padding: 0.65rem 0;
+  border-top: 1px solid $border;
+}
+
+.note-head { display: flex; justify-content: space-between; align-items: center; }
+.note-date { color: $text-secondary; font-size: 0.75rem; }
+.note-body { margin: 0.3rem 0 0; white-space: pre-wrap; font-size: 0.9rem; line-height: 1.45; }
+
+.empty { color: $text-secondary; font-size: 0.85rem; }
+.placeholder { padding: 2rem 0; text-align: center; }
+.error { margin: 0; padding: 0.6rem 0.8rem; border-radius: 6px; background: rgba($danger, 0.12); color: $danger; font-size: 0.85rem; }

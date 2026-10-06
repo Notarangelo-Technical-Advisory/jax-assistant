@@ -16,7 +16,7 @@ runtime does not install.
 
 | Server | Path | Tools |
 | --- | --- | --- |
-| `maisie` | `functions/src/mcp/server.ts` | `add_task`, `complete_task`, `reopen_task`, `update_task`, `create_task_category`, `delete_task_category`, `get_unbilled_detail`, `get_time_entries`, `get_invoice_status`, `get_maisie_context` — plus a `maisie` prompt that loads her persona and current state |
+| `maisie` | `functions/src/mcp/server.ts` | `add_task`, `complete_task`, `reopen_task`, `update_task`, `create_task_category`, `delete_task_category`, `get_unbilled_detail`, `get_time_entries`, `get_invoice_status`, `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `get_maisie_context` — plus a `maisie` prompt that loads her persona and current state |
 | `desktop` | `bridge/mcp/desktop-server.ts` | `calendar_read`, `calendar_create`, `calendar_move`, `mail_search`, `mail_read`, `mail_draft`, `mail_send` |
 
 Tool implementations are shared, not duplicated: `functions/src/tools/`

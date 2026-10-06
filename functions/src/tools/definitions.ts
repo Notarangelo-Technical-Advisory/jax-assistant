@@ -77,6 +77,12 @@ export const MCP_TOOL_NAMES = [
   "get_unbilled_detail",
   "get_time_entries",
   "get_invoice_status",
+  "find_contacts",
+  "get_contact",
+  "get_company",
+  "save_contact",
+  "save_company",
+  "add_contact_note",
 ];
 
 /**
@@ -264,6 +270,86 @@ export const buildTools = (
           },
         },
         required: [],
+      },
+    },
+    {
+      name: "find_contacts",
+      description: "Search Jack's contacts and companies (his CRM / address book). Matches name, title, company, email, phone and tags, case-insensitively. Omit query to list everyone. Returns IDs to use with get_contact, get_company, save_contact and add_contact_note.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          query: {type: "string", description: "Text to match, e.g. 'Donohue', 'ihrdc.com', 'IHRDC'"},
+          tag: {type: "string", description: "Optional: only return contacts and companies with this tag"},
+          limit: {type: "number", description: "Maximum contacts to return. Defaults to 25."},
+        },
+        required: [],
+      },
+    },
+    {
+      name: "get_contact",
+      description: "Get one contact's full record and their notes, newest first.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          contact_id: {type: "string", description: "The contact ID from find_contacts"},
+        },
+        required: ["contact_id"],
+      },
+    },
+    {
+      name: "get_company",
+      description: "Get one company, the contacts who work there, and its notes, newest first.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          company_id: {type: "string", description: "The company ID from find_contacts or get_contact"},
+        },
+        required: ["company_id"],
+      },
+    },
+    {
+      name: "save_contact",
+      description: "Create a contact, or update one when contact_id is given. On update, only the fields you pass change; list fields (emails, phones, tags) are replaced, so pass the full list. Search with find_contacts first to avoid duplicates — creating a contact whose email already exists is refused.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          contact_id: {type: "string", description: "Omit to create. Pass to update that contact."},
+          first_name: {type: "string"},
+          last_name: {type: "string"},
+          emails: {type: "array", items: {type: "string"}, description: "All email addresses for this person"},
+          phones: {type: "array", items: {type: "string"}, description: "All phone numbers for this person"},
+          title: {type: "string", description: "Job title, e.g. 'President & CEO'"},
+          company: {type: "string", description: "Company name. Matched to an existing company case-insensitively, or created. Pass an empty string to remove the company."},
+          tags: {type: "array", items: {type: "string"}, description: "Labels such as 'client', 'church', 'prospect'"},
+        },
+        required: [],
+      },
+    },
+    {
+      name: "save_company",
+      description: "Create a company, or update one when company_id is given. Creating a company whose name already exists is refused.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          company_id: {type: "string", description: "Omit to create. Pass to update that company."},
+          name: {type: "string"},
+          website: {type: "string"},
+          tags: {type: "array", items: {type: "string"}, description: "Replaces the full tag list"},
+        },
+        required: [],
+      },
+    },
+    {
+      name: "add_contact_note",
+      description: "Add a dated note to a contact or a company — what was discussed, a commitment, a preference, anything Jack wants to remember. Pass exactly one of contact_id or company_id.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          contact_id: {type: "string"},
+          company_id: {type: "string"},
+          body: {type: "string", description: "The note text"},
+        },
+        required: ["body"],
       },
     },
     {

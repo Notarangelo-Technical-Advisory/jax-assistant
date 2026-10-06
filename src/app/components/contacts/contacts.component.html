@@ -1,0 +1,156 @@
+<div class="contacts-page">
+  <header class="header">
+    <a routerLink="/" class="back">&larr; Dashboard</a>
+    <h1>Contacts</h1>
+    <button class="btn-primary" (click)="startNew()">+ New contact</button>
+  </header>
+
+  <div class="layout">
+    <!-- List -->
+    <aside class="list">
+      <input
+        class="search"
+        type="search"
+        placeholder="Search name, company, email, tag..."
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+      />
+      <p class="count">{{ filtered().length }} of {{ contacts().length }}</p>
+      @for (c of filtered(); track c.id) {
+        <button
+          class="row"
+          [class.active]="selection()?.kind === 'contact' && selectedContact()?.id === c.id"
+          (click)="selectContact(c)"
+        >
+          <span class="row-name">{{ fullName(c) }}</span>
+          <span class="row-sub">{{ companyName(c.companyId) || c.emails[0] || '' }}</span>
+        </button>
+      } @empty {
+        <p class="empty">No contacts yet. Add one here, or ask Maisie.</p>
+      }
+    </aside>
+
+    <!-- Detail -->
+    <main class="detail">
+      @let c = selectedContact();
+      @let co = selectedCompany();
+      @if (error()) {
+        <p class="error">{{ error() }}</p>
+      }
+
+      @if (editing() && (selection()?.kind === 'new' || c)) {
+        <!-- Contact form -->
+        <section class="card">
+          <h2>{{ selection()?.kind === 'new' ? 'New contact' : 'Edit contact' }}</h2>
+          <div class="grid">
+            <label>First name <input [(ngModel)]="form.firstName" /></label>
+            <label>Last name <input [(ngModel)]="form.lastName" /></label>
+            <label>Title <input [(ngModel)]="form.title" /></label>
+            <label>Company
+              <input [(ngModel)]="form.company" list="company-names" />
+              <datalist id="company-names">
+                @for (co of companies(); track co.id) { <option [value]="co.name"></option> }
+              </datalist>
+            </label>
+            <label class="wide">Emails <input [(ngModel)]="form.emails" placeholder="Separate with commas" /></label>
+            <label class="wide">Phones <input [(ngModel)]="form.phones" placeholder="Separate with commas" /></label>
+            <label class="wide">Tags <input [(ngModel)]="form.tags" placeholder="client, church, prospect" /></label>
+          </div>
+          <div class="actions">
+            <button class="btn-primary" (click)="saveContact()" [disabled]="saving()">Save</button>
+            <button class="btn-secondary" (click)="cancelEdit()">Cancel</button>
+          </div>
+        </section>
+      } @else if (c) {
+        <!-- Contact view -->
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>{{ fullName(c) }}</h2>
+              <p class="sub">
+                {{ c.title }}
+                @if (c.title && c.companyId) { &middot; }
+                @if (c.companyId) {
+                  <a class="link" (click)="selectCompany(c.companyId)">{{ companyName(c.companyId) }}</a>
+                }
+              </p>
+            </div>
+            <div class="actions">
+              <button class="btn-secondary" (click)="startEdit()">Edit</button>
+              <button class="btn-danger" (click)="deleteContact()">Delete</button>
+            </div>
+          </div>
+          <dl>
+            @for (e of c.emails; track e) { <dt>Email</dt><dd><a [href]="'mailto:' + e">{{ e }}</a></dd> }
+            @for (p of c.phones; track p) { <dt>Phone</dt><dd><a [href]="'tel:' + p">{{ p }}</a></dd> }
+          </dl>
+          @if (c.tags.length) {
+            <div class="tags">@for (t of c.tags; track t) { <span class="tag">{{ t }}</span> }</div>
+          }
+        </section>
+      } @else if (co) {
+        <!-- Company view -->
+        <section class="card">
+          @if (editing()) {
+            <h2>Edit company</h2>
+            <div class="grid">
+              <label>Name <input [(ngModel)]="companyForm.name" /></label>
+              <label>Website <input [(ngModel)]="companyForm.website" /></label>
+              <label class="wide">Tags <input [(ngModel)]="companyForm.tags" /></label>
+            </div>
+            <div class="actions">
+              <button class="btn-primary" (click)="saveCompany()" [disabled]="saving()">Save</button>
+              <button class="btn-secondary" (click)="editing.set(false)">Cancel</button>
+            </div>
+          } @else {
+            <div class="card-head">
+              <div>
+                <h2>{{ co.name }}</h2>
+                @if (co.website) {
+                  <p class="sub"><a [href]="co.website.startsWith('http') ? co.website : 'https://' + co.website" target="_blank" rel="noopener">{{ co.website }}</a></p>
+                }
+              </div>
+              <button class="btn-secondary" (click)="editing.set(true)">Edit</button>
+            </div>
+            @if (co.tags.length) {
+              <div class="tags">@for (t of co.tags; track t) { <span class="tag">{{ t }}</span> }</div>
+            }
+            <h3>People</h3>
+            @for (p of companyPeople(); track p.id) {
+              <button class="row" (click)="selectContact(p)">
+                <span class="row-name">{{ fullName(p) }}</span>
+                <span class="row-sub">{{ p.title }}</span>
+              </button>
+            } @empty {
+              <p class="empty">No contacts linked to this company.</p>
+            }
+          }
+        </section>
+      } @else {
+        <p class="empty placeholder">Select a contact, or add a new one.</p>
+      }
+
+      <!-- Notes (contact or company) -->
+      @if (!editing() && (c || co)) {
+        <section class="card">
+          <h3>Notes</h3>
+          <div class="note-new">
+            <textarea [(ngModel)]="newNote" rows="3" placeholder="Add a note..."></textarea>
+            <button class="btn-primary" (click)="addNote()" [disabled]="!newNote.trim()">Add note</button>
+          </div>
+          @for (n of notes(); track n.id) {
+            <div class="note">
+              <div class="note-head">
+                <span class="note-date">{{ noteDate(n) | date: 'MMM d, y, h:mm a' }}</span>
+                <button class="btn-link" (click)="deleteNote(n)">Delete</button>
+              </div>
+              <p class="note-body">{{ n.body }}</p>
+            </div>
+          } @empty {
+            <p class="empty">No notes yet.</p>
+          }
+        </section>
+      }
+    </main>
+  </div>
+</div>

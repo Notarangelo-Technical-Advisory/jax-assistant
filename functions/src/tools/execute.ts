@@ -7,6 +7,15 @@ import {
 import {readCalendarEvents, formatEventTime, extractMeetingLink, extractPasscode} from "./calendar-read";
 import {Category, DEFAULT_CATEGORY_KEYS} from "./definitions";
 import {refreshWeek, approvePost, markPosted, writeDraft, describeWeek, LinkedInWeek} from "../linkedin";
+import {
+  findContacts,
+  getContact,
+  getCompany,
+  saveContact,
+  saveCompany,
+  addContactNote,
+  SaveContactInput,
+} from "./contacts";
 
 export interface CustomerInfo {
   name: string;
@@ -387,6 +396,25 @@ export async function executeTool(
     };
   }
 
+  // ─── Contacts / CRM ──────────────────────────────────────────
+  case "find_contacts":
+    return findContacts(db, rawInput as {query?: string; tag?: string; limit?: number});
+
+  case "get_contact":
+    return getContact(db, (rawInput as {contact_id: string}).contact_id);
+
+  case "get_company":
+    return getCompany(db, (rawInput as {company_id: string}).company_id);
+
+  case "save_contact":
+    return saveContact(db, rawInput as SaveContactInput);
+
+  case "save_company":
+    return saveCompany(db, rawInput as {company_id?: string; name?: string; website?: string; tags?: string[]});
+
+  case "add_contact_note":
+    return addContactNote(db, rawInput as {contact_id?: string; company_id?: string; body: string});
+
   // ─── Calendar writes (queued for the desktop bridge) ─────────
   case "create_calendar_event": {
     const input = rawInput as {
@@ -569,6 +597,12 @@ export const toolLabel = (name: string, input: Record<string, unknown>): string 
   case "get_unbilled_detail": return "Fetching unbilled time entries...";
   case "get_time_entries": return "Loading time log...";
   case "get_invoice_status": return "Checking invoice status...";
+  case "find_contacts": return input["query"] ? `Looking up "${input["query"]}"...` : "Loading contacts...";
+  case "get_contact": return "Opening the contact...";
+  case "get_company": return "Opening the company...";
+  case "save_contact": return input["contact_id"] ? "Updating the contact..." : "Adding the contact...";
+  case "save_company": return input["company_id"] ? "Updating the company..." : "Adding the company...";
+  case "add_contact_note": return "Saving the note...";
   case "create_calendar_event": return `Scheduling "${input["title"]}"...`;
   case "move_calendar_event": return `Rescheduling "${input["event_title"]}"...`;
   case "mail_search": return "Searching your mail...";
