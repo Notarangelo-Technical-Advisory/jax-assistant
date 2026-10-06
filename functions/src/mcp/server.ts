@@ -40,17 +40,25 @@ import {loadMaisieContext, buildSystemPrompt} from "../tools/context";
 // lib/mcp (compiled) — both are two levels below the repo root.
 const SERVICE_ACCOUNT_PATH = path.join(__dirname, "..", "..", "..", "bridge", "service-account.json");
 
-// fta-client.ts reaches the NTA time tracker with applicationDefault(); locally
-// that resolves via GOOGLE_APPLICATION_CREDENTIALS. The secondary app is built
-// lazily on first billing call, by which point this is set.
-process.env.GOOGLE_APPLICATION_CREDENTIALS = SERVICE_ACCOUNT_PATH;
+// Under the Firestore emulator (tests/mcp) there is no key and no live data:
+// the Admin SDK reads FIRESTORE_EMULATOR_HOST itself and only needs a project ID.
+const usingEmulator = !!process.env.FIRESTORE_EMULATOR_HOST;
 
-const serviceAccount = JSON.parse(readFileSync(SERVICE_ACCOUNT_PATH, "utf-8"));
-
-admin.initializeApp({credential: admin.credential.cert(serviceAccount)});
+if (usingEmulator) {
+  admin.initializeApp({projectId: process.env.GCLOUD_PROJECT ?? "demo-jax-test"});
+} else {
+  // fta-client.ts reaches the NTA time tracker with applicationDefault(); locally
+  // that resolves via GOOGLE_APPLICATION_CREDENTIALS. The secondary app is built
+  // lazily on first billing call, by which point this is set.
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = SERVICE_ACCOUNT_PATH;
+  const serviceAccount = JSON.parse(readFileSync(SERVICE_ACCOUNT_PATH, "utf-8"));
+  admin.initializeApp({credential: admin.credential.cert(serviceAccount)});
+}
 const db = admin.firestore();
-// REST instead of gRPC — gRPC has its own TLS stack that ignores NODE_TLS_REJECT_UNAUTHORIZED
-db.settings({preferRest: true});
+// REST instead of gRPC — gRPC has its own TLS stack that ignores NODE_TLS_REJECT_UNAUTHORIZED.
+// Not under the emulator: it is plain HTTP, and the REST transport ignores the
+// emulator's credential bypass and demands real Google credentials.
+if (!usingEmulator) db.settings({preferRest: true});
 
 const server = new Server(
   {name: "maisie", version: "1.0.0"},

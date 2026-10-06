@@ -153,23 +153,26 @@ ng build
 
 This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
 
-## Running unit tests
+## Tests
 
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
+The tests follow the testing trophy used in Solomon: most of the weight is on
+integration tests that run against the Firebase emulators with the real
+security rules, with type-checking underneath and one end-to-end test on top.
+Nothing touches live data: each suite runs under its own `demo-` project.
 
-```bash
-ng test
-```
+| Command | What it covers | Where |
+| --- | --- | --- |
+| `npm run test:ci` | The contacts page and `ContactService` in headless Chrome, signed in against the Auth and Firestore emulators | `src/**/*.spec.ts` |
+| `npm run test:rules` | Firestore security rules, using the same queries the web app makes | `tests/rules/` |
+| `npm run test:functions` | MAISIE's tools through `executeTool()`, the entry point shared by the chat function and the MCP server | `tests/functions/` |
+| `npm run test:mcp` | The `maisie` MCP server started as VS Code starts it, driven by the official MCP client | `tests/mcp/` |
+| `npm run test:all` | All four, in that order | |
 
-## Running end-to-end tests
+`npm test` runs the browser tests in watch mode. The suites need the Firebase
+CLI (`npm install -g firebase-tools`) and Java 21 for the Firestore emulator.
 
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+The `Tests` workflow runs every suite on each pull request, and
+`deploy-and-release.yml` will not build or deploy until it passes.
 
 ## Additional Resources
 

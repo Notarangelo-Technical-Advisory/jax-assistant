@@ -57,6 +57,10 @@ CLAUDE.local.md
 # Firebase CLI cache
 .firebase/
 
+# Emulator logs from the test suites
+firestore-debug.log
+firebase-debug.log
+
 # System files
 .DS_Store
 Thumbs.db

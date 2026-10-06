@@ -161,7 +161,9 @@ export class ContactsComponent implements OnDestroy {
       this.error.set('Enter at least a first or last name.');
       return;
     }
-    const emails = splitList(f.emails).map((e) => e.toLowerCase());
+    // Lower-case before removing repeats, as the server does, so
+    // "Brad@IHRDC.com, brad@ihrdc.com" is stored once.
+    const emails = splitList(f.emails.toLowerCase());
     const sel = this.selection();
     const editingId = sel?.kind === 'contact' ? sel.id : null;
 
