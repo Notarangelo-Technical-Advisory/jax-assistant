@@ -18,7 +18,7 @@ const { StdioClientTransport } = fromFunctions('@modelcontextprotocol/sdk/client
 const PROJECT_ID = 'demo-jax-mcp';
 const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080';
 
-const CONTACT_TOOLS = ['find_contacts', 'get_contact', 'get_company', 'save_contact', 'save_company', 'add_contact_note'];
+const CONTACT_TOOLS = ['find_contacts', 'get_contact', 'get_company', 'save_contact', 'save_company', 'add_contact_note', 'link_to_contact', 'remove_contact_link'];
 
 let client;
 
@@ -76,6 +76,21 @@ describe('maisie MCP server', () => {
 
     const contact = await call('get_contact', { contact_id: saved.contactId });
     assert.deepEqual(contact.notes.map(n => n.body), ['Prefers Teams to email.']);
+  });
+
+  it('links an email found with the desktop mail_search to a contact, and removes it', async () => {
+    const { contactId } = await call('save_contact', { first_name: 'Brad', emails: ['brad@ihrdc.com'] });
+
+    // The fields the desktop server's mail_search returns for one message.
+    const linked = await call('link_to_contact', {
+      contact_id: contactId, type: 'email', title: 'Friday demo agenda',
+      source_id: 'CAF7x9=abc@mail.ihrdc.com', detail: 'Brad Donohue', date: '2026-10-02T14:05:00Z',
+    });
+    assert.equal(linked.success, true);
+    assert.deepEqual((await call('get_contact', { contact_id: contactId })).links.map(l => l.sourceId), ['CAF7x9=abc@mail.ihrdc.com']);
+
+    assert.equal((await call('remove_contact_link', { link_id: linked.linkId })).success, true);
+    assert.deepEqual((await call('get_contact', { contact_id: contactId })).links, []);
   });
 
   it('flags a refused request as an MCP error, with the reason', async () => {

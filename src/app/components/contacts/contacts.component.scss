@@ -183,3 +183,55 @@ dl {
 .empty { color: $text-secondary; font-size: 0.85rem; }
 .placeholder { padding: 2rem 0; text-align: center; }
 .error { margin: 0; padding: 0.6rem 0.8rem; border-radius: 6px; background: rgba($danger, 0.12); color: $danger; font-size: 0.85rem; }
+
+.link-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid $border;
+}
+
+.link-type {
+  flex-shrink: 0;
+  min-width: 4.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  text-align: center;
+  background: rgba($accent, 0.15);
+  color: $accent;
+
+  &.link-email { background: rgba(#a78bfa, 0.15); color: #a78bfa; }
+  &.link-meeting { background: rgba(#22c55e, 0.15); color: #22c55e; }
+}
+
+.link-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.link-title { font-size: 0.9rem; word-break: break-word; }
+.link-meta { color: $text-secondary; font-size: 0.75rem; }
+.link-note { color: $text-secondary; font-size: 0.8rem; font-style: italic; }
+
+.link-new {
+  display: grid;
+  grid-template-columns: 8rem 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid $border;
+
+  select {
+    padding: 0.5rem;
+    border: 1px solid $border;
+    border-radius: 6px;
+    background: $bg-input;
+    color: $text-primary;
+    font: inherit;
+    font-size: 0.85rem;
+  }
+
+  button { justify-self: start; }
+
+  @media (max-width: 560px) { grid-template-columns: 1fr; }
+}
+
+.link-new + .error { margin-top: 0.5rem; }

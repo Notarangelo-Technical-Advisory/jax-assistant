@@ -14,6 +14,9 @@ import {
   saveContact,
   saveCompany,
   addContactNote,
+  linkToContact,
+  removeContactLink,
+  LinkInput,
   SaveContactInput,
 } from "./contacts";
 
@@ -415,6 +418,12 @@ export async function executeTool(
   case "add_contact_note":
     return addContactNote(db, rawInput as {contact_id?: string; company_id?: string; body: string});
 
+  case "link_to_contact":
+    return linkToContact(db, rawInput as LinkInput);
+
+  case "remove_contact_link":
+    return removeContactLink(db, (rawInput as {link_id: string}).link_id);
+
   // ─── Calendar writes (queued for the desktop bridge) ─────────
   case "create_calendar_event": {
     const input = rawInput as {
@@ -603,6 +612,8 @@ export const toolLabel = (name: string, input: Record<string, unknown>): string 
   case "save_contact": return input["contact_id"] ? "Updating the contact..." : "Adding the contact...";
   case "save_company": return input["company_id"] ? "Updating the company..." : "Adding the company...";
   case "add_contact_note": return "Saving the note...";
+  case "link_to_contact": return `Linking the ${input["type"] === "url" ? "page" : input["type"]}...`;
+  case "remove_contact_link": return "Removing the link...";
   case "create_calendar_event": return `Scheduling "${input["title"]}"...`;
   case "move_calendar_event": return `Rescheduling "${input["event_title"]}"...`;
   case "mail_search": return "Searching your mail...";

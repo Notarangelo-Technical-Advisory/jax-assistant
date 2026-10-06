@@ -83,6 +83,8 @@ export const MCP_TOOL_NAMES = [
   "save_contact",
   "save_company",
   "add_contact_note",
+  "link_to_contact",
+  "remove_contact_link",
 ];
 
 /**
@@ -287,7 +289,7 @@ export const buildTools = (
     },
     {
       name: "get_contact",
-      description: "Get one contact's full record and their notes, newest first.",
+      description: "Get one contact's full record, their notes and their linked emails, meetings and web pages, newest first.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -298,7 +300,7 @@ export const buildTools = (
     },
     {
       name: "get_company",
-      description: "Get one company, the contacts who work there, and its notes, newest first.",
+      description: "Get one company, the contacts who work there, its notes and its linked emails, meetings and web pages, newest first.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -350,6 +352,36 @@ export const buildTools = (
           body: {type: "string", description: "The note text"},
         },
         required: ["body"],
+      },
+    },
+    {
+      name: "link_to_contact",
+      description: "Tie an email, a meeting or a web page to a contact or company, so it shows on their record. Pass exactly one of contact_id or company_id. For an email, find it first with mail_search and pass its message_id as source_id, the subject as title, the sender as detail and its date. For a meeting, pass its title, its date and, if known, the calendar name as detail and the join link as url. For a web page, pass a title and the url. Linking the same item twice is refused.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          contact_id: {type: "string"},
+          company_id: {type: "string"},
+          type: {type: "string", enum: ["email", "meeting", "url"]},
+          title: {type: "string", description: "Email subject, meeting title or page name"},
+          source_id: {type: "string", description: "Email: the message_id from mail_search (required). Meeting: the calendar event's uid, if known."},
+          url: {type: "string", description: "http(s) link. Required for a web page; a meeting's join link otherwise."},
+          date: {type: "string", description: "YYYY-MM-DD or an ISO timestamp. Required for a meeting."},
+          detail: {type: "string", description: "Email: the sender. Meeting: the calendar name."},
+          note: {type: "string", description: "Optional: why this matters"},
+        },
+        required: ["type", "title"],
+      },
+    },
+    {
+      name: "remove_contact_link",
+      description: "Remove one link from a contact or company. Only the link is removed; the email, meeting or page itself is untouched.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          link_id: {type: "string", description: "The link id from get_contact or get_company"},
+        },
+        required: ["link_id"],
       },
     },
     {

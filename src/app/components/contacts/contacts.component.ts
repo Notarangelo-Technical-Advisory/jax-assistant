@@ -2,9 +2,10 @@ import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 import { Subscription } from 'rxjs';
 import { ContactService } from '../../services/contact.service';
-import { Company, Contact, ContactNote } from '../../models/contact.model';
+import { Company, Contact, ContactLink, ContactNote } from '../../models/contact.model';
 
 /** The editable form. Lists are edited as comma-separated text. */
 interface ContactForm {
@@ -20,6 +21,20 @@ interface ContactForm {
 const emptyForm = (): ContactForm => ({
   firstName: '', lastName: '', title: '', company: '', emails: '', phones: '', tags: '',
 });
+
+/** True for an absolute http or https URL — the only links the page will open. */
+export function isWebUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** The date a link sorts by: the item's own date, else when it was linked. */
+const linkSortKey = (l: ContactLink): string =>
+  l.date ?? (l.createdAt?.toDate ? l.createdAt.toDate().toISOString() : '');
 
 const splitList = (s: string): string[] =>
   [...new Set(s.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean))];
@@ -39,12 +54,15 @@ type Selection =
 })
 export class ContactsComponent implements OnDestroy {
   private contactService = inject(ContactService);
+  private sanitizer = inject(DomSanitizer);
   private subs = new Subscription();
-  private notesSub: Subscription | null = null;
+  /** Notes and links of whichever contact or company is open. */
+  private recordSub: Subscription | null = null;
 
   contacts = signal<Contact[]>([]);
   companies = signal<Company[]>([]);
   notes = signal<ContactNote[]>([]);
+  links = signal<ContactLink[]>([]);
   search = signal('');
   selection = signal<Selection>(null);
   editing = signal(false);
@@ -54,6 +72,11 @@ export class ContactsComponent implements OnDestroy {
   form: ContactForm = emptyForm();
   companyForm = { name: '', website: '', tags: '' };
   newNote = '';
+  linkForm = { type: 'url' as 'url' | 'meeting', title: '', url: '', date: '', note: '' };
+  linkError = signal<string | null>(null);
+
+  sortedLinks = computed(() =>
+    [...this.links()].sort((a, b) => linkSortKey(b).localeCompare(linkSortKey(a))));
 
   private companyById = computed(() => new Map(this.companies().map((c) => [c.id!, c])));
 
@@ -99,20 +122,29 @@ export class ContactsComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.subs.unsubscribe();
-    this.notesSub?.unsubscribe();
+    this.recordSub?.unsubscribe();
   }
 
-  private watchNotes(field: 'contactId' | 'companyId', id: string): void {
-    this.notesSub?.unsubscribe();
+  private watchRecord(field: 'contactId' | 'companyId', id: string): void {
+    this.clearRecord();
+    this.recordSub = new Subscription();
+    this.recordSub.add(this.contactService.getNotes(field, id).subscribe((n) => this.notes.set(n)));
+    this.recordSub.add(this.contactService.getLinks(field, id).subscribe((l) => this.links.set(l)));
+  }
+
+  private clearRecord(): void {
+    this.recordSub?.unsubscribe();
+    this.recordSub = null;
     this.notes.set([]);
-    this.notesSub = this.contactService.getNotes(field, id).subscribe((n) => this.notes.set(n));
+    this.links.set([]);
+    this.linkError.set(null);
   }
 
   selectContact(c: Contact): void {
     this.selection.set({ kind: 'contact', id: c.id! });
     this.editing.set(false);
     this.error.set(null);
-    this.watchNotes('contactId', c.id!);
+    this.watchRecord('contactId', c.id!);
   }
 
   selectCompany(id: string | null): void {
@@ -122,12 +154,11 @@ export class ContactsComponent implements OnDestroy {
     this.companyForm = { name: co?.name ?? '', website: co?.website ?? '', tags: (co?.tags ?? []).join(', ') };
     this.editing.set(false);
     this.error.set(null);
-    this.watchNotes('companyId', id);
+    this.watchRecord('companyId', id);
   }
 
   startNew(): void {
-    this.notesSub?.unsubscribe();
-    this.notes.set([]);
+    this.clearRecord();
     this.form = emptyForm();
     this.selection.set({ kind: 'new' });
     this.editing.set(true);
@@ -194,7 +225,7 @@ export class ContactsComponent implements OnDestroy {
         const id = await this.contactService.addContact(fields);
         this.editing.set(false);
         this.selection.set({ kind: 'contact', id });
-        this.watchNotes('contactId', id);
+        this.watchRecord('contactId', id);
       }
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : String(err));
@@ -245,5 +276,63 @@ export class ContactsComponent implements OnDestroy {
 
   noteDate(note: ContactNote): Date | null {
     return note.createdAt?.toDate ? note.createdAt.toDate() : null;
+  }
+
+  /** Adds a web page or meeting by hand. Emails need a Message-ID, so MAISIE adds those. */
+  async addLink(): Promise<void> {
+    const sel = this.selection();
+    if (!sel || sel.kind === 'new') return;
+    const f = this.linkForm;
+    const title = f.title.trim();
+    const url = f.url.trim() || null;
+    const date = f.date.trim() || null;
+
+    if (!title) return this.linkError.set('Enter a title.');
+    if (url && !isWebUrl(url)) return this.linkError.set('The link must start with http:// or https://.');
+    if (f.type === 'url' && !url) return this.linkError.set('Enter the web address.');
+    if (f.type === 'meeting' && !date) return this.linkError.set('Enter the meeting date.');
+    // Same rule as the server's linkKey: one link per page, one per meeting per day.
+    const clash = this.links().find((l) => f.type === 'url'
+      ? l.type === 'url' && l.url === url
+      : l.type === 'meeting' && l.title.toLowerCase() === title.toLowerCase() && (l.date ?? '').slice(0, 10) === date);
+    if (clash) return this.linkError.set(`"${clash.title}" is already linked.`);
+
+    this.linkError.set(null);
+    await this.contactService.addLink({
+      contactId: sel.kind === 'contact' ? sel.id : null,
+      companyId: sel.kind === 'company' ? sel.id : null,
+      type: f.type,
+      title,
+      sourceId: null,
+      url,
+      date,
+      detail: null,
+      note: f.note.trim() || null,
+    });
+    this.linkForm = { type: f.type, title: '', url: '', date: '', note: '' };
+  }
+
+  async deleteLink(link: ContactLink): Promise<void> {
+    if (!link.id || !confirm(`Remove the link to "${link.title}"? The item itself is not affected.`)) return;
+    await this.contactService.deleteLink(link.id);
+  }
+
+  /**
+   * Where a link opens. Emails open in Apple Mail through its message:// scheme,
+   * which Angular's sanitizer would otherwise block; the id is URL-encoded, so
+   * nothing in it can change the scheme. Anything else opens only if it is http(s).
+   */
+  linkHref(link: ContactLink): SafeUrl | string | null {
+    if (link.type === 'email' && link.sourceId) {
+      return this.sanitizer.bypassSecurityTrustUrl(`message://%3C${encodeURIComponent(link.sourceId)}%3E`);
+    }
+    return link.url && isWebUrl(link.url) ? link.url : null;
+  }
+
+  /** A YYYY-MM-DD date is a calendar day, so it must not be shifted by time zone. */
+  linkDate(link: ContactLink): Date | null {
+    if (!link.date) return null;
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(link.date);
+    return new Date(day ? `${link.date}T12:00:00` : link.date);
   }
 }

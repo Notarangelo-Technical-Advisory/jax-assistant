@@ -96,7 +96,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // contacts, companies, contactNotes — the CRM / address book. Full CRUD for
+    // contacts, companies, contactNotes, contactLinks — the CRM / address book. Full CRUD for
     // the authenticated user (the contacts page); MAISIE writes via Admin SDK.
     match /contacts/{contactId} {
       allow read, create, update, delete: if isAuthenticated();
@@ -107,6 +107,10 @@ service cloud.firestore {
     }
 
     match /contactNotes/{noteId} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    match /contactLinks/{linkId} {
       allow read, create, update, delete: if isAuthenticated();
     }
 

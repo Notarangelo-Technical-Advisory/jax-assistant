@@ -5,7 +5,7 @@ import {
   serverTimestamp, getDocs, writeBatch
 } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
-import { Company, Contact, ContactNote } from '../models/contact.model';
+import { Company, Contact, ContactLink, ContactNote } from '../models/contact.model';
 
 /**
  * The CRM / address book. Mirrors functions/src/tools/contacts.ts, which is
@@ -17,6 +17,7 @@ export class ContactService {
   private contactsRef = collection(this.firestore, 'contacts');
   private companiesRef = collection(this.firestore, 'companies');
   private notesRef = collection(this.firestore, 'contactNotes');
+  private linksRef = collection(this.firestore, 'contactLinks');
 
   getContacts(): Observable<Contact[]> {
     return collectionData(this.contactsRef, { idField: 'id' }) as Observable<Contact[]>;
@@ -29,6 +30,11 @@ export class ContactService {
   getNotes(field: 'contactId' | 'companyId', id: string): Observable<ContactNote[]> {
     const q = query(this.notesRef, where(field, '==', id), orderBy('createdAt', 'desc'));
     return collectionData(q, { idField: 'id' }) as Observable<ContactNote[]>;
+  }
+
+  /** Unordered: the page sorts by each item's own date, which may be missing. */
+  getLinks(field: 'contactId' | 'companyId', id: string): Observable<ContactLink[]> {
+    return collectionData(query(this.linksRef, where(field, '==', id)), { idField: 'id' }) as Observable<ContactLink[]>;
   }
 
   /**
@@ -67,11 +73,14 @@ export class ContactService {
     await updateDoc(doc(this.firestore, 'companies', id), { ...fields, updatedAt: serverTimestamp() });
   }
 
-  /** Deletes the contact and its notes together, so no orphaned notes remain. */
+  /** Deletes the contact with its notes and links, so nothing is left orphaned. */
   async deleteContact(id: string): Promise<void> {
-    const notes = await getDocs(query(this.notesRef, where('contactId', '==', id)));
+    const [notes, links] = await Promise.all([
+      getDocs(query(this.notesRef, where('contactId', '==', id))),
+      getDocs(query(this.linksRef, where('contactId', '==', id))),
+    ]);
     const batch = writeBatch(this.firestore);
-    notes.docs.forEach((n) => batch.delete(n.ref));
+    [...notes.docs, ...links.docs].forEach((d) => batch.delete(d.ref));
     batch.delete(doc(this.firestore, 'contacts', id));
     await batch.commit();
   }
@@ -87,5 +96,13 @@ export class ContactService {
 
   async deleteNote(id: string): Promise<void> {
     await deleteDoc(doc(this.firestore, 'contactNotes', id));
+  }
+
+  async addLink(link: Omit<ContactLink, 'id' | 'createdAt'>): Promise<void> {
+    await addDoc(this.linksRef, { ...link, createdAt: serverTimestamp() });
+  }
+
+  async deleteLink(id: string): Promise<void> {
+    await deleteDoc(doc(this.firestore, 'contactLinks', id));
   }
 }

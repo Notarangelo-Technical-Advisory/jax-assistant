@@ -11,6 +11,7 @@ import * as admin from "firebase-admin";
  *   contacts      — one person. `companyId` points at companies/{id}.
  *   companies     — one organisation.
  *   contactNotes  — a dated note on a contact OR a company (exactly one is set).
+ *   contactLinks  — an email, meeting or web page tied to a contact OR a company.
  *
  * The company name is not copied onto contacts; it is resolved on read so a
  * rename never leaves stale copies behind. Search loads both collections and
@@ -156,9 +157,10 @@ export async function getContact(
   const snap = await db.collection("contacts").doc(contactId).get();
   if (!snap.exists) return {success: false, error: `Contact "${contactId}" not found.`};
   const c = snap.data() as ContactDoc;
-  const [companies, notes] = await Promise.all([
+  const [companies, notes, links] = await Promise.all([
     loadCompanies(db),
     loadNotes(db, "contactId", contactId),
+    loadLinks(db, "contactId", contactId),
   ]);
   return {
     success: true,
@@ -170,6 +172,7 @@ export async function getContact(
       updatedAt: toIso(snap.data()?.["updatedAt"]),
     },
     notes,
+    links,
   };
 }
 
@@ -180,9 +183,10 @@ export async function getCompany(
   const snap = await db.collection("companies").doc(companyId).get();
   if (!snap.exists) return {success: false, error: `Company "${companyId}" not found.`};
   const c = snap.data() as CompanyDoc;
-  const [people, notes] = await Promise.all([
+  const [people, notes, links] = await Promise.all([
     db.collection("contacts").where("companyId", "==", companyId).get(),
     loadNotes(db, "companyId", companyId),
+    loadLinks(db, "companyId", companyId),
   ]);
   return {
     success: true,
@@ -194,6 +198,7 @@ export async function getCompany(
       })
       .sort((a, b) => a.name.localeCompare(b.name)),
     notes,
+    links,
   };
 }
 
@@ -352,4 +357,179 @@ export async function addContactNote(
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   return {success: true, noteId: ref.id};
+}
+
+// ─── Links: emails, meetings and web pages ─────────────────────
+//
+// A link is a self-contained record: it keeps its own title, date and source
+// details rather than pointing at another collection, because the calendar
+// mirror deletes events once they pass and Mail is only reachable from Jack's
+// Mac. The Message-ID or calendar uid is kept so the item can be found again.
+
+export type LinkType = "email" | "meeting" | "url";
+const LINK_TYPES: LinkType[] = ["email", "meeting", "url"];
+const LINK_LIMIT = 100;
+
+export interface LinkInput {
+  contact_id?: string;
+  company_id?: string;
+  type: LinkType;
+  title: string;
+  /** Email: the Message-ID. Meeting: the Apple Calendar uid. Unused for url. */
+  source_id?: string;
+  /** http(s) only. Required for url; a meeting's join link otherwise. */
+  url?: string;
+  /** YYYY-MM-DD or an ISO timestamp. Required for a meeting. */
+  date?: string;
+  /** Email: the sender. Meeting: the calendar name. */
+  detail?: string;
+  note?: string;
+}
+
+interface LinkDoc {
+  contactId: string | null;
+  companyId: string | null;
+  type: LinkType;
+  title: string;
+  sourceId: string | null;
+  url: string | null;
+  date: string | null;
+  detail: string | null;
+  note: string | null;
+}
+
+/** True for an absolute http or https URL — the only kinds the page will open. */
+export function isWebUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Mail's message id comes without angle brackets; accept it either way. */
+const normMessageId = (id: string): string => id.trim().replace(/^<|>$/g, "");
+
+/** Accepts YYYY-MM-DD or a full timestamp; returns null if it is not a date. */
+function normDate(value: string): string | null {
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const d = new Date(trimmed);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** What makes two links the same thing, so the same email is not linked twice. */
+function linkKey(l: Pick<LinkDoc, "type" | "sourceId" | "url" | "date" | "title">): string {
+  switch (l.type) {
+  case "email": return `email|${l.sourceId}`;
+  // Every occurrence of a recurring meeting shares one uid, so the date is part
+  // of a meeting's identity; without a uid, its title stands in.
+  case "meeting": return `meeting|${l.sourceId ?? l.title.toLowerCase()}|${(l.date ?? "").slice(0, 10)}`;
+  default: return `url|${l.url}`;
+  }
+}
+
+/** Newest first by the item's own date, falling back to when it was linked. */
+async function loadLinks(
+  db: admin.firestore.Firestore,
+  field: "contactId" | "companyId",
+  id: string
+): Promise<Array<Record<string, unknown>>> {
+  const snap = await db.collection("contactLinks").where(field, "==", id).limit(LINK_LIMIT).get();
+  return snap.docs
+    .map((d) => {
+      const l = d.data() as LinkDoc;
+      return {
+        id: d.id,
+        type: l.type,
+        title: l.title,
+        date: l.date ?? null,
+        detail: l.detail ?? null,
+        url: l.url ?? null,
+        sourceId: l.sourceId ?? null,
+        note: l.note ?? null,
+        linkedAt: toIso(d.data()["createdAt"]),
+      };
+    })
+    .sort((a, b) => (b.date ?? b.linkedAt ?? "").localeCompare(a.date ?? a.linkedAt ?? ""));
+}
+
+export async function linkToContact(
+  db: admin.firestore.Firestore,
+  input: LinkInput
+): Promise<Record<string, unknown>> {
+  if (!!input.contact_id === !!input.company_id) {
+    return {success: false, error: "Pass exactly one of contact_id or company_id."};
+  }
+  if (!LINK_TYPES.includes(input.type)) {
+    return {success: false, error: `type must be one of: ${LINK_TYPES.join(", ")}.`};
+  }
+  const title = input.title?.trim();
+  if (!title) return {success: false, error: "A link needs a title (the email subject, meeting name or page name)."};
+
+  const url = input.url?.trim() || null;
+  if (url && !isWebUrl(url)) return {success: false, error: "url must start with http:// or https://."};
+
+  let date: string | null = null;
+  if (input.date?.trim()) {
+    date = normDate(input.date);
+    if (!date) return {success: false, error: `"${input.date}" is not a date. Use YYYY-MM-DD.`};
+  }
+
+  let sourceId = input.source_id?.trim() || null;
+  if (input.type === "email") {
+    if (!sourceId) return {success: false, error: "An email link needs source_id: the message_id from mail_search."};
+    sourceId = normMessageId(sourceId);
+  }
+  if (input.type === "meeting" && !date) {
+    return {success: false, error: "A meeting link needs the meeting's date."};
+  }
+  if (input.type === "url") {
+    if (!url) return {success: false, error: "A web link needs a url."};
+    sourceId = null;
+  }
+
+  const field = input.contact_id ? "contactId" : "companyId";
+  const targetId = (input.contact_id ?? input.company_id) as string;
+  const target = db.collection(input.contact_id ? "contacts" : "companies").doc(targetId);
+  if (!(await target.get()).exists) {
+    return {success: false, error: `${input.contact_id ? "Contact" : "Company"} "${targetId}" not found.`};
+  }
+
+  const doc: LinkDoc = {
+    contactId: input.contact_id ?? null,
+    companyId: input.company_id ?? null,
+    type: input.type,
+    title,
+    sourceId,
+    url,
+    date,
+    detail: input.detail?.trim() || null,
+    note: input.note?.trim() || null,
+  };
+
+  const existing = await db.collection("contactLinks").where(field, "==", targetId).get();
+  const key = linkKey(doc);
+  const dup = existing.docs.find((d) => linkKey(d.data() as LinkDoc) === key);
+  if (dup) {
+    return {success: false, error: `That ${input.type} is already linked ("${dup.data()["title"]}").`, existingLinkId: dup.id};
+  }
+
+  const ref = await db.collection("contactLinks").add({
+    ...doc,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return {success: true, linkId: ref.id};
+}
+
+export async function removeContactLink(
+  db: admin.firestore.Firestore,
+  linkId: string
+): Promise<Record<string, unknown>> {
+  const ref = db.collection("contactLinks").doc(linkId);
+  const snap = await ref.get();
+  if (!snap.exists) return {success: false, error: `Link "${linkId}" not found.`};
+  await ref.delete();
+  return {success: true, removed: {type: snap.data()?.["type"], title: snap.data()?.["title"]}};
 }

@@ -24,6 +24,7 @@ const SEED = {
   'contacts/brad':    { firstName: 'Brad', lastName: 'Donohue', emails: ['brad@ihrdc.com'], phones: [], title: 'President & CEO', companyId: 'ihrdc', tags: ['client'], createdAt: NOW, updatedAt: NOW },
   'contactNotes/n1':  { contactId: 'brad', companyId: null, body: 'Prefers Teams to email.', createdAt: NOW },
   'contactNotes/n2':  { contactId: null, companyId: 'ihrdc', body: 'Contract renews in January.', createdAt: NOW },
+  'contactLinks/l1':  { contactId: 'brad', companyId: null, type: 'email', title: 'Friday demo agenda', sourceId: 'abc@ihrdc.com', url: null, date: '2026-10-02', detail: 'Brad Donohue', note: null, createdAt: NOW },
 };
 
 let testEnv;
@@ -102,6 +103,25 @@ describe('contactNotes', () => {
     await assertFails(getDocs(query(collection(visitor, 'contactNotes'), where('contactId', '==', 'brad'))));
     await assertFails(addDoc(collection(visitor, 'contactNotes'), { contactId: 'brad', body: 'Spam' }));
     await assertFails(deleteDoc(doc(visitor, 'contactNotes/n1')));
+  });
+});
+
+describe('contactLinks', () => {
+  it("Jack can load a contact's links and a company's links, and add and remove them", async () => {
+    const jack = db('jack');
+    await assertSucceeds(getDocs(query(collection(jack, 'contactLinks'), where('contactId', '==', 'brad'))));
+    await assertSucceeds(getDocs(query(collection(jack, 'contactLinks'), where('companyId', '==', 'ihrdc'))));
+    await assertSucceeds(addDoc(collection(jack, 'contactLinks'), {
+      contactId: null, companyId: 'ihrdc', type: 'url', title: 'IHRDC website', sourceId: null, url: 'https://ihrdc.com', date: null, detail: null, note: null, createdAt: NOW,
+    }));
+    await assertSucceeds(deleteDoc(doc(jack, 'contactLinks/l1')));
+  });
+
+  it('a visitor who is not signed in cannot read, add or remove links', async () => {
+    const visitor = db(null);
+    await assertFails(getDocs(query(collection(visitor, 'contactLinks'), where('contactId', '==', 'brad'))));
+    await assertFails(addDoc(collection(visitor, 'contactLinks'), { contactId: 'brad', type: 'url', title: 'Spam', url: 'https://example.com' }));
+    await assertFails(deleteDoc(doc(visitor, 'contactLinks/l1')));
   });
 });
 

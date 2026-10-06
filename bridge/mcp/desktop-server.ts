@@ -167,6 +167,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         count: read.events.length,
         warnings,
         events: read.events.map((e) => ({
+          // Stable Apple Calendar id; MAISIE's link_to_contact stores it as a meeting's source_id.
+          uid: e.uid || null,
           calendar: e.calendarName,
           summary: e.summary,
           start: e.startTime.toISOString(),

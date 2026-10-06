@@ -150,6 +150,50 @@
             <p class="empty">No notes yet.</p>
           }
         </section>
+
+        <!-- Links: emails, meetings and web pages -->
+        <section class="card">
+          <h3>Links</h3>
+          @for (l of sortedLinks(); track l.id) {
+            @let href = linkHref(l);
+            <div class="link-row">
+              <span class="link-type" [class]="'link-type link-' + l.type">
+                {{ l.type === 'url' ? 'Web' : l.type === 'email' ? 'Email' : 'Meeting' }}
+              </span>
+              <div class="link-main">
+                @if (href) {
+                  <a [href]="href" target="_blank" rel="noopener" class="link-title">{{ l.title }}</a>
+                } @else {
+                  <span class="link-title">{{ l.title }}</span>
+                }
+                <span class="link-meta">
+                  @if (linkDate(l); as d) { {{ d | date: (l.date!.length === 10 ? 'MMM d, y' : 'MMM d, y, h:mm a') }} }
+                  @if (l.detail) { &middot; {{ l.detail }} }
+                </span>
+                @if (l.note) { <span class="link-note">{{ l.note }}</span> }
+              </div>
+              <button class="btn-link" (click)="deleteLink(l)">Remove</button>
+            </div>
+          } @empty {
+            <p class="empty">No links yet. Ask Maisie to link an email or meeting, or add a page or meeting below.</p>
+          }
+          <div class="link-new">
+            <select [(ngModel)]="linkForm.type">
+              <option value="url">Web page</option>
+              <option value="meeting">Meeting</option>
+            </select>
+            <input [(ngModel)]="linkForm.title" placeholder="Title" />
+            <input [(ngModel)]="linkForm.url" [placeholder]="linkForm.type === 'url' ? 'https://...' : 'Join link (optional)'" />
+            @if (linkForm.type === 'meeting') {
+              <input [(ngModel)]="linkForm.date" type="date" />
+            }
+            <input [(ngModel)]="linkForm.note" placeholder="Note (optional)" />
+            <button class="btn-primary" (click)="addLink()">Add link</button>
+          </div>
+          @if (linkError()) {
+            <p class="error">{{ linkError() }}</p>
+          }
+        </section>
       }
     </main>
   </div>

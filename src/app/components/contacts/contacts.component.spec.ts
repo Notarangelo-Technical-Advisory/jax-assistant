@@ -123,6 +123,87 @@ describe('ContactsComponent', () => {
   });
 });
 
+describe('ContactsComponent links', () => {
+  let emulator: EmulatorApp;
+  let page: ContactsComponent;
+
+  beforeEach(async () => {
+    await clearEmulators();
+    emulator = createEmulatorApp();
+    await signInAsJack(emulator);
+    await TestBed.configureTestingModule({
+      imports: [ContactsComponent],
+      providers: [provideRouter([]), { provide: Firestore, useValue: emulator.firestore }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ContactsComponent);
+    fixture.detectChanges();
+    page = fixture.componentInstance;
+
+    page.startNew();
+    page.form = { ...page.form, firstName: 'Brad', lastName: 'Donohue' };
+    await page.saveContact();
+    await waitFor(() => page.selectedContact() !== null);
+  });
+
+  afterEach(() => emulator.dispose());
+
+  /** Fills in the add-link form and submits it. */
+  async function addLink(fields: Partial<ContactsComponent['linkForm']>): Promise<void> {
+    page.linkForm = { ...page.linkForm, ...fields };
+    await page.addLink();
+  }
+
+  it('adds a web page and a meeting, newest first, and clears the form', async () => {
+    await addLink({ type: 'url', title: 'IHRDC website', url: 'https://ihrdc.com' });
+    await addLink({ type: 'meeting', title: 'IHRDC AI demo', date: '2020-01-15', url: 'https://teams.microsoft.com/l/meetup-join/abc' });
+    await waitFor(() => page.links().length === 2 && page.links().every((l) => l.createdAt));
+
+    expect(page.linkError()).toBeNull();
+    expect(page.linkForm.title).toBe('');
+    // The meeting sorts by its own (past) date; the web page by when it was linked, today.
+    expect(page.sortedLinks().map((l) => l.title)).toEqual(['IHRDC website', 'IHRDC AI demo']);
+    expect(page.linkDate(page.sortedLinks()[1])!.getDate()).toBe(15);
+  });
+
+  it('refuses unsafe or incomplete links, and the same page twice', async () => {
+    await addLink({ type: 'url', title: 'Click me', url: 'javascript:alert(1)' });
+    expect(page.linkError()).toContain('http');
+    await addLink({ type: 'url', title: 'Site', url: '' });
+    expect(page.linkError()).toContain('web address');
+    await addLink({ type: 'meeting', title: 'Lunch', url: '', date: '' });
+    expect(page.linkError()).toContain('date');
+
+    await addLink({ type: 'url', title: 'Site', url: 'https://ihrdc.com' });
+    await waitFor(() => page.links().length === 1);
+    await addLink({ type: 'url', title: 'Same site', url: 'https://ihrdc.com' });
+    expect(page.linkError()).toContain('already linked');
+    expect((await listDocuments('contactLinks')).length).toBe(1);
+  });
+
+  it('opens an email in Apple Mail, and never opens a stored unsafe url', () => {
+    const base = { contactId: 'x', companyId: null, date: null, detail: null, note: null };
+    const email = page.linkHref({ ...base, type: 'email', title: 'Agenda', sourceId: 'CAF7x9=abc@mail.ihrdc.com', url: null });
+    expect(String((email as { changingThisBreaksApplicationSecurity: string }).changingThisBreaksApplicationSecurity))
+      .toBe('message://%3CCAF7x9%3Dabc%40mail.ihrdc.com%3E');
+
+    expect(page.linkHref({ ...base, type: 'url', title: 'Bad', sourceId: null, url: 'javascript:alert(1)' })).toBeNull();
+    expect(page.linkHref({ ...base, type: 'url', title: 'Good', sourceId: null, url: 'https://ihrdc.com' })).toBe('https://ihrdc.com');
+  });
+
+  it('removes a link, and deleting the contact removes the rest', async () => {
+    spyOn(window, 'confirm').and.returnValue(true);
+    await addLink({ type: 'url', title: 'One', url: 'https://one.example.com' });
+    await addLink({ type: 'url', title: 'Two', url: 'https://two.example.com' });
+    await waitFor(() => page.links().length === 2);
+
+    await page.deleteLink(page.links().find((l) => l.title === 'One')!);
+    await waitFor(() => page.links().length === 1);
+
+    await page.deleteContact();
+    expect((await listDocuments('contactLinks')).length).toBe(0);
+  });
+});
+
 describe('ContactService security', () => {
   it('a visitor who is not signed in cannot read contacts', async () => {
     await clearEmulators();
