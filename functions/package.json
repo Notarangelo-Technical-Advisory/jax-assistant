@@ -8,6 +8,7 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "mcp": "tsx src/mcp/server.ts",
+    "import:contacts": "tsx src/mcp/import-contacts.ts",
     "typecheck:mcp": "tsc -p tsconfig.mcp.json"
   },
   "engines": {

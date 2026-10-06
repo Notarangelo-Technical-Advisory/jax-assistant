@@ -10,7 +10,7 @@ MAISIE keeps Jack's contacts, companies, notes and links to emails, meetings and
 | --- | --- | --- | --- |
 | 1 | Contacts, companies and notes, with tools, MCP access and the `/contacts` page | 20–30 hours | **Live** since 2026-10-06 (run #127) |
 | 2 | Links from contacts and companies to emails, meetings and web pages | 8–12 hours | **Live** since 2026-10-06 (run #128) |
-| 3 | One-way import from Apple Contacts | 6–10 hours | Not started. Jack will decide when to start. |
+| 3 | One-way import from Apple Contacts, of everyone | 6–10 hours | **Built** 2026-10-06. First real run needs Jack's Mac. |
 | 4 | Automatic linking of emails and meetings to contacts | 15 hours or more | Not started |
 | Optional | Remote MCP server, for claude.ai and phone access | 10–15 hours | Not planned |
 
@@ -29,7 +29,8 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 
 - **Firestore collections:** `contacts`, `companies`, `contactNotes`, `contactLinks`. Rules are in `firestore.rules`.
 - **Tool code:** `functions/src/tools/contacts.ts`. The cloud chat function and the MCP server share it through `execute.ts`.
-- **Tools:** `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `link_to_contact`, `remove_contact_link`.
+- **Tools:** `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `link_to_contact`, `remove_contact_link`, and `import_apple_contacts` in VS Code only.
+- **Apple Contacts import:** the macOS reader is `functions/src/mcp/apple-contacts.ts`; the merge rules are `functions/src/tools/contacts-import.ts`.
 - **Web page:** `src/app/components/contacts/`, with `ContactService` in `src/app/services/contact.service.ts`.
 - **Tests:** `tests/rules/`, `tests/functions/`, `tests/mcp/` and `contacts.component.spec.ts`. See the Tests section of `README.md`.
 
@@ -39,15 +40,17 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 - **Chat or VS Code:** for example, "Who do I know at IHRDC?", "Add a note to Brad: prefers Teams to email", or "Link Brad's email about the Friday demo to him".
 - **Only the web page can delete** contacts and notes. MAISIE cannot, so nothing is lost by accident.
 
-## Phase 3: import from Apple Contacts (next)
+## Phase 3: import from Apple Contacts (built)
 
-- **What it does:** copies people from Apple Contacts into MAISIE once, or again on request. It never writes back to Apple Contacts.
-- **How:** a bridge script on Jack's Mac reads Contacts through `CNContactStore`, in the same way the calendar reader uses EventKit.
-- **Matching:** by email address. A person already in MAISIE is updated, not duplicated, and notes and links are kept.
-- **Needs from Jack:** his Mac awake, and permission for the bridge to read Contacts the first time it runs.
-- **Open question for Jack:** import everyone, or only contacts in chosen Apple Contacts groups?
+- **What it does:** copies everyone in Apple Contacts into MAISIE. It never writes back to Apple Contacts. Jack chose to import everyone, not chosen groups.
+- **How to run it:** in VS Code, ask "import my Apple contacts" (a dry run comes first), or in a terminal run `cd functions && npm run import:contacts -- --dry-run`, then without `--dry-run`.
+- **Matching:** by the Apple card from an earlier import, then by email, then by an exact name that only one contact has. Otherwise a new contact is created.
+- **Never loses Jack's work:** fills blank fields only, adds new email addresses and phone numbers, never removes anything, and leaves notes and links alone. An email already on another contact stays with that contact.
+- **Company cards** become companies. Cards with no name and no company are skipped.
+- **Needs from Jack:** his Mac, and permission for Terminal or VS Code to read Contacts the first time it runs.
+- **First real run:** do the dry run, check the counts and example names, then import.
 
 ## Phase 4: automatic linking (later)
 
 - Attach new emails and meetings to a contact automatically, matched by sender or attendee address.
-- Needs Phase 3 first, so that most people already have their email addresses on file.
+- Phase 3 is built, so most people will have their email addresses on file once Jack runs the import.

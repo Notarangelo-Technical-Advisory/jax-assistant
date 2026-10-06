@@ -16,7 +16,7 @@ runtime does not install.
 
 | Server | Path | Tools |
 | --- | --- | --- |
-| `maisie` | `functions/src/mcp/server.ts` | `add_task`, `complete_task`, `reopen_task`, `update_task`, `create_task_category`, `delete_task_category`, `get_unbilled_detail`, `get_time_entries`, `get_invoice_status`, `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `link_to_contact`, `remove_contact_link`, `get_maisie_context` — plus a `maisie` prompt that loads her persona and current state |
+| `maisie` | `functions/src/mcp/server.ts` | `add_task`, `complete_task`, `reopen_task`, `update_task`, `create_task_category`, `delete_task_category`, `get_unbilled_detail`, `get_time_entries`, `get_invoice_status`, `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `link_to_contact`, `remove_contact_link`, `get_maisie_context`, `import_apple_contacts` (VS Code only) — plus a `maisie` prompt that loads her persona and current state |
 | `desktop` | `bridge/mcp/desktop-server.ts` | `calendar_read`, `calendar_create`, `calendar_move`, `mail_search`, `mail_read`, `mail_draft`, `mail_send` |
 
 Tool implementations are shared, not duplicated: `functions/src/tools/`
@@ -93,6 +93,20 @@ verify. `EKAuthorizationStatus 4` in `/tmp/calendar-sync.log` means exactly this
 
 Run either server by hand to debug: `cd functions && npm run mcp`, or
 `cd bridge && npm run mcp:desktop`. Both log to stderr; stdout is the protocol.
+
+### Importing Apple Contacts
+
+Copies everyone in Apple Contacts into MAISIE's contacts. It is one-way and only
+adds: Apple Contacts is never changed, nothing in MAISIE is removed, and a field
+Jack has filled in is never overwritten. Safe to run again at any time.
+
+- **From VS Code:** ask "import my Apple contacts". The `import_apple_contacts`
+  tool does a dry run first and shows the counts; it imports only when told to.
+- **From a terminal:** `cd functions && npm run import:contacts -- --dry-run`,
+  then `npm run import:contacts` to import.
+- **First run:** macOS asks to allow Contacts access for Terminal or VS Code.
+  If it was refused, allow it under System Settings > Privacy & Security >
+  Contacts and run it again.
 
 ## Desktop bridge (cloud → Mac)
 

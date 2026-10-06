@@ -11,6 +11,7 @@ import { createRequire } from 'node:module';
 const fromFunctions = createRequire(new URL('../../functions/package.json', import.meta.url));
 const admin = fromFunctions('firebase-admin');
 const { executeTool } = fromFunctions('./lib/tools/execute.js');
+const { importContacts } = fromFunctions('./lib/tools/contacts-import.js');
 
 export const PROJECT_ID = 'demo-jax-test';
 const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080';
@@ -30,6 +31,15 @@ export async function reset() {
 /** Runs one MAISIE tool and returns its result object. */
 export const tool = (name, input = {}) =>
   executeTool(name, input, { db, customerMap: new Map(), categories: [] });
+
+/** Runs the Apple Contacts import with cards shaped as the Mac reader returns them. */
+export const importApple = (people, options) => importContacts(db, people, options);
+
+/** One Apple Contacts card, with blanks for anything not given. */
+export const card = (fields) => ({
+  appleId: '', kind: 'person', firstName: '', lastName: '', organization: '', jobTitle: '', emails: [], phones: [],
+  ...fields,
+});
 
 /** Reads a document directly; undefined when it does not exist. */
 export async function read(path) {

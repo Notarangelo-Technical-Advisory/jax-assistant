@@ -9,16 +9,26 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const functionsDir = fileURLToPath(new URL('../../functions/', import.meta.url));
 const fromFunctions = createRequire(`${functionsDir}package.json`);
 const { Client } = fromFunctions('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = fromFunctions('@modelcontextprotocol/sdk/client/stdio.js');
+const { buildTools } = fromFunctions('./lib/tools/definitions.js');
 
 const PROJECT_ID = 'demo-jax-mcp';
 const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080';
 
 const CONTACT_TOOLS = ['find_contacts', 'get_contact', 'get_company', 'save_contact', 'save_company', 'add_contact_note', 'link_to_contact', 'remove_contact_link'];
+
+// Stands in for the macOS Contacts read, which cannot run on Linux. Each test
+// writes the script output it wants here; the server reads it on every call.
+const APPLE_FIXTURE = join(mkdtempSync(join(tmpdir(), 'maisie-mcp-')), 'apple-contacts.json');
+const appleSays = (result) => writeFileSync(APPLE_FIXTURE, typeof result === 'string' ? result : JSON.stringify(result));
 
 let client;
 
@@ -28,7 +38,7 @@ before(async () => {
     command: `${functionsDir}node_modules/.bin/tsx`,
     args: ['src/mcp/server.ts'],
     cwd: functionsDir,
-    env: { ...process.env, FIRESTORE_EMULATOR_HOST: FIRESTORE_HOST, GCLOUD_PROJECT: PROJECT_ID },
+    env: { ...process.env, FIRESTORE_EMULATOR_HOST: FIRESTORE_HOST, GCLOUD_PROJECT: PROJECT_ID, MAISIE_APPLE_CONTACTS_FIXTURE: APPLE_FIXTURE },
     stderr: 'ignore',
   }));
 });
@@ -102,3 +112,68 @@ describe('maisie MCP server', () => {
     assert.match(duplicate.error, /already exists/);
   });
 });
+
+describe('import_apple_contacts', () => {
+  // The exact shape the JXA script in functions/src/mcp/apple-contacts.ts prints.
+  const ADDRESS_BOOK = {
+    ok: true,
+    containers: 2,
+    contacts: [
+      { id: 'A-BRAD', type: 'person', given: 'Brad', family: 'Donohue', org: 'IHRDC', job: 'President & CEO', emails: ['Brad@IHRDC.com'], phones: ['+1 (617) 555-0100'] },
+      { id: 'A-ORG', type: 'organization', given: '', family: '', org: 'Grace Presbyterian', job: '', emails: [], phones: [] },
+    ],
+  };
+
+  it('is offered in VS Code only, and the cloud chat never sees it', async () => {
+    assert.ok((await client.listTools()).tools.some(t => t.name === 'import_apple_contacts'));
+    assert.ok(!buildTools([]).some(t => t.name === 'import_apple_contacts'), 'the cloud chat cannot reach a Mac');
+  });
+
+  it('can be run from a terminal, and a dry run writes nothing', async () => {
+    appleSays(ADDRESS_BOOK);
+
+    const output = execFileSync(`${functionsDir}node_modules/.bin/tsx`, ['src/mcp/import-contacts.ts', '--dry-run'], {
+      cwd: functionsDir,
+      encoding: 'utf-8',
+      env: { ...process.env, FIRESTORE_EMULATOR_HOST: FIRESTORE_HOST, GCLOUD_PROJECT: PROJECT_ID, MAISIE_APPLE_CONTACTS_FIXTURE: APPLE_FIXTURE },
+    });
+
+    assert.match(output, /Dry run: nothing was written/);
+    assert.match(output, /New contacts:\s+1/);
+    assert.match(output, /New, for example: Brad Donohue/);
+    assert.deepEqual((await call('find_contacts')).contacts, []);
+  });
+
+  it('does a dry run unless told otherwise, then imports when asked', async () => {
+    appleSays(ADDRESS_BOOK);
+
+    const preview = await call('import_apple_contacts');
+    assert.deepEqual([preview.dryRun, preview.read, preview.created, preview.companiesCreated], [true, 2, 1, 2]);
+    assert.deepEqual((await call('find_contacts')).contacts, []);
+
+    const real = await call('import_apple_contacts', { dry_run: false });
+    assert.equal(real.dryRun, false);
+    const found = await call('find_contacts', { query: 'donohue' });
+    assert.deepEqual(found.contacts.map(c => [c.name, c.company, c.emails[0]]), [['Brad Donohue', 'IHRDC', 'brad@ihrdc.com']]);
+  });
+
+  it('explains how to grant access when macOS refuses it', async () => {
+    appleSays({ ok: false, error: 'no_contacts_access', status: 2 });
+
+    const response = await client.callTool({ name: 'import_apple_contacts', arguments: { dry_run: false } });
+
+    assert.equal(response.isError, true);
+    assert.match(response.content[0].text, /Privacy & Security > Contacts/);
+    assert.deepEqual((await call('find_contacts')).contacts, []);
+  });
+
+  it('reports unreadable output as an error, never as an empty address book', async () => {
+    appleSays('execution error: Error: something broke (-2700)');
+
+    const response = await client.callTool({ name: 'import_apple_contacts', arguments: {} });
+
+    assert.equal(response.isError, true);
+    assert.match(response.content[0].text, /unreadable output/);
+  });
+});
+

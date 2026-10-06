@@ -7,6 +7,8 @@ export interface Contact {
   title: string | null;
   companyId: string | null;
   tags: string[];
+  /** Set by the Apple Contacts import; matches the card on the next import. */
+  appleContactId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }

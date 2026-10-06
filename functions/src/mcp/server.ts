@@ -1,29 +1,18 @@
 /**
- * MAISIE MCP server — exposes MAISIE's task and billing tools to Claude Code
- * in VS Code over stdio.
+ * MAISIE MCP server — exposes MAISIE's task, billing and contact tools to
+ * Claude Code in VS Code over stdio.
  *
  * Usage (from functions/):
  *   npx tsx src/mcp/server.ts
  *
  * This file is never deployed. The MCP SDK and tsx are devDependencies, which
  * the Cloud Functions runtime does not install, so the deploy payload is
- * unchanged.
- *
- * Requires a Firebase service account key at bridge/service-account.json
- * (gitignored — download from Firebase Console > Project Settings > Service
- * Accounts). The same key is exported as GOOGLE_APPLICATION_CREDENTIALS so
- * fta-client's applicationDefault() call resolves to it for the cross-project
- * read of the NTA time tracker (fta-invoice-tracking).
+ * unchanged. Firebase setup (and the service-account key it needs) is in
+ * ./firebase.ts, shared with the Apple Contacts import command.
  */
 
-// SSL bypass for this machine's certificate issues (same as bridge/calendar-sync.ts).
-// Must precede any import that touches the network stack.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-process.env.GRPC_SSL_CIPHER_SUITES = "HIGH+ECDSA";
-
-import * as path from "path";
-import {readFileSync} from "fs";
-import * as admin from "firebase-admin";
+// First: sets the TLS environment before anything touches the network stack.
+import {db} from "./firebase";
 import {Server} from "@modelcontextprotocol/sdk/server/index.js";
 import {StdioServerTransport} from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -35,30 +24,8 @@ import {
 import {buildTools, MCP_TOOL_NAMES, Category} from "../tools/definitions";
 import {executeTool, CustomerInfo} from "../tools/execute";
 import {loadMaisieContext, buildSystemPrompt} from "../tools/context";
-
-// Resolves to <repo>/bridge/service-account.json from either src/mcp (tsx) or
-// lib/mcp (compiled) — both are two levels below the repo root.
-const SERVICE_ACCOUNT_PATH = path.join(__dirname, "..", "..", "..", "bridge", "service-account.json");
-
-// Under the Firestore emulator (tests/mcp) there is no key and no live data:
-// the Admin SDK reads FIRESTORE_EMULATOR_HOST itself and only needs a project ID.
-const usingEmulator = !!process.env.FIRESTORE_EMULATOR_HOST;
-
-if (usingEmulator) {
-  admin.initializeApp({projectId: process.env.GCLOUD_PROJECT ?? "demo-jax-test"});
-} else {
-  // fta-client.ts reaches the NTA time tracker with applicationDefault(); locally
-  // that resolves via GOOGLE_APPLICATION_CREDENTIALS. The secondary app is built
-  // lazily on first billing call, by which point this is set.
-  process.env.GOOGLE_APPLICATION_CREDENTIALS = SERVICE_ACCOUNT_PATH;
-  const serviceAccount = JSON.parse(readFileSync(SERVICE_ACCOUNT_PATH, "utf-8"));
-  admin.initializeApp({credential: admin.credential.cert(serviceAccount)});
-}
-const db = admin.firestore();
-// REST instead of gRPC — gRPC has its own TLS stack that ignores NODE_TLS_REJECT_UNAUTHORIZED.
-// Not under the emulator: it is plain HTTP, and the REST transport ignores the
-// emulator's credential bypass and demands real Google credentials.
-if (!usingEmulator) db.settings({preferRest: true});
+import {importContacts} from "../tools/contacts-import";
+import {readAppleContacts} from "./apple-contacts";
 
 const server = new Server(
   {name: "maisie", version: "1.0.0"},
@@ -88,6 +55,22 @@ const CONTEXT_TOOL = {
   inputSchema: {type: "object" as const, properties: {}, required: []},
 };
 
+/**
+ * MCP-only: Apple Contacts lives on Jack's Mac, which this local server can
+ * read and the cloud chat function cannot. So it is not in buildTools().
+ */
+const IMPORT_TOOL = {
+  name: "import_apple_contacts",
+  description: "Copy everyone in Jack's Apple Contacts into MAISIE's contacts. One-way and additive: it never changes Apple Contacts, never removes anything from MAISIE, and never overwrites a field Jack filled in — it fills blanks and adds new email addresses and phone numbers. People are matched by an earlier import, then email, then a unique exact name. Safe to run again. Run with dry_run first and show Jack the counts; import for real only when he says so.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      dry_run: {type: "boolean", description: "Report what would change without writing anything. Defaults to true."},
+    },
+    required: [],
+  },
+};
+
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   await ensureContext();
   const tools = buildTools(categories, MCP_TOOL_NAMES).map((t) => ({
@@ -95,7 +78,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     description: t.description ?? "",
     inputSchema: t.input_schema as Record<string, unknown>,
   }));
-  return {tools: [...tools, CONTEXT_TOOL]};
+  return {tools: [...tools, CONTEXT_TOOL, IMPORT_TOOL]};
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -132,9 +115,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
 
+    if (name === "import_apple_contacts") {
+      // Defaults to a dry run, so a model cannot import by leaving the flag out.
+      const dryRun = (args as {dry_run?: boolean} | undefined)?.dry_run !== false;
+      const summary = await importContacts(db, readAppleContacts(), {dryRun});
+      return {content: [{type: "text" as const, text: JSON.stringify(summary, null, 2)}]};
+    }
+
     if (!MCP_TOOL_NAMES.includes(name)) {
       return {
-        content: [{type: "text" as const, text: `Tool "${name}" is not exposed over MCP. Available: ${MCP_TOOL_NAMES.join(", ")}, get_maisie_context.`}],
+        content: [{type: "text" as const, text: `Tool "${name}" is not exposed over MCP. Available: ${MCP_TOOL_NAMES.join(", ")}, get_maisie_context, import_apple_contacts.`}],
         isError: true,
       };
     }
