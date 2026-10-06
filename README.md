@@ -178,7 +178,7 @@ Nothing touches live data: each suite runs under its own `demo-` project.
 | --- | --- | --- |
 | `npm run test:ci` | The contacts page and `ContactService` in headless Chrome, signed in against the Auth and Firestore emulators | `src/**/*.spec.ts` |
 | `npm run test:rules` | Firestore security rules, using the same queries the web app makes | `tests/rules/` |
-| `npm run test:functions` | MAISIE's tools through `executeTool()`, the entry point shared by the chat function and the MCP server | `tests/functions/` |
+| `npm run test:functions` | MAISIE's tools through `executeTool()`, the entry point shared by the chat function and the MCP server, and how the Headlines tab gathers stories | `tests/functions/` |
 | `npm run test:mcp` | The `maisie` MCP server started as VS Code starts it, driven by the official MCP client | `tests/mcp/` |
 | `npm run test:all` | All four, in that order | |
 
