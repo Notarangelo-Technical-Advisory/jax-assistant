@@ -12,8 +12,8 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
 ## How it works
 
 - **Schedule** (`functions/src/index.ts`): `headlinesBriefing` runs every day at 6:45 AM and 12:45 PM ET. `headlinesMarketOpen` runs on weekdays at 9:45 AM ET, 15 minutes after the market opens. Both call the same `runHeadlines`, and each run replaces the one before it.
-- **Cost:** estimated at 3 to 5 cents per run, which is about $4 a month for the three runs. Each run records its real token use and estimated cost in the `usage` field of `briefings/headlines`, and in the function log.
-- **`gatherCandidates`** (`functions/src/headlines.ts`) reads every feed and Google News search in parallel. It keeps stories from the last 48 hours, at most 5 per feed and 8 per search, and removes duplicates. On 2026-09-29 this gave 111 stories in under a second, about 6,000 tokens.
+- **Cost:** 1 to 5 cents per run, which is at most about $4 a month for the three runs. The first two runs on 2026-09-29 cost $0.011 and $0.014, but Google News had failed, so they had only 8 stories each. Each run records its real token use and estimated cost in the `usage` field of `briefings/headlines`, and in the function log.
+- **`gatherCandidates`** (`functions/src/headlines.ts`) reads every feed and Bing News search in parallel. It keeps stories from the last 48 hours, at most 5 per feed (10 for CNBC and MarketWatch) and 8 per search, and removes duplicates. On 2026-09-29 this gave 138 stories in under a second, about 14,500 tokens.
 - **`generateHeadlines`** sends those stories to one Claude call with no web tools, at low effort. The model chooses at most 4 per section and writes the headline, summary and "why it matters" lines, returning them through a strict `submit_headlines` tool.
 - **Every link comes from a feed.** The model names a story by its id, and the code copies the link, source and date from that story. The model cannot write a link that does not exist.
 - **The model uses only what the feeds say.** It sees each story's title and short description, not the full article, and is told not to add details from memory.
@@ -26,13 +26,15 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
 
 - **People:** Paweł Huryn, David Sacks, Chamath Palihapitiya, Benny Johnson.
   - **Feeds:** The Product Compass, the All-In podcast, Chamath's Substack and The Benny Show.
-  - **Google News searches** for each name. These also catch posts on X that the press reports.
+  - **Bing News searches** for each name. These also catch posts on X that the press reports.
   - **The Benny Show gives its episodes no web link**, so they link to the show's page.
 - **AI companies:** Anthropic, OpenAI, Google DeepMind / Gemini, Meta AI, xAI, Microsoft AI, NVIDIA.
-  - **Feeds:** OpenAI, Google DeepMind, Google's AI blog and NVIDIA's blog.
-  - **Google News searches** for all seven. Anthropic has no feed, and Microsoft's blog refuses automated readers.
+  - **Feeds:** OpenAI, Google DeepMind, Google's AI blog, NVIDIA's blog, and the AI sections of TechCrunch and The Verge.
+  - **Bing News searches** for all seven. Anthropic has no feed, and Microsoft's blog refuses automated readers.
 - **Markets:** only events that move the S&P 500, such as a daily move above 1%, a Fed decision, CPI, a jobs report, or earnings from the largest companies.
-  - **Google News searches** for "stock market today" and for Fed, CPI and jobs-report news, plus one search for each large mover in the Finnhub data.
+  - **Feeds:** CNBC top news and MarketWatch top stories.
+  - **Bing News searches** for "stock market today" and for Fed, CPI and jobs-report news, plus one search for each large mover in the Finnhub data.
+- **Why Bing, not Google News:** Google News answers every request from Cloud Run with HTTP 503, although the same requests work from a Mac and from Cloud Shell. Bing News links go through a Bing click-tracking page, so the code takes the article's own link from it.
 - **Market prices (Phase 2, from Finnhub):** `functions/src/markets.ts` reads SPY, the fund that tracks the S&P 500, plus the eight largest companies (AAPL, MSFT, NVDA, AMZN, GOOGL, META, AVGO, TSLA) and their earnings dates for the next 7 days.
   - **The day is marked significant** when SPY moves 1% or more, one of those companies moves 3% or more, or one of them reports earnings that week. The model is then asked to explain each move from the news stories.
   - **The free plan has no VIX, no bond yields and no index levels.** Adding them would need a paid Finnhub plan.
@@ -41,7 +43,7 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
   - **Where the dates come from:** they are entered by hand in `functions/src/markets.ts`, from the Fed and BLS official schedules, because the free Finnhub plan has no economic calendar.
   - **Coverage:** the BLS dates run to December 2026 and the Fed dates to March 2027.
   - **When they run out:** 30 days before either list ends, the strip shows a note saying the dates need updating.
-- **Pre-market futures (from news):** on weekdays before 9:30 AM ET, which in practice means the 6:45 AM run, code adds a Google News search for "S&P 500 futures", and the model chooses one of those reports as a Markets item. The dashboard labels it "Futures · from news", because the number can be 30 to 60 minutes old. The free Finnhub plan has no futures data.
+- **Pre-market futures (from news):** on weekdays before 9:30 AM ET, which in practice means the 6:45 AM run, code adds a Bing News search for "S&P 500 futures", and the model chooses one of those reports as a Markets item. The dashboard labels it "Futures · from news", because the number can be 30 to 60 minutes old. The free Finnhub plan has no futures data.
 
 ## X (Twitter)
 

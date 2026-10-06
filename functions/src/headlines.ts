@@ -26,7 +26,7 @@ type SectionKey = typeof HEADLINE_SECTIONS[number]["key"];
  * Feeds read directly. Moving the list to Firestore so Jack can edit it from
  * chat is Phase 3 in projects/headlines/README.md.
  */
-export const HEADLINE_FEEDS: Array<{section: SectionKey; name: string; url: string}> = [
+export const HEADLINE_FEEDS: Array<{section: SectionKey; name: string; url: string; limit?: number}> = [
   {section: "people", name: "The Product Compass (Paweł Huryn)", url: "https://www.productcompass.pm/feed"},
   {section: "people", name: "All-In podcast", url: "https://rss.libsyn.com/shows/254861/destinations/1928300.xml"},
   {section: "people", name: "Chamath Palihapitiya (Substack)", url: "https://chamath.substack.com/feed"},
@@ -35,13 +35,19 @@ export const HEADLINE_FEEDS: Array<{section: SectionKey; name: string; url: stri
   {section: "ai", name: "Google DeepMind", url: "https://deepmind.google/blog/rss.xml"},
   {section: "ai", name: "Google AI blog", url: "https://blog.google/technology/ai/rss/"},
   {section: "ai", name: "NVIDIA blog", url: "https://blogs.nvidia.com/feed/"},
+  {section: "ai", name: "TechCrunch", url: "https://techcrunch.com/category/artificial-intelligence/feed/"},
+  {section: "ai", name: "The Verge", url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"},
+  // General business news: more items, because most are not about the market.
+  {section: "markets", name: "CNBC", url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", limit: 10},
+  {section: "markets", name: "MarketWatch", url: "https://feeds.content.dowjones.io/public/rss/mw_topstories", limit: 10},
 ];
 
 /**
- * Google News searches. They cover what has no feed of its own (Anthropic;
+ * Bing News searches. They cover what has no feed of its own (Anthropic;
  * Microsoft's blog refuses automated readers), press coverage of the
  * companies, and posts on X, which reach the dashboard only when the press
- * reports them.
+ * reports them. Google News was used first, but it answers every request from
+ * Cloud Run with HTTP 503.
  */
 export const HEADLINE_NEWS_QUERIES: Array<{section: SectionKey; query: string}> = [
   {section: "people", query: "\"David Sacks\""},
@@ -63,7 +69,7 @@ export const HEADLINE_NEWS_QUERIES: Array<{section: SectionKey; query: string}> 
 const WINDOW_HOURS = 48;
 /** Feed items kept per feed, newest first. */
 const ITEMS_PER_FEED = 5;
-/** Google News results kept per search, in Google's order. */
+/** Bing News results kept per search, newest first. */
 const ITEMS_PER_SEARCH = 8;
 /** The dashboard shows at most this many items per section. */
 const ITEMS_PER_SECTION = 4;
@@ -144,7 +150,7 @@ interface FeedEntry {
   url: string;
   published: Date;
   description: string;
-  /** Google News names the publisher of each result; ordinary feeds do not. */
+  /** Bing News names the publisher of each result; ordinary feeds do not. */
   source: string | null;
   /** False when the entry had no link and `url` is the feed's own page. */
   ownLink: boolean;
@@ -162,14 +168,14 @@ function parseFeed(body: string): FeedEntry[] {
   const entries: FeedEntry[] = [];
   for (const it of rssItems) {
     const guid = it.guid?.["@_isPermaLink"] === "false" ? "" : textOf(it.guid).trim();
-    const own = textOf(it.link).trim() || (/^https?:\/\//.test(guid) ? guid : "");
+    const own = articleUrl(textOf(it.link).trim()) || (/^https?:\/\//.test(guid) ? guid : "");
     entries.push({
       title: plainText(textOf(it.title)),
       url: own || channelLink,
       ownLink: own !== "",
       published: new Date(textOf(it.pubDate) || textOf(it["dc:date"])),
       description: plainText(textOf(it.description) || textOf(it["itunes:summary"])),
-      source: it.source ? textOf(it.source).trim() || null : null,
+      source: textOf(it["News:Source"]).trim() || null,
     });
   }
   for (const e of atomEntries) {
@@ -187,6 +193,17 @@ function parseFeed(body: string): FeedEntry[] {
   return entries.filter((e) => e.title && /^https?:\/\//.test(e.url) && !isNaN(e.published.getTime()));
 }
 
+/** Bing News links go through a click-tracking page; its `url` parameter is the article. */
+function articleUrl(link: string): string {
+  try {
+    const u = new URL(link);
+    const target = u.hostname.endsWith("bing.com") ? u.searchParams.get("url") : null;
+    return target && /^https?:\/\//.test(target) ? target : link;
+  } catch {
+    return link;
+  }
+}
+
 async function fetchFeed(url: string): Promise<FeedEntry[]> {
   const res = await fetch(url, {
     headers: {"User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml"},
@@ -196,9 +213,10 @@ async function fetchFeed(url: string): Promise<FeedEntry[]> {
   return parseFeed(await res.text());
 }
 
-function googleNewsUrl(query: string): string {
-  const q = encodeURIComponent(`${query} when:${WINDOW_HOURS / 24}d`);
-  return `https://news.google.com/rss/search?q=${q}&hl=en-US&gl=US&ceid=US:en`;
+/** Past 7 days, newest first: in testing this returned the most stories inside the 48-hour window. */
+function bingNewsUrl(query: string): string {
+  const freshness = encodeURIComponent("interval=\"8\" sortbydate=\"1\"");
+  return `https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss&mkt=en-US&qft=${freshness}`;
 }
 
 /** A title reduced to lower-case letters and digits, to spot the same story from two sources. */
@@ -218,11 +236,11 @@ interface Source {
 
 function buildSources(market: MarketSnapshot | null | undefined, preMarket: boolean): Source[] {
   const sources: Source[] = HEADLINE_FEEDS.map((f) => ({
-    label: f.name, section: f.section, url: f.url, limit: ITEMS_PER_FEED, name: f.name, futures: false,
+    label: f.name, section: f.section, url: f.url, limit: f.limit ?? ITEMS_PER_FEED, name: f.name, futures: false,
   }));
   const search = (section: SectionKey, query: string, futures = false): Source => ({
-    label: `Google News: ${query}`, section, url: googleNewsUrl(query), limit: ITEMS_PER_SEARCH,
-    name: "Google News", futures,
+    label: `Bing News: ${query}`, section, url: bingNewsUrl(query), limit: ITEMS_PER_SEARCH,
+    name: "Bing News", futures,
   });
   for (const q of HEADLINE_NEWS_QUERIES) sources.push(search(q.section, q.query));
   // One search per large move, so the model has the story behind each move
@@ -256,16 +274,12 @@ export async function gatherCandidates(
       errors.push(`${source.label}: ${result.reason instanceof Error ? result.reason.message : result.reason}`);
       return;
     }
-    let entries = result.value.filter((e) => e.published.getTime() >= cutoff && e.published.getTime() <= now.getTime() + 3600_000);
-    // Feeds are newest first by convention but not always; Google News is kept in its own order.
-    if (!source.url.startsWith("https://news.google.com/")) {
-      entries = entries.sort((a, b) => b.published.getTime() - a.published.getTime());
-    }
+    // Feeds are newest first by convention but not always.
+    const entries = result.value
+      .filter((e) => e.published.getTime() >= cutoff && e.published.getTime() <= now.getTime() + 3600_000)
+      .sort((a, b) => b.published.getTime() - a.published.getTime());
     for (const e of entries.slice(0, source.limit)) {
-      const sourceName = e.source ?? source.name;
-      const title = e.source && e.title.endsWith(` - ${e.source}`) ?
-        e.title.slice(0, -(e.source.length + 3)) : e.title;
-      const key = titleKey(title);
+      const key = titleKey(e.title);
       const seen = (e.ownLink ? byUrl.get(e.url) : undefined) ?? byTitle.get(key);
       if (seen) {
         // An earlier search found this story first; keep its futures mark.
@@ -275,10 +289,9 @@ export async function gatherCandidates(
       const candidate: Candidate = {
         id: `c${candidates.length + 1}`,
         section: source.section,
-        title,
-        // A Google News description only repeats the title and publisher.
-        description: e.source ? "" : truncate(e.description, DESCRIPTION_CHARS),
-        sourceName,
+        title: e.title,
+        description: truncate(e.description, DESCRIPTION_CHARS),
+        sourceName: e.source ?? source.name,
         url: e.url,
         published: e.published,
         futures: source.futures,
@@ -339,7 +352,9 @@ Jack is a technical advisor on AI adoption. The user message lists candidate sto
 Pre-market futures: when the user message says the US market has not opened yet, choose the most recent candidate marked "futures": true that reports on S&P 500 futures, and set futures to true on it. Put the direction and size of the move in the headline, such as "S&P 500 futures down 0.6% before the open", taking the figure from that candidate. This is the one item whose numbers come from the news rather than from marketData. If there is no such candidate from today, leave it out.
 
 Rules:
+- Every item must use the id of one candidate from the list. If no candidate explains a move in marketData, leave that move out.
 - Use only the facts in each candidate's title and description, and in marketData. Do not add details from memory.
+- Skip stories that are not in English.
 - When several candidates report the same story, choose one: the company's own announcement or the most established outlet.
 - At most ${ITEMS_PER_SECTION} items per section. Prefer fewer, more important items. Choosing nothing for a section is fine.
 - Write in plain English. No markdown.
