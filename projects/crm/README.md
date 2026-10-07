@@ -11,7 +11,7 @@ MAISIE keeps Jack's contacts, companies, notes and links to emails, meetings and
 | 1 | Contacts, companies and notes, with tools, MCP access and the `/contacts` page | 20–30 hours | **Live** since 2026-10-06 (run #127) |
 | 2 | Links from contacts and companies to emails, meetings and web pages | 8–12 hours | **Live** since 2026-10-06 (run #128) |
 | 3 | One-way import from Apple Contacts, of everyone | 6–10 hours | **Live** since 2026-10-06 (first import: 1,147 contacts, 282 companies) |
-| 4 | Automatic linking of emails and meetings to contacts | 15 hours or more | **Built** 2026-10-06. Goes live when the launchd job is loaded on Jack's Mac. |
+| 4 | Automatic linking of emails and meetings to contacts | 15 hours or more | **Live** since 2026-10-06 (first run: 370 links) |
 | Optional | Remote MCP server, for claude.ai and phone access | 10–15 hours | Not planned |
 
 ## Decisions that shape the design
@@ -51,7 +51,7 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 - **Needs from Jack:** his Mac, and permission for Terminal or VS Code to read Contacts the first time it runs.
 - **First import (2026-10-06):** dry run first, then the real import through the `maisie` MCP server. 1,217 cards read; 1,147 new contacts, 10 updated, 26 already up to date, 28 company cards, 6 skipped, 282 new companies. It first read 0 cards, because macOS 26 lists no contact accounts; the reader now reads all contacts in one request when that happens.
 
-## Phase 4: automatic linking (built)
+## Phase 4: automatic linking (live)
 
 - **What it does:** every 15 minutes, ties new emails and meetings to the contacts taking part in them, matched by email address. Links show on the contact's page as "linked automatically", and MAISIE sees them in `get_contact`.
 - **Emails:** received and sent, from the Inbox and Sent mailbox of every Mail account. Sender, To and Cc are matched.
@@ -63,5 +63,5 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 - **Removing a link:** on the web page or through MAISIE, removing an automatic link records it in `contactLinkDismissals`, so it does not come back.
 - **If Mail or Calendar fails:** the other is still linked, and the failed one starts from the same place on the next run. Errors are in `/tmp/contact-autolink.log` and in `metadata/contactAutoLink`.
 - **How to run it by hand:** `cd functions && npm run autolink:contacts -- --dry-run`, then without `--dry-run`.
-- **Dry run on 2026-10-06 (30 days):** meetings: 66 read, 57 links for 23 of them, 4 skipped as too large. Emails: 697 read, 313 links for 134 of them, 4 skipped as too large; 545 had no contact (mostly newsletters and notifications). It took 95 seconds.
+- **First run (2026-10-06, 30 days):** launchd job loaded after a dry run. Meetings: 66 read, 57 links for 23 of them, 4 skipped as too large. Emails: 697 read, 313 links for 134 of them, 4 skipped as too large; 545 had no contact (mostly newsletters and notifications). 370 links in all, in about 95 seconds.
 
