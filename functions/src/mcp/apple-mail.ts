@@ -99,6 +99,7 @@ export function parseAppleMail(raw: string): MailRead {
     date: new Date(m.date).toISOString(),
     detail: sent ? "Sent by Jack" : (m.sender ?? "").trim(),
     addresses: [senderAddress(m.sender ?? ""), ...(m.to ?? []), ...(m.cc ?? [])],
+    sender: senderAddress(m.sender ?? ""),
   });
   return {
     ownAddresses: result.accounts ?? [],

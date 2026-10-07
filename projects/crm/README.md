@@ -58,7 +58,7 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 - **Meetings:** the Jax and IHRDC calendars only (Jack's choice), once a meeting has started, so one cancelled beforehand is never linked. Attendees and the organizer are matched; rooms are not.
 - **History:** the first run looks back 30 days. Each later run starts an hour before the previous one finished.
 - **Never matched:** Jack's own addresses, read from his Mail accounts, so his own contact card does not collect everything.
-- **Skipped:** emails and meetings with more than 15 other people, such as all-hands meetings and mailings.
+- **Skipped:** emails and meetings with more than 15 other people, such as all-hands meetings and mailings, and emails from automated senders such as `no-reply@`, `notifications@` and `alerts@` (added 2026-10-06 after Thoropass alerts were linked to Brad Donohue).
 - **No repeats:** an item already linked to that contact, by hand or by an earlier run, is not linked again.
 - **Removing a link:** on the web page or through MAISIE, removing an automatic link records it in `contactLinkDismissals`, so it does not come back.
 - **If Mail or Calendar fails:** the other is still linked, and the failed one starts from the same place on the next run. Errors are in `/tmp/contact-autolink.log` and in `metadata/contactAutoLink`.

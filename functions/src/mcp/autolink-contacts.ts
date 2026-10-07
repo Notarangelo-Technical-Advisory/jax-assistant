@@ -38,7 +38,7 @@ function startFrom(checkedThrough: unknown, now: Date): Date {
 function report(label: string, s: AutoLinkSummary): void {
   console.log(`${label}: ${s.items} read, ${s.linked} links to write for ${s.itemsLinked} of them`);
   console.log(`  Already linked: ${s.alreadyLinked}  Removed by Jack before: ${s.dismissed}  ` +
-    `No contact: ${s.noContact}  More than 15 people: ${s.tooManyPeople}`);
+    `No contact: ${s.noContact}  More than 15 people: ${s.tooManyPeople}  Automated sender: ${s.automated}`);
   if (s.examples.length) console.log(`  For example: ${s.examples.join("; ")}`);
 }
 

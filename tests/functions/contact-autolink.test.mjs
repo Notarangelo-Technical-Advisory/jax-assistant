@@ -9,7 +9,7 @@ import { all, read, reset, seed, setUp, tool } from './helpers.mjs';
 
 const fromFunctions = createRequire(new URL('../../functions/package.json', import.meta.url));
 const admin = fromFunctions('firebase-admin');
-const { autoLinkItems } = fromFunctions('./lib/tools/contact-autolink.js');
+const { autoLinkItems, isAutomatedSender } = fromFunctions('./lib/tools/contact-autolink.js');
 
 before(setUp);
 beforeEach(async () => {
@@ -65,6 +65,27 @@ describe('emails', () => {
     assert.equal(s.alreadyLinked, 1);
     const brad = await linksOf('brad');
     assert.deepEqual(brad.map(l => [l.title, l.origin]), [['Agenda', undefined]]);
+  });
+
+  it('skips alerts from automated senders, even when a contact is copied', async () => {
+    const s = await link([
+      email({ sourceId: 'alert-1', title: '[Action Required] Weekly Monitor Remediation Digest', sender: 'no-reply@thoropass.com',
+        addresses: ['no-reply@thoropass.com', 'brad@ihrdc.com', 'jack@example.com'] }),
+      email({ sourceId: 'real-1', sender: 'brad@ihrdc.com', addresses: ['brad@ihrdc.com', 'jack@example.com'] }),
+    ]);
+
+    assert.deepEqual([s.automated, s.linked], [1, 1]);
+    assert.deepEqual((await linksOf('brad')).map(l => l.sourceId), ['real-1']);
+  });
+
+  it('knows automated senders from people', () => {
+    for (const a of ['no-reply@thoropass.com', 'NoReply@github.com', 'do-not-reply@bank.example', 'donotreply@x.org',
+      'notifications@github.com', 'notification+abc@slack.com', 'alerts@example.com', 'MAILER-DAEMON@ihrdc.com', 'bounces+123@sendgrid.net']) {
+      assert.equal(isAutomatedSender(a), true, a);
+    }
+    for (const a of ['brad@ihrdc.com', 'noreen@example.com', 'alerton@example.com', 'replyall@example.com', '']) {
+      assert.equal(isAutomatedSender(a), false, a);
+    }
   });
 
   it('counts an email where nobody is a contact, and links nothing', async () => {

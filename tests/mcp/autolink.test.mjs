@@ -27,7 +27,10 @@ const write = (file, result) => writeFileSync(file, typeof result === 'string' ?
 const MAIL = {
   ok: true,
   accounts: ['jack@example.com'],
-  received: [{ id: 'CAF7x9=abc@mail.ihrdc.com', subject: 'Friday demo agenda', sender: 'Brad Donohue <brad@ihrdc.com>', date: Date.UTC(2020, 2, 6, 14, 5), to: ['jack@example.com'], cc: [] }],
+  received: [
+    { id: 'CAF7x9=abc@mail.ihrdc.com', subject: 'Friday demo agenda', sender: 'Brad Donohue <brad@ihrdc.com>', date: Date.UTC(2020, 2, 6, 14, 5), to: ['jack@example.com'], cc: [] },
+    { id: 'alert@thoropass.com', subject: 'Weekly Monitor Remediation Digest', sender: 'Thoropass | Alerts <no-reply@thoropass.com>', date: Date.UTC(2020, 2, 6, 8, 0), to: ['brad@ihrdc.com', 'jack@example.com'], cc: [] },
+  ],
   sent: [{ id: 'sent-1@example.com', subject: 'Re: Board deck', sender: 'Jack Notarangelo <jack@example.com>', date: Date.UTC(2020, 2, 7, 9, 0), to: ['amy@ihrdc.com'], cc: ['newsletter@shop.example.com'] }],
 };
 const MEETINGS = {
@@ -95,7 +98,8 @@ describe('automatic linking job', () => {
 
     assert.equal(code, 0, output);
     assert.match(output, /Dry run: nothing was written/);
-    assert.match(output, /Emails since .*: 2 read, 2 links to write/);
+    assert.match(output, /Emails since .*: 3 read, 2 links to write/);
+    assert.match(output, /Automated sender: 1/);
     assert.match(output, /Meetings since .*: 1 read, 1 links to write/);
     assert.deepEqual(await links(), []);
     assert.equal(await state(), undefined);

@@ -18,8 +18,19 @@ import {LinkDoc, linkKey, normDate, normMessageId} from "./contacts";
 //   collect every email and meeting.
 // - An item with more than MAX_PEOPLE other people is skipped: an all-hands
 //   meeting or a mailing to 40 people says little about any one contact.
+// - An email from an automated sender (no-reply@, notifications@ and so on)
+//   is skipped: an alert copied to a contact says nothing about them.
 
 export const MAX_PEOPLE = 15;
+
+/** The part before the @ of senders that are machines, not people. */
+const AUTOMATED_SENDER = /^(no-?reply|do-?not-?reply|notifications?|alerts?|mailer-daemon|postmaster|bounces?)([-+._].*)?$/i;
+
+/** True for no-reply@, do-not-reply@, notifications@, alerts@ and similar addresses. */
+export function isAutomatedSender(address: string): boolean {
+  const a = normAddress(address);
+  return !!a && AUTOMATED_SENDER.test(a.split("@")[0]);
+}
 
 export interface AutoLinkItem {
   type: "email" | "meeting";
@@ -32,6 +43,8 @@ export interface AutoLinkItem {
   detail: string;
   /** Everyone on the item: sender and recipients, or organizer and attendees. */
   addresses: string[];
+  /** Email only: the sender's address, to skip automated senders. */
+  sender?: string;
 }
 
 export interface AutoLinkOptions {
@@ -53,6 +66,8 @@ export interface AutoLinkSummary {
   dismissed: number;
   /** Skipped: more than MAX_PEOPLE other people. */
   tooManyPeople: number;
+  /** Skipped: an email from an automated sender, such as no-reply@. */
+  automated: number;
   /** No one on the item is a contact. */
   noContact: number;
   /** Up to 10 "Contact name: item title" lines. */
@@ -88,12 +103,16 @@ export async function autoLinkItems(
   const own = new Set(options.ownAddresses.map(normAddress).filter(Boolean));
   const summary: AutoLinkSummary = {
     dryRun: !!options.dryRun, items: items.length, linked: 0, itemsLinked: 0,
-    alreadyLinked: 0, dismissed: 0, tooManyPeople: 0, noContact: 0, examples: [],
+    alreadyLinked: 0, dismissed: 0, tooManyPeople: 0, automated: 0, noContact: 0, examples: [],
   };
 
   // Each item's other people, and the item as it would be stored.
   const prepared: Array<{doc: Omit<LinkDoc, "contactId">; key: string; people: string[]}> = [];
   for (const item of items) {
+    if (item.type === "email" && item.sender && isAutomatedSender(item.sender)) {
+      summary.automated++;
+      continue;
+    }
     const people = [...new Set(item.addresses.map(normAddress).filter((a) => a && !own.has(a)))];
     if (people.length > MAX_PEOPLE) {
       summary.tooManyPeople++;
