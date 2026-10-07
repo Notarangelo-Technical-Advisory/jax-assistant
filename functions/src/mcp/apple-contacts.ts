@@ -27,12 +27,12 @@ export class AppleContactsError extends Error {
 }
 
 /**
- * JXA source. Contacts are fetched container by container with plain
- * predicate queries rather than enumerateContacts(usingBlock:), because a JS
- * function passed as an ObjC block is not reliably called back under osascript
- * (the EventKit reader hit the same thing with its completion handler).
- * A contact linked across iCloud and Exchange comes back once per container as
- * the same unified contact, so results are de-duplicated by identifier.
+ * JXA source. Reads every card on its own (unifyResults = false), not merged
+ * across accounts, so each card can be tagged with the account that holds it.
+ * Merged results were how a Google copy of Brad Donohue came in beside his
+ * iCloud card. Cards are read with enumerateContacts in one request: on macOS
+ * 26 listing the accounts (containers) returns none at all, while this read
+ * returned all 1,281 cards on Jack's Mac in about 9 seconds.
  */
 export const READ_CONTACTS_SCRIPT = `
 ObjC.import('Contacts');
@@ -70,16 +70,15 @@ function run() {
 
   var store = $.CNContactStore.alloc.init;
   var keys = $(['identifier', 'contactType', 'givenName', 'familyName', 'organizationName', 'jobTitle', 'emailAddresses', 'phoneNumbers']);
-  var containers = ObjC.unwrap(store.containersMatchingPredicateError(null, null)) || [];
-  var seen = {};
+  var request = $.CNContactFetchRequest.alloc.initWithKeysToFetch(keys);
+  request.unifyResults = false;
   var contacts = [];
 
-  function add(c) {
-    var id = str(c.identifier);
-    if (seen[id]) return;
-    seen[id] = true;
+  store.enumerateContactsWithFetchRequestErrorUsingBlock(request, null, function (c) {
+    var holders = store.containersMatchingPredicateError($.CNContainer.predicateForContainerOfContactWithIdentifier(c.identifier), null);
     contacts.push({
-      id: id,
+      id: str(c.identifier),
+      account: (holders.isNil() || num(holders.count) === 0) ? '' : str(holders.objectAtIndex(0).name),
       type: num(c.contactType) === 1 ? 'organization' : 'person',
       given: str(c.givenName),
       family: str(c.familyName),
@@ -88,29 +87,29 @@ function run() {
       emails: (ObjC.unwrap(c.emailAddresses) || []).map(function (lv) { return str(lv.value); }),
       phones: (ObjC.unwrap(c.phoneNumbers) || []).map(function (lv) { return str(lv.value.stringValue); })
     });
-  }
-
-  containers.forEach(function (container) {
-    var predicate = $.CNContact.predicateForContactsInContainerWithIdentifier(container.identifier);
-    var found = ObjC.unwrap(store.unifiedContactsMatchingPredicateKeysToFetchError(predicate, keys, null)) || [];
-    found.forEach(add);
   });
 
-  // On macOS 26 the container list comes back empty while the address book is
-  // not (Jack's: 0 containers, 1,217 contacts), so read them in one request.
-  var method = 'containers';
-  if (contacts.length === 0) {
-    method = 'enumerate';
-    var request = $.CNContactFetchRequest.alloc.initWithKeysToFetch(keys);
-    store.enumerateContactsWithFetchRequestErrorUsingBlock(request, null, function (c) { add(c); });
-  }
-
-  return JSON.stringify({ ok: true, containers: containers.length, method: method, contacts: contacts });
+  return JSON.stringify({ ok: true, contacts: contacts });
 }
 `.trim();
 
+/**
+ * Accounts whose cards are imported. Jack chose iCloud only (2026-10-06): the
+ * Mac also syncs 976 Google cards he does not think of as his address book.
+ */
+export const IMPORT_ACCOUNTS = ["iCloud"];
+
+export interface AppleContactsRead {
+  /** Cards from IMPORT_ACCOUNTS, ready to import. */
+  people: ApplePerson[];
+  /** Cards left out, counted by account, e.g. {"Google": 976}. */
+  otherAccounts: Record<string, number>;
+}
+
 interface RawContact {
   id: string;
+  /** The account (container) holding the card, e.g. "iCloud" or "Google". */
+  account: string;
   type: "person" | "organization";
   given: string;
   family: string;
@@ -121,11 +120,11 @@ interface RawContact {
 }
 
 type RawResult =
-  | {ok: true; containers: number; contacts: RawContact[]}
+  | {ok: true; contacts: RawContact[]}
   | {ok: false; error: string; status?: number};
 
 /** Turn the script's JSON output into import records, or throw a clear error. */
-export function parseAppleContacts(raw: string): ApplePerson[] {
+export function parseAppleContacts(raw: string): AppleContactsRead {
   if (!raw.trim()) throw new AppleContactsError("Apple Contacts returned no output.", "empty_output");
   let result: RawResult;
   try {
@@ -144,7 +143,14 @@ export function parseAppleContacts(raw: string): ApplePerson[] {
     }
     throw new AppleContactsError(`Apple Contacts read failed: ${result.error}`, result.error);
   }
-  return result.contacts.map((c) => ({
+  const otherAccounts: Record<string, number> = {};
+  const wanted = result.contacts.filter((c) => {
+    if (IMPORT_ACCOUNTS.includes(c.account)) return true;
+    const account = c.account || "(unknown account)";
+    otherAccounts[account] = (otherAccounts[account] ?? 0) + 1;
+    return false;
+  });
+  const people = wanted.map((c): ApplePerson => ({
     appleId: String(c.id ?? ""),
     kind: c.type === "organization" ? "organization" : "person",
     firstName: String(c.given ?? ""),
@@ -154,6 +160,7 @@ export function parseAppleContacts(raw: string): ApplePerson[] {
     emails: (c.emails ?? []).map(String),
     phones: (c.phones ?? []).map(String),
   }));
+  return {people, otherAccounts};
 }
 
 /**
@@ -161,7 +168,7 @@ export function parseAppleContacts(raw: string): ApplePerson[] {
  * contents stand in for the script's output — this is how tests/mcp exercises
  * the whole import on Linux, where there is no Contacts framework.
  */
-export function readAppleContacts(): ApplePerson[] {
+export function readAppleContacts(): AppleContactsRead {
   const fixture = process.env.MAISIE_APPLE_CONTACTS_FIXTURE;
   if (fixture) return parseAppleContacts(readFileSync(fixture, "utf-8"));
 

@@ -96,7 +96,8 @@ Run either server by hand to debug: `cd functions && npm run mcp`, or
 
 ### Importing Apple Contacts
 
-Copies everyone in Apple Contacts into MAISIE's contacts. It is one-way and only
+Copies everyone in Jack's iCloud contacts into MAISIE's contacts; cards from
+other accounts on the Mac, such as Google, are left out. It is one-way and only
 adds: Apple Contacts is never changed, nothing in MAISIE is removed, and a field
 Jack has filled in is never overwritten. Safe to run again at any time.
 

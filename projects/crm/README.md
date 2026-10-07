@@ -10,7 +10,7 @@ MAISIE keeps Jack's contacts, companies, notes and links to emails, meetings and
 | --- | --- | --- | --- |
 | 1 | Contacts, companies and notes, with tools, MCP access and the `/contacts` page | 20–30 hours | **Live** since 2026-10-06 (run #127) |
 | 2 | Links from contacts and companies to emails, meetings and web pages | 8–12 hours | **Live** since 2026-10-06 (run #128) |
-| 3 | One-way import from Apple Contacts, of everyone | 6–10 hours | **Live** since 2026-10-06 (first import: 1,147 contacts, 282 companies) |
+| 3 | One-way import from Apple Contacts, of everyone in iCloud | 6–10 hours | **Live** since 2026-10-06 (293 contacts, 56 companies after the iCloud-only clean-up) |
 | 4 | Automatic linking of emails and meetings to contacts | 15 hours or more | **Live** since 2026-10-06 (first run: 370 links) |
 | Optional | Remote MCP server, for claude.ai and phone access | 10–15 hours | Not planned |
 
@@ -43,13 +43,14 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 
 ## Phase 3: import from Apple Contacts (live)
 
-- **What it does:** copies everyone in Apple Contacts into MAISIE. It never writes back to Apple Contacts. Jack chose to import everyone, not chosen groups.
+- **What it does:** copies everyone in Jack's iCloud contacts into MAISIE. It never writes back to Apple Contacts. Jack chose everyone, not chosen groups, and iCloud only: the Mac also syncs 976 Google cards, which are left out and counted.
 - **How to run it:** in VS Code, ask "import my Apple contacts" (a dry run comes first), or in a terminal run `cd functions && npm run import:contacts -- --dry-run`, then without `--dry-run`.
 - **Matching:** by the Apple card from an earlier import, then by email, then by an exact name that only one contact has. Otherwise a new contact is created.
 - **Never loses Jack's work:** fills blank fields only, adds new email addresses and phone numbers, never removes anything, and leaves notes and links alone. An email already on another contact stays with that contact.
 - **Company cards** become companies. Cards with no name and no company are skipped.
 - **Needs from Jack:** his Mac, and permission for Terminal or VS Code to read Contacts the first time it runs.
 - **First import (2026-10-06):** dry run first, then the real import through the `maisie` MCP server. 1,217 cards read; 1,147 new contacts, 10 updated, 26 already up to date, 28 company cards, 6 skipped, 282 new companies. It first read 0 cards, because macOS 26 lists no contact accounts; the reader now reads all contacts in one request when that happens.
+- **iCloud only (2026-10-06):** the first import read every account, so 853 Google cards (and 1 On My Mac card) became contacts, including a second Brad Donohue. Jack chose iCloud only. A one-off clean-up removed those 854 contacts, 2 automatic links and 235 companies no one used, and pointed 82 kept contacts at their iCloud card. The reader now reads each card on its own, with its account, rather than cards merged across accounts. Result: 293 contacts and 56 companies, matching iCloud.
 
 ## Phase 4: automatic linking (live)
 

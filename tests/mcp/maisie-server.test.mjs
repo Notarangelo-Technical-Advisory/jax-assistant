@@ -117,10 +117,9 @@ describe('import_apple_contacts', () => {
   // The exact shape the JXA script in functions/src/mcp/apple-contacts.ts prints.
   const ADDRESS_BOOK = {
     ok: true,
-    containers: 2,
     contacts: [
-      { id: 'A-BRAD', type: 'person', given: 'Brad', family: 'Donohue', org: 'IHRDC', job: 'President & CEO', emails: ['Brad@IHRDC.com'], phones: ['+1 (617) 555-0100'] },
-      { id: 'A-ORG', type: 'organization', given: '', family: '', org: 'Grace Presbyterian', job: '', emails: [], phones: [] },
+      { id: 'A-BRAD', account: 'iCloud', type: 'person', given: 'Brad', family: 'Donohue', org: 'IHRDC', job: 'President & CEO', emails: ['Brad@IHRDC.com'], phones: ['+1 (617) 555-0100'] },
+      { id: 'A-ORG', account: 'iCloud', type: 'organization', given: '', family: '', org: 'Grace Presbyterian', job: '', emails: [], phones: [] },
     ],
   };
 
@@ -157,18 +156,29 @@ describe('import_apple_contacts', () => {
     assert.deepEqual(found.contacts.map(c => [c.name, c.company, c.emails[0]]), [['Brad Donohue', 'IHRDC', 'brad@ihrdc.com']]);
   });
 
-  it('reads every contact even when macOS lists no contact accounts', async () => {
-    // On macOS 26 the account list comes back empty while the address book is
-    // not (Jack's Mac, 2026-10-06: 0 accounts, 1,217 contacts). Linux cannot run
-    // the script, so check that it falls back to one request for all contacts.
-    const script = readFileSync(`${functionsDir}src/mcp/apple-contacts.ts`, 'utf-8');
-    const fallback = script.slice(script.indexOf('if (contacts.length === 0)'));
-    assert.ok(script.includes('if (contacts.length === 0)'), 'no fallback when the accounts give no contacts');
-    assert.match(fallback, /enumerateContactsWithFetchRequestErrorUsingBlock/);
+  it('imports iCloud cards only, and counts the cards from other accounts it leaves out', async () => {
+    // Jack's Mac also syncs 976 Google cards; a Google copy of Brad came in
+    // beside his iCloud card before this rule (2026-10-06).
+    appleSays({ ok: true, contacts: [
+      ...ADDRESS_BOOK.contacts,
+      { id: 'G-BRAD', account: 'Google', type: 'person', given: 'Brad', family: 'Donohue', org: '', job: '', emails: [], phones: ['(617) 555-0100'] },
+      { id: 'G-ANN', account: 'Google', type: 'person', given: 'Ann', family: 'Other', org: '', job: '', emails: ['ann@example.org'], phones: [] },
+      { id: 'M-1', account: 'On My Mac', type: 'person', given: 'Local', family: 'Card', org: '', job: '', emails: [], phones: [] },
+    ] });
 
-    appleSays({ ...ADDRESS_BOOK, containers: 0, method: 'enumerate' });
     const preview = await call('import_apple_contacts');
+
     assert.deepEqual([preview.read, preview.created, preview.companyCards], [2, 1, 1]);
+    assert.deepEqual(preview.otherAccountsLeftOut, { Google: 2, 'On My Mac': 1 });
+  });
+
+  it('reads each card on its own, not merged across accounts, so its account is known', () => {
+    // Linux cannot run the script; check the two settings that matter. On macOS 26
+    // listing the accounts returns none, so the script must not depend on it.
+    const script = readFileSync(`${functionsDir}src/mcp/apple-contacts.ts`, 'utf-8');
+    assert.match(script, /request\.unifyResults = false;/);
+    assert.match(script, /predicateForContainerOfContactWithIdentifier/);
+    assert.doesNotMatch(script, /containersMatchingPredicateError\(null/);
   });
 
   it('explains how to grant access when macOS refuses it', async () => {

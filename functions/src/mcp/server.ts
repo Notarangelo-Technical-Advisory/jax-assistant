@@ -61,7 +61,7 @@ const CONTEXT_TOOL = {
  */
 const IMPORT_TOOL = {
   name: "import_apple_contacts",
-  description: "Copy everyone in Jack's Apple Contacts into MAISIE's contacts. One-way and additive: it never changes Apple Contacts, never removes anything from MAISIE, and never overwrites a field Jack filled in — it fills blanks and adds new email addresses and phone numbers. People are matched by an earlier import, then email, then a unique exact name. Safe to run again. Run with dry_run first and show Jack the counts; import for real only when he says so.",
+  description: "Copy everyone in Jack's iCloud contacts (Apple Contacts) into MAISIE's contacts. Cards from other accounts on the Mac, such as Google, are left out and counted. One-way and additive: it never changes Apple Contacts, never removes anything from MAISIE, and never overwrites a field Jack filled in — it fills blanks and adds new email addresses and phone numbers. People are matched by an earlier import, then email, then a unique exact name. Safe to run again. Run with dry_run first and show Jack the counts; import for real only when he says so.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -118,8 +118,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "import_apple_contacts") {
       // Defaults to a dry run, so a model cannot import by leaving the flag out.
       const dryRun = (args as {dry_run?: boolean} | undefined)?.dry_run !== false;
-      const summary = await importContacts(db, readAppleContacts(), {dryRun});
-      return {content: [{type: "text" as const, text: JSON.stringify(summary, null, 2)}]};
+      const {people, otherAccounts} = readAppleContacts();
+      const summary = await importContacts(db, people, {dryRun});
+      return {content: [{type: "text" as const, text: JSON.stringify({...summary, otherAccountsLeftOut: otherAccounts}, null, 2)}]};
     }
 
     if (!MCP_TOOL_NAMES.includes(name)) {
