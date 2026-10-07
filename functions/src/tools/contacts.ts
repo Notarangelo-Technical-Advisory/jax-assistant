@@ -386,7 +386,7 @@ export interface LinkInput {
   note?: string;
 }
 
-interface LinkDoc {
+export interface LinkDoc {
   contactId: string | null;
   companyId: string | null;
   type: LinkType;
@@ -396,6 +396,8 @@ interface LinkDoc {
   date: string | null;
   detail: string | null;
   note: string | null;
+  /** "auto" when Phase 4's automatic linking made it; absent when Jack or MAISIE did. */
+  origin?: "auto";
 }
 
 /** True for an absolute http or https URL — the only kinds the page will open. */
@@ -409,10 +411,10 @@ export function isWebUrl(value: string): boolean {
 }
 
 /** Mail's message id comes without angle brackets; accept it either way. */
-const normMessageId = (id: string): string => id.trim().replace(/^<|>$/g, "");
+export const normMessageId = (id: string): string => id.trim().replace(/^<|>$/g, "");
 
 /** Accepts YYYY-MM-DD or a full timestamp; returns null if it is not a date. */
-function normDate(value: string): string | null {
+export function normDate(value: string): string | null {
   const trimmed = value.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
   const d = new Date(trimmed);
@@ -420,7 +422,7 @@ function normDate(value: string): string | null {
 }
 
 /** What makes two links the same thing, so the same email is not linked twice. */
-function linkKey(l: Pick<LinkDoc, "type" | "sourceId" | "url" | "date" | "title">): string {
+export function linkKey(l: Pick<LinkDoc, "type" | "sourceId" | "url" | "date" | "title">): string {
   switch (l.type) {
   case "email": return `email|${l.sourceId}`;
   // Every occurrence of a recurring meeting shares one uid, so the date is part
@@ -430,14 +432,23 @@ function linkKey(l: Pick<LinkDoc, "type" | "sourceId" | "url" | "date" | "title"
   }
 }
 
-/** Newest first by the item's own date, falling back to when it was linked. */
+/**
+ * Newest first by the item's own date, falling back to when it was linked.
+ * Automatic linking gives busy contacts hundreds of emails, so this reads the
+ * LINK_LIMIT newest dated links, plus every undated one (web pages).
+ */
 async function loadLinks(
   db: admin.firestore.Firestore,
   field: "contactId" | "companyId",
   id: string
 ): Promise<Array<Record<string, unknown>>> {
-  const snap = await db.collection("contactLinks").where(field, "==", id).limit(LINK_LIMIT).get();
-  return snap.docs
+  const links = db.collection("contactLinks").where(field, "==", id);
+  const [dated, undated] = await Promise.all([
+    links.orderBy("date", "desc").limit(LINK_LIMIT).get(),
+    links.where("date", "==", null).get(),
+  ]);
+  // Ordering by date also returns undated links, last; the second query has them.
+  return [...dated.docs.filter((d) => d.data()["date"] !== null), ...undated.docs]
     .map((d) => {
       const l = d.data() as LinkDoc;
       return {
@@ -449,6 +460,7 @@ async function loadLinks(
         url: l.url ?? null,
         sourceId: l.sourceId ?? null,
         note: l.note ?? null,
+        automatic: l.origin === "auto",
         linkedAt: toIso(d.data()["createdAt"]),
       };
     })
@@ -530,6 +542,18 @@ export async function removeContactLink(
   const ref = db.collection("contactLinks").doc(linkId);
   const snap = await ref.get();
   if (!snap.exists) return {success: false, error: `Link "${linkId}" not found.`};
+  if (snap.data()?.["origin"] === "auto") {
+    // Same id as the link, so automatic linking does not put it back.
+    const batch = db.batch();
+    batch.delete(ref);
+    batch.set(db.collection("contactLinkDismissals").doc(linkId), {
+      contactId: snap.data()?.["contactId"] ?? null,
+      title: snap.data()?.["title"] ?? null,
+      removedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
+    return {success: true, removed: {type: snap.data()?.["type"], title: snap.data()?.["title"]}, notLinkedAgain: true};
+  }
   await ref.delete();
   return {success: true, removed: {type: snap.data()?.["type"], title: snap.data()?.["title"]}};
 }

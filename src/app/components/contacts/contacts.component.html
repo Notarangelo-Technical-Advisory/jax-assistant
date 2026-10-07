@@ -169,13 +169,14 @@
                 <span class="link-meta">
                   @if (linkDate(l); as d) { {{ d | date: (l.date!.length === 10 ? 'MMM d, y' : 'MMM d, y, h:mm a') }} }
                   @if (l.detail) { &middot; {{ l.detail }} }
+                  @if (l.origin === 'auto') { &middot; linked automatically }
                 </span>
                 @if (l.note) { <span class="link-note">{{ l.note }}</span> }
               </div>
               <button class="btn-link" (click)="deleteLink(l)">Remove</button>
             </div>
           } @empty {
-            <p class="empty">No links yet. Ask Maisie to link an email or meeting, or add a page or meeting below.</p>
+            <p class="empty">No links yet. Emails, and meetings on the Jax and IHRDC calendars, are linked automatically when they include this person's email address. You can also ask Maisie to link one, or add a page or meeting below.</p>
           }
           <div class="link-new">
             <select [(ngModel)]="linkForm.type">

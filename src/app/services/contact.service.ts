@@ -102,7 +102,20 @@ export class ContactService {
     await addDoc(this.linksRef, { ...link, createdAt: serverTimestamp() });
   }
 
-  async deleteLink(id: string): Promise<void> {
-    await deleteDoc(doc(this.firestore, 'contactLinks', id));
+  /**
+   * Removes a link. An automatic one is also recorded in contactLinkDismissals,
+   * under the same id, so automatic linking does not put it back.
+   */
+  async deleteLink(link: ContactLink & { id: string }): Promise<void> {
+    const ref = doc(this.firestore, 'contactLinks', link.id);
+    if (link.origin !== 'auto') return deleteDoc(ref);
+    const batch = writeBatch(this.firestore);
+    batch.delete(ref);
+    batch.set(doc(this.firestore, 'contactLinkDismissals', link.id), {
+      contactId: link.contactId,
+      title: link.title,
+      removedAt: serverTimestamp(),
+    });
+    await batch.commit();
   }
 }

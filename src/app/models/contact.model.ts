@@ -53,5 +53,7 @@ export interface ContactLink {
   /** Email: the sender. Meeting: the calendar name. */
   detail: string | null;
   note: string | null;
+  /** 'auto' when automatic linking made it (functions/src/tools/contact-autolink.ts). */
+  origin?: 'auto';
   createdAt?: { toDate(): Date } | null;
 }

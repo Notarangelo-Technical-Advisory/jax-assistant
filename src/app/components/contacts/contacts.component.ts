@@ -313,8 +313,9 @@ export class ContactsComponent implements OnDestroy {
   }
 
   async deleteLink(link: ContactLink): Promise<void> {
-    if (!link.id || !confirm(`Remove the link to "${link.title}"? The item itself is not affected.`)) return;
-    await this.contactService.deleteLink(link.id);
+    const again = link.origin === 'auto' ? ' It will not be linked automatically again.' : '';
+    if (!link.id || !confirm(`Remove the link to "${link.title}"? The item itself is not affected.${again}`)) return;
+    await this.contactService.deleteLink({ ...link, id: link.id });
   }
 
   /**

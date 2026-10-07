@@ -128,6 +128,19 @@ launchctl unload ~/Library/LaunchAgents/com.notarangelo.coding-bridge.plist
 
 Watch the queue with `cd bridge && npm run queue`.
 
+## Automatic contact linking (Mac)
+
+`functions/src/mcp/autolink-contacts.ts` runs every 15 minutes via launchd and
+ties new emails and meetings to CRM contacts. See Phase 4 in
+`projects/crm/README.md`.
+
+```bash
+cp bridge/com.notarangelo.contact-autolink.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.notarangelo.contact-autolink.plist
+```
+
+The log is `/tmp/contact-autolink.log`.
+
 Calendar writes from the cloud still flow through the older
 `pendingCalendarActions` queue, which `calendar-sync.ts` applies on its own
 schedule. `desktop-bridge.ts` understands `calendar.*` actions too, so that path
@@ -179,7 +192,7 @@ Nothing touches live data: each suite runs under its own `demo-` project.
 | `npm run test:ci` | The contacts page and `ContactService` in headless Chrome, signed in against the Auth and Firestore emulators | `src/**/*.spec.ts` |
 | `npm run test:rules` | Firestore security rules, using the same queries the web app makes | `tests/rules/` |
 | `npm run test:functions` | MAISIE's tools through `executeTool()`, the entry point shared by the chat function and the MCP server, and how the Headlines tab gathers stories | `tests/functions/` |
-| `npm run test:mcp` | The `maisie` MCP server started as VS Code starts it, driven by the official MCP client | `tests/mcp/` |
+| `npm run test:mcp` | The `maisie` MCP server started as VS Code starts it, driven by the official MCP client, and the automatic contact linking job run with Mail and Calendar output from fixture files | `tests/mcp/` |
 | `npm run test:all` | All four, in that order | |
 
 `npm test` runs the browser tests in watch mode. The suites need the Firebase

@@ -9,6 +9,7 @@
     "logs": "firebase functions:log",
     "mcp": "tsx src/mcp/server.ts",
     "import:contacts": "tsx src/mcp/import-contacts.ts",
+    "autolink:contacts": "tsx src/mcp/autolink-contacts.ts",
     "typecheck:mcp": "tsc -p tsconfig.mcp.json"
   },
   "engines": {

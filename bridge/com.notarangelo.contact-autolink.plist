@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Automatic contact linking (CRM Phase 4): every 15 minutes, ties new emails
+  and meetings to the contacts taking part in them. The job is
+  functions/src/mcp/autolink-contacts.ts; the rules are in
+  functions/src/tools/contact-autolink.ts.
+
+  Install:
+    cp bridge/com.notarangelo.contact-autolink.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.notarangelo.contact-autolink.plist
+
+  PERMISSIONS: it reads Mail through Automation and Calendars through EventKit,
+  the same grants the desktop bridge and calendar sync already use. If the log
+  shows "osascript failed" or "Not allowed to read Calendars", grant them under
+  System Settings > Privacy & Security, then run
+  `cd functions && npm run autolink:contacts` once from a terminal to confirm.
+
+  The first run reads 30 days of Mail (about 90 seconds); later runs read the
+  last 15 minutes plus an hour of overlap (about 5 seconds). launchd does not
+  start a run while the previous one is still going.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.notarangelo.contact-autolink</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/npx</string>
+        <string>tsx</string>
+        <string>/Users/jacknotarangelo/Documents/GitHub/jax-assistant/functions/src/mcp/autolink-contacts.ts</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jacknotarangelo/Documents/GitHub/jax-assistant/functions</string>
+
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/contact-autolink.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/contact-autolink.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>NODE_TLS_REJECT_UNAUTHORIZED</key>
+        <string>0</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

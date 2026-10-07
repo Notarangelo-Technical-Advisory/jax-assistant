@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { Firestore } from '@angular/fire/firestore';
 import { ContactsComponent } from './contacts.component';
@@ -126,6 +126,7 @@ describe('ContactsComponent', () => {
 describe('ContactsComponent links', () => {
   let emulator: EmulatorApp;
   let page: ContactsComponent;
+  let fixture: ComponentFixture<ContactsComponent>;
 
   beforeEach(async () => {
     await clearEmulators();
@@ -135,7 +136,7 @@ describe('ContactsComponent links', () => {
       imports: [ContactsComponent],
       providers: [provideRouter([]), { provide: Firestore, useValue: emulator.firestore }],
     }).compileComponents();
-    const fixture = TestBed.createComponent(ContactsComponent);
+    fixture = TestBed.createComponent(ContactsComponent);
     fixture.detectChanges();
     page = fixture.componentInstance;
 
@@ -201,6 +202,35 @@ describe('ContactsComponent links', () => {
 
     await page.deleteContact();
     expect((await listDocuments('contactLinks')).length).toBe(0);
+  });
+
+  it('marks an automatic link, and removing it records that it should not come back', async () => {
+    const confirm = spyOn(window, 'confirm').and.returnValue(true);
+    // As the Mac job writes it (functions/src/tools/contact-autolink.ts).
+    await TestBed.inject(ContactService).addLink({
+      contactId: page.selectedContact()!.id!, companyId: null, type: 'email', title: 'Friday demo agenda',
+      sourceId: 'abc@ihrdc.com', url: null, date: '2020-03-06T14:05:00.000Z', detail: 'Brad Donohue', note: null, origin: 'auto',
+    });
+    await waitFor(() => page.links().length === 1);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.link-meta').textContent).toContain('linked automatically');
+
+    const link = page.links()[0];
+    await page.deleteLink(link);
+    await waitFor(() => page.links().length === 0);
+
+    expect(confirm.calls.mostRecent().args[0]).toContain('will not be linked automatically again');
+    expect((await listDocuments('contactLinkDismissals')).map((d) => d['id'])).toEqual([link.id]);
+  });
+
+  it('removing a link added by hand records nothing', async () => {
+    spyOn(window, 'confirm').and.returnValue(true);
+    await addLink({ type: 'url', title: 'Site', url: 'https://ihrdc.com' });
+    await waitFor(() => page.links().length === 1);
+
+    await page.deleteLink(page.links()[0]);
+    await waitFor(() => page.links().length === 0);
+    expect((await listDocuments('contactLinkDismissals')).length).toBe(0);
   });
 });
 

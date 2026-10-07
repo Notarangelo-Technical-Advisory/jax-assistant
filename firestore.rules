@@ -114,6 +114,12 @@ service cloud.firestore {
       allow read, create, update, delete: if isAuthenticated();
     }
 
+    // Automatic links Jack removed, keyed by the link's id, so automatic linking
+    // does not put them back. Written by the contacts page and the Admin SDK.
+    match /contactLinkDismissals/{linkId} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

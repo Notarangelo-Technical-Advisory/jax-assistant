@@ -289,7 +289,7 @@ export const buildTools = (
     },
     {
       name: "get_contact",
-      description: "Get one contact's full record, their notes and their linked emails, meetings and web pages, newest first.",
+      description: "Get one contact's full record, their notes and their linked emails, meetings and web pages: the 100 newest dated links plus every web page. Emails and meetings on Jack's Jax and IHRDC calendars are linked automatically (automatic: true).",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -375,7 +375,7 @@ export const buildTools = (
     },
     {
       name: "remove_contact_link",
-      description: "Remove one link from a contact or company. Only the link is removed; the email, meeting or page itself is untouched.",
+      description: "Remove one link from a contact or company. Only the link is removed; the email, meeting or page itself is untouched. A link made by automatic linking (automatic: true in get_contact) is not linked again.",
       input_schema: {
         type: "object" as const,
         properties: {

@@ -125,6 +125,20 @@ describe('contactLinks', () => {
   });
 });
 
+describe('contactLinkDismissals', () => {
+  it('Jack can record that he removed an automatic link, and read it back', async () => {
+    const jack = db('jack');
+    await assertSucceeds(setDoc(doc(jack, 'contactLinkDismissals/auto_abc'), { contactId: 'brad', title: 'Friday demo agenda', removedAt: NOW }));
+    await assertSucceeds(getDoc(doc(jack, 'contactLinkDismissals/auto_abc')));
+  });
+
+  it('a visitor who is not signed in cannot read or record dismissals', async () => {
+    const visitor = db(null);
+    await assertFails(setDoc(doc(visitor, 'contactLinkDismissals/auto_abc'), { contactId: 'brad' }));
+    await assertFails(getDoc(doc(visitor, 'contactLinkDismissals/auto_abc')));
+  });
+});
+
 describe('everything else', () => {
   it('a collection with no rule stays closed, even to Jack', async () => {
     await assertFails(getDocs(collection(db('jack'), 'addressBookExport')));
