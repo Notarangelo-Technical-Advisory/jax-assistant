@@ -42,18 +42,21 @@
         <!-- Contact form -->
         <section class="card">
           <h2>{{ selection()?.kind === 'new' ? 'New contact' : 'Edit contact' }}</h2>
+          @if (iCloudLocked()) {
+            <p class="icloud-note">Name, title, company, emails and phones come from iCloud. Change them in Contacts on your Mac or phone, and MAISIE updates the next morning. Tags are kept only in MAISIE.</p>
+          }
           <div class="grid">
-            <label>First name <input [(ngModel)]="form.firstName" /></label>
-            <label>Last name <input [(ngModel)]="form.lastName" /></label>
-            <label>Title <input [(ngModel)]="form.title" /></label>
+            <label>First name <input [(ngModel)]="form.firstName" [disabled]="iCloudLocked()" /></label>
+            <label>Last name <input [(ngModel)]="form.lastName" [disabled]="iCloudLocked()" /></label>
+            <label>Title <input [(ngModel)]="form.title" [disabled]="iCloudLocked()" /></label>
             <label>Company
-              <input [(ngModel)]="form.company" list="company-names" />
+              <input [(ngModel)]="form.company" list="company-names" [disabled]="iCloudLocked()" />
               <datalist id="company-names">
                 @for (co of companies(); track co.id) { <option [value]="co.name"></option> }
               </datalist>
             </label>
-            <label class="wide">Emails <input [(ngModel)]="form.emails" placeholder="Separate with commas" /></label>
-            <label class="wide">Phones <input [(ngModel)]="form.phones" placeholder="Separate with commas" /></label>
+            <label class="wide">Emails <input [(ngModel)]="form.emails" placeholder="Separate with commas" [disabled]="iCloudLocked()" /></label>
+            <label class="wide">Phones <input [(ngModel)]="form.phones" placeholder="Separate with commas" [disabled]="iCloudLocked()" /></label>
             <label class="wide">Tags <input [(ngModel)]="form.tags" placeholder="client, church, prospect" /></label>
           </div>
           <div class="actions">
@@ -74,10 +77,19 @@
                   <a class="link" (click)="selectCompany(c.companyId)">{{ companyName(c.companyId) }}</a>
                 }
               </p>
+              @if (fromICloud(c)) {
+                <p class="source">From iCloud</p>
+              } @else if (c.leftICloudAt) {
+                <p class="source source-gone">No longer in iCloud. Kept here for its notes and links.</p>
+              }
             </div>
             <div class="actions">
-              <button class="btn-secondary" (click)="startEdit()">Edit</button>
-              <button class="btn-danger" (click)="deleteContact()">Delete</button>
+              <button class="btn-secondary" (click)="startEdit()">{{ fromICloud(c) ? 'Edit tags' : 'Edit' }}</button>
+              @if (fromICloud(c)) {
+                <span class="delete-hint">Delete it in iCloud</span>
+              } @else {
+                <button class="btn-danger" (click)="deleteContact()">Delete</button>
+              }
             </div>
           </div>
           <dl>

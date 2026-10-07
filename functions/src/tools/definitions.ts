@@ -311,7 +311,7 @@ export const buildTools = (
     },
     {
       name: "save_contact",
-      description: "Create a contact, or update one when contact_id is given. On update, only the fields you pass change; list fields (emails, phones, tags) are replaced, so pass the full list. Search with find_contacts first to avoid duplicates — creating a contact whose email already exists is refused.",
+      description: "Create a contact, or update one when contact_id is given. On update, only the fields you pass change; list fields (emails, phones, tags) are replaced, so pass the full list. A contact from iCloud (fromICloud: true) takes only tags here: its name, title, company, emails and phones are changed in iCloud, and MAISIE picks them up in the morning import. Search with find_contacts first to avoid duplicates — creating a contact whose email already exists is refused.",
       input_schema: {
         type: "object" as const,
         properties: {

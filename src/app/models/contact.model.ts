@@ -7,8 +7,13 @@ export interface Contact {
   title: string | null;
   companyId: string | null;
   tags: string[];
-  /** Set by the Apple Contacts import; matches the card on the next import. */
+  /**
+   * The iCloud card this contact mirrors, set by the import. iCloud owns its
+   * name, title, company, emails and phones; the page edits only its tags.
+   */
   appleContactId?: string | null;
+  /** Set when its iCloud card was deleted and the contact kept for its notes or links. */
+  leftICloudAt?: { toDate(): Date } | null;
   createdAt?: Date;
   updatedAt?: Date;
 }

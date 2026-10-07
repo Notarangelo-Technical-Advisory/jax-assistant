@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Daily iCloud contacts import: every morning at 6:00, brings changes Jack
+  made to his iCloud contacts into MAISIE. iCloud is the master copy of each
+  person's details, and a contact whose iCloud card is gone is removed unless
+  it has notes or hand-made links. The job is functions/src/mcp/import-contacts.ts;
+  the rules are in functions/src/tools/contacts-import.ts.
+
+  Install:
+    cp bridge/com.notarangelo.contacts-import.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.notarangelo.contacts-import.plist
+
+  If the Mac is asleep at 6:00, launchd runs the import when it wakes.
+
+  If more contacts than expected have left iCloud, nothing is removed and the
+  run ends with an error in the log and in metadata/contactImport. Check with
+  `cd functions && npm run import:contacts -- --dry-run`, then run it with
+  `-- --allow-many-removals` if the removals are right.
+
+  PERMISSIONS: reads Contacts, like the import from VS Code. If the log shows
+  "not allowed to read Contacts", allow it under System Settings > Privacy &
+  Security > Contacts, then run `npm run import:contacts` once from a terminal.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.notarangelo.contacts-import</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/npx</string>
+        <string>tsx</string>
+        <string>/Users/jacknotarangelo/Documents/GitHub/jax-assistant/functions/src/mcp/import-contacts.ts</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jacknotarangelo/Documents/GitHub/jax-assistant/functions</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/contacts-import.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/contacts-import.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>NODE_TLS_REJECT_UNAUTHORIZED</key>
+        <string>0</string>
+    </dict>
+</dict>
+</plist>

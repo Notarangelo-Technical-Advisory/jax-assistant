@@ -110,6 +110,11 @@ $border: #334155;
 }
 
 .sub { margin: 0.25rem 0 0; color: $text-secondary; font-size: 0.88rem; }
+.source { margin: 0.25rem 0 0; color: $text-secondary; font-size: 0.75rem; }
+.source-gone { color: $danger; }
+.delete-hint { align-self: center; color: $text-secondary; font-size: 0.8rem; }
+.icloud-note { margin: 0 0 0.75rem; padding: 0.6rem 0.8rem; border-radius: 6px; background: rgba($accent, 0.12); color: $text-secondary; font-size: 0.85rem; }
+input:disabled { opacity: 0.55; cursor: not-allowed; }
 
 a, .link { color: $accent; cursor: pointer; text-decoration: none; }
 a:hover, .link:hover { text-decoration: underline; }

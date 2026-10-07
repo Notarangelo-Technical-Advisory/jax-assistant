@@ -1,6 +1,6 @@
 import { before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { all, card, importApple, read, reset, setUp, tool } from './helpers.mjs';
+import { all, card, importApple, read, reset, seed, setUp, tool } from './helpers.mjs';
 
 before(setUp);
 beforeEach(reset);
@@ -61,19 +61,19 @@ describe('running it again', () => {
     assert.equal((await all('companies')).length, 2);
   });
 
-  it('picks up a new email added in Apple Contacts, matching by the earlier import even with no shared email', async () => {
+  it('brings in an email changed in iCloud, matching by the earlier import even with no shared email', async () => {
     await importApple([BRAD]);
 
     const s = await importApple([{ ...BRAD, emails: ['brad.donohue@gmail.com'] }]);
 
     assert.equal(s.updated, 1);
     const [brad] = await all('contacts');
-    assert.deepEqual(brad.emails, ['brad@ihrdc.com', 'brad.donohue@gmail.com']);
+    assert.deepEqual(brad.emails, ['brad.donohue@gmail.com']);
   });
 });
 
 describe("merging into Jack's existing contacts", () => {
-  it("matches by email, fills blanks, adds new numbers, and never overwrites Jack's edits or touches notes and links", async () => {
+  it("matches a contact made in MAISIE by email, takes iCloud's details, and keeps its tags, notes and links", async () => {
     const { contactId } = await tool('save_contact', { first_name: 'Brad', last_name: 'Donohue', emails: ['brad@ihrdc.com'], title: 'CEO', tags: ['client'] });
     await tool('add_contact_note', { contact_id: contactId, body: 'Prefers Teams to email.' });
     await tool('link_to_contact', { contact_id: contactId, type: 'url', title: 'Site', url: 'https://ihrdc.com' });
@@ -82,11 +82,11 @@ describe("merging into Jack's existing contacts", () => {
 
     assert.deepEqual([s.created, s.updated], [0, 1]);
     const brad = await read(`contacts/${contactId}`);
-    assert.equal(brad.title, 'CEO', "Jack's title is kept");
-    assert.deepEqual(brad.tags, ['client']);
+    assert.equal(brad.title, 'President & CEO', "iCloud's title replaces MAISIE's");
+    assert.deepEqual(brad.tags, ['client'], 'tags are kept only in MAISIE');
     assert.deepEqual(brad.emails, ['brad@ihrdc.com', 'brad.donohue@gmail.com']);
     assert.deepEqual(brad.phones, ['+1 (617) 555-0100']);
-    assert.equal((await read(`companies/${brad.companyId}`)).name, 'IHRDC', 'a blank company is filled');
+    assert.equal((await read(`companies/${brad.companyId}`)).name, 'IHRDC');
     assert.equal(brad.appleContactId, 'A-BRAD');
     const full = await tool('get_contact', { contact_id: contactId });
     assert.equal(full.notes.length, 1);
@@ -124,11 +124,9 @@ describe("merging into Jack's existing contacts", () => {
   });
 
   it('treats the same phone number written differently as one number', async () => {
-    const { contactId } = await tool('save_contact', { first_name: 'Brad', last_name: 'Donohue', emails: ['brad@ihrdc.com'], phones: ['617.555.0100'] });
+    await importApple([{ ...BRAD, phones: ['+1 (617) 555-0100', '617.555.0100', '(617) 555-0101'] }]);
 
-    await importApple([{ ...BRAD, phones: ['+1 (617) 555-0100', '(617) 555-0101'] }]);
-
-    assert.deepEqual((await read(`contacts/${contactId}`)).phones, ['617.555.0100', '(617) 555-0101']);
+    assert.deepEqual((await all('contacts'))[0].phones, ['+1 (617) 555-0100', '(617) 555-0101']);
   });
 
   it('merges two Apple cards for the same person into one contact', async () => {
@@ -148,5 +146,138 @@ describe("merging into Jack's existing contacts", () => {
     const s = await importApple([BRAD]);
     assert.equal(s.companiesCreated, 0);
     assert.equal((await all('companies')).length, 1);
+  });
+});
+
+describe('iCloud is the master copy', () => {
+  it('a correction in iCloud replaces the old name, title, company and phone', async () => {
+    await importApple([BRAD]);
+
+    await importApple([{ ...BRAD, firstName: 'Bradley', jobTitle: 'Chair', organization: 'IHRDC Inc', phones: ['617-555-0199'] }]);
+
+    const [brad] = await all('contacts');
+    assert.deepEqual([brad.firstName, brad.title, brad.phones], ['Bradley', 'Chair', ['617-555-0199']]);
+    assert.equal((await read(`companies/${brad.companyId}`)).name, 'IHRDC Inc');
+  });
+
+  it('a field cleared in iCloud is cleared in MAISIE', async () => {
+    await importApple([BRAD]);
+
+    await importApple([{ ...BRAD, jobTitle: '', organization: '', phones: [] }]);
+
+    const [brad] = await all('contacts');
+    assert.deepEqual([brad.title, brad.companyId, brad.phones], [null, null, []]);
+  });
+
+  it('MAISIE changes only the tags of a contact from iCloud', async () => {
+    await importApple([BRAD]);
+    const [brad] = await all('contacts');
+
+    const refused = await tool('save_contact', { contact_id: brad.id, title: 'CEO' });
+    assert.equal(refused.success, false);
+    assert.match(refused.error, /come from iCloud/);
+    assert.equal(refused.fromICloud, true);
+    assert.equal((await tool('save_contact', { contact_id: brad.id, company: 'Acme' })).success, false);
+
+    assert.equal((await tool('save_contact', { contact_id: brad.id, tags: ['client'] })).success, true);
+    const after = await read(`contacts/${brad.id}`);
+    assert.deepEqual([after.title, after.tags], ['President & CEO', ['client']]);
+    assert.equal((await tool('find_contacts', { query: 'donohue' })).contacts[0].fromICloud, true);
+  });
+});
+
+describe('cards deleted in iCloud', () => {
+  it('removes the contact and its automatic links', async () => {
+    await importApple([BRAD, TOM]);
+    const tom = (await all('contacts')).find(c => c.lastName === 'Ruth');
+    await seed('contactLinks/auto_tom', { contactId: tom.id, companyId: null, type: 'email', title: 'Sermon notes', sourceId: 'm1@gracepres.org', url: null, date: '2020-03-01', detail: null, note: null, origin: 'auto' });
+
+    const s = await importApple([BRAD]);
+
+    assert.deepEqual([s.removed, s.keptNotInICloud, s.removalsHeld], [1, 0, 0]);
+    assert.deepEqual(s.examples.removed, ['Tom Ruth']);
+    assert.deepEqual((await all('contacts')).map(c => c.firstName), ['Brad']);
+    assert.equal(await read('contactLinks/auto_tom'), undefined);
+  });
+
+  it('keeps a contact with a note as a MAISIE contact, marked no longer in iCloud', async () => {
+    await importApple([BRAD, TOM]);
+    const tom = (await all('contacts')).find(c => c.lastName === 'Ruth');
+    await tool('add_contact_note', { contact_id: tom.id, body: 'Officer meeting on Wednesdays.' });
+
+    const s = await importApple([BRAD]);
+
+    assert.deepEqual([s.removed, s.keptNotInICloud], [0, 1]);
+    const kept = await read(`contacts/${tom.id}`);
+    assert.equal(kept.appleContactId, null);
+    assert.ok(kept.leftICloudAt, 'marked as no longer in iCloud');
+    assert.equal((await tool('get_contact', { contact_id: tom.id })).notes.length, 1);
+    assert.equal((await tool('save_contact', { contact_id: tom.id, title: 'Pastor' })).success, true, 'now MAISIE owns its details');
+  });
+
+  it('keeps a contact with a hand-made link, but not one with only automatic links', async () => {
+    await importApple([BRAD, TOM]);
+    const tom = (await all('contacts')).find(c => c.lastName === 'Ruth');
+    await tool('link_to_contact', { contact_id: tom.id, type: 'url', title: 'Grace Pres', url: 'https://gracepres.org' });
+
+    const s = await importApple([BRAD]);
+
+    assert.deepEqual([s.removed, s.keptNotInICloud], [0, 1]);
+  });
+
+  it('when the person comes back to iCloud, ties them to the new card and clears the mark', async () => {
+    await importApple([BRAD, TOM]);
+    const tom = (await all('contacts')).find(c => c.lastName === 'Ruth');
+    await tool('add_contact_note', { contact_id: tom.id, body: 'Officer meeting on Wednesdays.' });
+    await importApple([BRAD]);
+
+    await importApple([BRAD, { ...TOM, appleId: 'A-TOM-NEW' }]);
+
+    const back = await read(`contacts/${tom.id}`);
+    assert.equal(back.appleContactId, 'A-TOM-NEW');
+    assert.equal(back.leftICloudAt, null);
+    assert.equal((await all('contacts')).length, 2);
+  });
+
+  it('never removes a contact made in MAISIE', async () => {
+    await importApple([BRAD]);
+    await tool('save_contact', { first_name: 'Amy', last_name: 'Lee', emails: ['amy@example.org'] });
+
+    const s = await importApple([BRAD]);
+
+    assert.equal(s.removed, 0);
+    assert.equal((await all('contacts')).length, 2);
+  });
+
+  it('a dry run reports removals and removes nothing', async () => {
+    await importApple([BRAD, TOM]);
+
+    const s = await importApple([BRAD], { dryRun: true });
+
+    assert.deepEqual([s.removed, s.examples.removed], [1, ['Tom Ruth']]);
+    assert.equal((await all('contacts')).length, 2);
+  });
+
+  it('holds removals when more than expected would go, and makes them when Jack allows it', async () => {
+    const people = Array.from({ length: 20 }, (_, i) =>
+      card({ appleId: `A-${i}`, firstName: 'Person', lastName: String(i), emails: [`p${i}@example.com`] }));
+    await importApple(people);
+
+    const held = await importApple(people.slice(0, 5));
+    assert.deepEqual([held.removalsHeld, held.removed], [15, 0]);
+    assert.equal((await all('contacts')).length, 20);
+
+    const allowed = await importApple(people.slice(0, 5), { allowManyRemovals: true });
+    assert.deepEqual([allowed.removalsHeld, allowed.removed], [0, 15]);
+    assert.equal((await all('contacts')).length, 5);
+  });
+
+  it('removes nothing when the read finds no cards at all', async () => {
+    await importApple([BRAD, TOM]);
+
+    const s = await importApple([]);
+
+    assert.deepEqual([s.removalsHeld, s.removed], [2, 0]);
+    assert.equal((await all('contacts')).length, 2);
   });
 });

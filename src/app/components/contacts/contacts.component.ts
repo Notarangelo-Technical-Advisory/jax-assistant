@@ -84,6 +84,14 @@ export class ContactsComponent implements OnDestroy {
     return id ? this.companyById().get(id)?.name ?? '' : '';
   }
 
+  /** True when iCloud owns this contact's details (see Contact.appleContactId). */
+  fromICloud(c: Contact | null): boolean {
+    return !!c?.appleContactId;
+  }
+
+  /** The contact being edited comes from iCloud, so only its tags can change. */
+  iCloudLocked = computed(() => this.editing() && this.fromICloud(this.selectedContact()));
+
   fullName(c: Contact): string {
     return `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || '(no name)';
   }
@@ -188,6 +196,17 @@ export class ContactsComponent implements OnDestroy {
 
   async saveContact(): Promise<void> {
     const f = this.form;
+    if (this.iCloudLocked()) {
+      const c = this.selectedContact()!;
+      this.saving.set(true);
+      try {
+        await this.contactService.updateContact(c.id!, { tags: splitList(f.tags) });
+        this.editing.set(false);
+      } finally {
+        this.saving.set(false);
+      }
+      return;
+    }
     if (!f.firstName.trim() && !f.lastName.trim()) {
       this.error.set('Enter at least a first or last name.');
       return;
@@ -252,7 +271,8 @@ export class ContactsComponent implements OnDestroy {
 
   async deleteContact(): Promise<void> {
     const c = this.selectedContact();
-    if (!c?.id) return;
+    // The next morning's import would bring it back; it is deleted in iCloud instead.
+    if (!c?.id || this.fromICloud(c)) return;
     if (!confirm(`Delete ${this.fullName(c)} and all of their notes? This cannot be undone.`)) return;
     await this.contactService.deleteContact(c.id);
     this.selection.set(null);

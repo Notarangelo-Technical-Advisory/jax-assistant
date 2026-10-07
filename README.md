@@ -97,9 +97,16 @@ Run either server by hand to debug: `cd functions && npm run mcp`, or
 ### Importing Apple Contacts
 
 Copies everyone in Jack's iCloud contacts into MAISIE's contacts; cards from
-other accounts on the Mac, such as Google, are left out. It is one-way and only
-adds: Apple Contacts is never changed, nothing in MAISIE is removed, and a field
-Jack has filled in is never overwritten. Safe to run again at any time.
+other accounts on the Mac, such as Google, are left out. Apple Contacts is never
+changed. iCloud is the master copy of each person's name, title, company, emails
+and phones, and a contact whose iCloud card is gone is removed unless it has
+notes or hand-made links. See Phase 3 in `projects/crm/README.md`. It runs every
+morning at 6:00:
+
+```bash
+cp bridge/com.notarangelo.contacts-import.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.notarangelo.contacts-import.plist
+```
 
 - **From VS Code:** ask "import my Apple contacts". The `import_apple_contacts`
   tool does a dry run first and shows the counts; it imports only when told to.

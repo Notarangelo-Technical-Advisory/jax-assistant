@@ -27,6 +27,10 @@ export interface ContactDoc {
   title: string | null;
   companyId: string | null;
   tags: string[];
+  /** The iCloud card this contact mirrors; set by the import. iCloud owns its details. */
+  appleContactId?: string | null;
+  /** Set when its iCloud card was deleted and the contact kept for its notes or links. */
+  leftICloudAt?: unknown;
 }
 
 export interface CompanyDoc {
@@ -103,6 +107,8 @@ function summarise(id: string, c: ContactDoc, companies: Map<string, CompanyDoc>
     emails: c.emails ?? [],
     phones: c.phones ?? [],
     tags: c.tags ?? [],
+    fromICloud: !!c.appleContactId,
+    ...(c.leftICloudAt ? {noLongerInICloud: true} : {}),
   };
 }
 
@@ -247,6 +253,18 @@ export async function saveContact(
     const ref = db.collection("contacts").doc(input.contact_id);
     const snap = await ref.get();
     if (!snap.exists) return {success: false, error: `Contact "${input.contact_id}" not found.`};
+    // iCloud is the master copy of an imported contact's details; only tags are MAISIE's.
+    const fromICloud = !!snap.data()?.["appleContactId"];
+    const icloudFields = Object.keys(fields).filter((k) => k !== "tags").concat(input.company !== undefined ? ["company"] : []);
+    if (fromICloud && icloudFields.length > 0) {
+      return {
+        success: false,
+        error: `${fullName(snap.data() as ContactDoc)}'s name, title, company, emails and phones come from iCloud. ` +
+          "Change them in Contacts on Jack's Mac or phone; MAISIE picks the change up in the morning import. " +
+          "Only tags can be changed here.",
+        fromICloud: true,
+      };
+    }
     if (Object.keys(fields).length === 0 && input.company === undefined) {
       return {success: false, error: "Nothing to update — pass at least one field."};
     }

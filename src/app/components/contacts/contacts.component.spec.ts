@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 import { Firestore } from '@angular/fire/firestore';
 import { ContactsComponent } from './contacts.component';
 import { ContactService } from '../../services/contact.service';
+import { Contact } from '../../models/contact.model';
 import {
   EmulatorApp, clearEmulators, createEmulatorApp, listDocuments, signInAsJack, waitFor
 } from '../../../testing/emulator-testing';
@@ -231,6 +232,85 @@ describe('ContactsComponent links', () => {
     await page.deleteLink(page.links()[0]);
     await waitFor(() => page.links().length === 0);
     expect((await listDocuments('contactLinkDismissals')).length).toBe(0);
+  });
+});
+
+describe('ContactsComponent with iCloud contacts', () => {
+  let emulator: EmulatorApp;
+  let page: ContactsComponent;
+  let fixture: ComponentFixture<ContactsComponent>;
+  let service: ContactService;
+
+  beforeEach(async () => {
+    await clearEmulators();
+    emulator = createEmulatorApp();
+    await signInAsJack(emulator);
+    await TestBed.configureTestingModule({
+      imports: [ContactsComponent],
+      providers: [provideRouter([]), { provide: Firestore, useValue: emulator.firestore }],
+    }).compileComponents();
+    fixture = TestBed.createComponent(ContactsComponent);
+    fixture.detectChanges();
+    page = fixture.componentInstance;
+    service = TestBed.inject(ContactService);
+  });
+
+  afterEach(() => emulator.dispose());
+
+  /** Adds a contact as the import writes it, and opens it. */
+  async function open(fields: Partial<Contact>): Promise<Contact> {
+    const id = await service.addContact({
+      firstName: 'Brad', lastName: 'Donohue', emails: ['brad@ihrdc.com'], phones: [], title: 'President & CEO',
+      companyId: null, tags: [], ...fields,
+    });
+    await waitFor(() => page.contacts().some((c) => c.id === id));
+    const c = page.contacts().find((x) => x.id === id)!;
+    page.selectContact(c);
+    fixture.detectChanges();
+    return c;
+  }
+
+  const text = (): string => fixture.nativeElement.textContent;
+
+  it('shows iCloud details read-only, saves only the tags, and sends deleting to iCloud', async () => {
+    const brad = await open({ appleContactId: 'A-BRAD' });
+    expect(text()).toContain('From iCloud');
+    expect(text()).toContain('Delete it in iCloud');
+    expect(fixture.nativeElement.querySelector('.btn-danger')).toBeNull();
+
+    page.startEdit();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(page.iCloudLocked()).toBeTrue();
+    expect(text()).toContain('come from iCloud');
+    expect(fixture.nativeElement.querySelector('input:disabled')).not.toBeNull();
+
+    page.form = { ...page.form, title: 'CEO', tags: 'client' };
+    await page.saveContact();
+    await waitFor(() => (page.selectedContact()?.tags ?? []).length === 1);
+    expect(page.selectedContact()!.title).toBe('President & CEO');
+
+    const confirm = spyOn(window, 'confirm').and.returnValue(true);
+    await page.deleteContact();
+    expect(confirm).not.toHaveBeenCalled();
+    expect((await listDocuments('contacts')).map((d) => d['id'])).toEqual([brad.id]);
+  });
+
+  it('a contact no longer in iCloud says so, and can be edited and deleted here', async () => {
+    // Stored as a Firestore timestamp, as the import writes it.
+    await open({ appleContactId: null, leftICloudAt: new Date('2020-03-06') as never });
+    expect(text()).toContain('No longer in iCloud');
+
+    page.startEdit();
+    expect(page.iCloudLocked()).toBeFalse();
+    page.form = { ...page.form, title: 'Chair' };
+    await page.saveContact();
+    await waitFor(() => page.selectedContact()?.title === 'Chair');
+
+    spyOn(window, 'confirm').and.returnValue(true);
+    await page.deleteContact();
+    expect((await listDocuments('contacts')).length).toBe(0);
   });
 });
 

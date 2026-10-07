@@ -61,11 +61,12 @@ const CONTEXT_TOOL = {
  */
 const IMPORT_TOOL = {
   name: "import_apple_contacts",
-  description: "Copy everyone in Jack's iCloud contacts (Apple Contacts) into MAISIE's contacts. Cards from other accounts on the Mac, such as Google, are left out and counted. One-way and additive: it never changes Apple Contacts, never removes anything from MAISIE, and never overwrites a field Jack filled in — it fills blanks and adds new email addresses and phone numbers. People are matched by an earlier import, then email, then a unique exact name. Safe to run again. Run with dry_run first and show Jack the counts; import for real only when he says so.",
+  description: "Bring Jack's iCloud contacts (Apple Contacts) into MAISIE's contacts. iCloud is the master copy: for a contact tied to an iCloud card, its name, title, company, emails and phones are replaced with iCloud's; tags, notes and links are never touched. A contact whose iCloud card is gone is removed, unless it has notes or hand-made links, when it is kept and marked as no longer in iCloud. If more removals than expected are found, none are made and removalsHeld says how many; run again with allow_many_removals only when Jack confirms. Cards from other accounts, such as Google, are left out and counted. It never changes Apple Contacts. It also runs every morning on Jack's Mac. Run with dry_run first and show Jack the counts; import for real only when he says so.",
   inputSchema: {
     type: "object" as const,
     properties: {
       dry_run: {type: "boolean", description: "Report what would change without writing anything. Defaults to true."},
+      allow_many_removals: {type: "boolean", description: "Make removals even when more than expected were found. Only when Jack has seen the dry run and confirmed."},
     },
     required: [],
   },
@@ -117,9 +118,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === "import_apple_contacts") {
       // Defaults to a dry run, so a model cannot import by leaving the flag out.
-      const dryRun = (args as {dry_run?: boolean} | undefined)?.dry_run !== false;
+      const input = args as {dry_run?: boolean; allow_many_removals?: boolean} | undefined;
+      const dryRun = input?.dry_run !== false;
       const {people, otherAccounts} = readAppleContacts();
-      const summary = await importContacts(db, people, {dryRun});
+      const summary = await importContacts(db, people, {dryRun, allowManyRemovals: input?.allow_many_removals === true});
       return {content: [{type: "text" as const, text: JSON.stringify({...summary, otherAccountsLeftOut: otherAccounts}, null, 2)}]};
     }
 
