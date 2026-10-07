@@ -116,58 +116,12 @@ Memory + context files + decision log = your assistant gets smarter over time wi
 - Add reference files to `references/` as needed
 - Build skills in `.claude/skills/` when you notice recurring requests
 
-## Deployment Policy
+## Software Development
 
-**All deployments must go through GitHub Actions. Never deploy locally.**
+When you change the app's code, follow these rules. Every code change ships with automated tests, and every deploy goes through GitHub Actions.
 
-The workflow at `.github/workflows/deploy-and-release.yml` triggers automatically on every push to `main`. It builds the Angular app, deploys hosting, Firestore rules/indexes, and Cloud Functions to Firebase project `jax-assistant-cb47f`.
-
-**Never run `firebase deploy` manually.** Do not run `firebase login --reauth` or attempt interactive authentication. All credentials are handled by the CI workflow via service account secrets.
-
-### To trigger a deployment
-
-```bash
-git add <files>
-git commit -m "feat: description of change"
-git push origin main
-```
-
-Monitor at: `https://github.com/Notarangelo-Technical-Advisory/jax-assistant/actions`
-
-### Commit message conventions (controls version bump)
-
-| Prefix | Version bump |
-|--------|-------------|
-| `feat:` | Minor (0.x.0) |
-| `fix:` | Patch (0.0.x) |
-| `BREAKING CHANGE` | Major (x.0.0) |
-| `docs:`, `chore:`, `refactor:` | No bump |
-
-## Testing Policy
-
-**Every code change ships with automated tests.** Jack's standing instruction
-(2026-10-06): keep adding tests with each change, following the testing trophy
-used in Solomon. A change without tests is not finished.
-
-- **Which layer:** most tests are integration tests on the Firebase emulators
-  with the real security rules. Add to whichever layers the change touches:
-  - New or changed Firestore collection or rule → `tests/rules/`
-  - New or changed MAISIE tool (`functions/src/tools/`) → `tests/functions/`
-  - Anything a VS Code client sees from the `maisie` server → `tests/mcp/`
-  - New or changed web page or service → a `*.spec.ts` next to it, run against
-    the emulators (`src/testing/emulator-testing.ts`)
-- **Test what Jack would notice:** name tests in plain words for the behaviour
-  ("refuses a second contact with the same email"), not the function. Cover the
-  refusals and safety checks, not only the success path.
-- **No dependence on today's date:** use fixed past dates, so a test does not
-  start failing as time passes.
-- **Prove the tests work:** before committing, break the main check you added
-  on purpose and confirm a test fails, then restore it.
-- **Run everything before pushing:** `npm run test:all` must pass. CI runs the
-  same suites on pull requests, and a push to `main` cannot deploy until they
-  pass. Never skip, disable or weaken a test to get green.
-
-See the Tests section of `README.md` for the commands and what each suite covers.
+@AGENTS.md
+@docs/standards/README.md
 
 ## Archives
 
