@@ -1,4 +1,4 @@
-import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -50,6 +50,7 @@ type Selection =
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './contacts.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './contacts.component.scss',
 })
 export class ContactsComponent implements OnDestroy {

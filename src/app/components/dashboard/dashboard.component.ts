@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, computed, OnInit, OnDestroy, ViewChild, ElementRef, SecurityContext } from '@angular/core';
+import { Component, inject, signal, effect, computed, OnInit, OnDestroy, ViewChild, ElementRef, SecurityContext, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -31,6 +31,7 @@ import { CalendarEvent } from '../../models/calendar-event.model';
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './dashboard.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './dashboard.component.scss',
 })
 export class DashboardComponent implements OnInit, OnDestroy {
