@@ -34,7 +34,7 @@ jobs:
           java-version: "21"
 
       - name: Install Firebase CLI for the emulators
-        run: npm install -g firebase-tools@15.32.1
+        run: npm install -g firebase-tools@15.6.0
 
       - name: Type-check the MCP server
         run: npm --prefix functions run typecheck:mcp
