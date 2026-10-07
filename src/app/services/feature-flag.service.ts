@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { RemoteConfig, fetchAndActivate, getValue } from '@angular/fire/remote-config';
+import { fetchAndActivate, getValue } from 'firebase/remote-config';
+import { REMOTE_CONFIG } from '../firebase';
 
 /**
  * Feature flags with their default values (used when Remote Config is unavailable).
@@ -16,7 +17,7 @@ type FlagKey = keyof typeof FLAG_DEFAULTS;
 
 @Injectable({ providedIn: 'root' })
 export class FeatureFlagService {
-  private remoteConfig = inject(RemoteConfig);
+  private remoteConfig = inject(REMOTE_CONFIG);
 
   // Signals start at defaults and update once Remote Config fetch completes
   readonly enableVoiceInput = signal<boolean>(FLAG_DEFAULTS.enable_voice_input);

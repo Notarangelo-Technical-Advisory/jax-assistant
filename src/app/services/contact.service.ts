@@ -1,11 +1,13 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  Firestore, collection, collectionData, doc,
+  collection, doc,
   addDoc, updateDoc, deleteDoc, query, orderBy, where,
   serverTimestamp, getDocs, writeBatch
-} from '@angular/fire/firestore';
+} from 'firebase/firestore';
+import { collectionData } from 'rxfire/firestore';
 import { Observable } from 'rxjs';
 import { Company, Contact, ContactLink, ContactNote } from '../models/contact.model';
+import { FIRESTORE } from '../firebase';
 
 /**
  * The CRM / address book. Mirrors functions/src/tools/contacts.ts, which is
@@ -13,7 +15,7 @@ import { Company, Contact, ContactLink, ContactNote } from '../models/contact.mo
  */
 @Injectable({ providedIn: 'root' })
 export class ContactService {
-  private firestore = inject(Firestore);
+  private firestore = inject(FIRESTORE);
   private contactsRef = collection(this.firestore, 'contacts');
   private companiesRef = collection(this.firestore, 'companies');
   private notesRef = collection(this.firestore, 'contactNotes');

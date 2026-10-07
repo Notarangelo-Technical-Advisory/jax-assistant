@@ -1,15 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  Firestore, collection, collectionData, addDoc, deleteDoc, doc,
+  collection, addDoc, deleteDoc, doc,
   query, orderBy, serverTimestamp, getDocs, where
-} from '@angular/fire/firestore';
+} from 'firebase/firestore';
+import { collectionData } from 'rxfire/firestore';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { TaskCategory } from '../models/task-category.model';
+import { FIRESTORE } from '../firebase';
 
 @Injectable({ providedIn: 'root' })
 export class TaskCategoryService {
-  private firestore = inject(Firestore);
+  private firestore = inject(FIRESTORE);
   private collectionRef = collection(this.firestore, 'taskCategories');
 
   /** Built-in categories that always appear (in order) regardless of Firestore contents. */

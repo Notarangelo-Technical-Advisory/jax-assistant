@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { Firestore } from '@angular/fire/firestore';
+import { FIRESTORE } from '../../firebase';
 import { ContactsComponent } from './contacts.component';
 import { ContactService } from '../../services/contact.service';
 import { Contact } from '../../models/contact.model';
@@ -21,7 +21,7 @@ describe('ContactsComponent', () => {
     await signInAsJack(emulator);
     await TestBed.configureTestingModule({
       imports: [ContactsComponent],
-      providers: [provideRouter([]), { provide: Firestore, useValue: emulator.firestore }],
+      providers: [provideRouter([]), { provide: FIRESTORE, useValue: emulator.firestore }],
     }).compileComponents();
     const fixture = TestBed.createComponent(ContactsComponent);
     fixture.detectChanges();
@@ -135,7 +135,7 @@ describe('ContactsComponent links', () => {
     await signInAsJack(emulator);
     await TestBed.configureTestingModule({
       imports: [ContactsComponent],
-      providers: [provideRouter([]), { provide: Firestore, useValue: emulator.firestore }],
+      providers: [provideRouter([]), { provide: FIRESTORE, useValue: emulator.firestore }],
     }).compileComponents();
     fixture = TestBed.createComponent(ContactsComponent);
     fixture.detectChanges();
@@ -247,7 +247,7 @@ describe('ContactsComponent with iCloud contacts', () => {
     await signInAsJack(emulator);
     await TestBed.configureTestingModule({
       imports: [ContactsComponent],
-      providers: [provideRouter([]), { provide: Firestore, useValue: emulator.firestore }],
+      providers: [provideRouter([]), { provide: FIRESTORE, useValue: emulator.firestore }],
     }).compileComponents();
     fixture = TestBed.createComponent(ContactsComponent);
     fixture.detectChanges();
@@ -279,12 +279,14 @@ describe('ContactsComponent with iCloud contacts', () => {
     expect(fixture.nativeElement.querySelector('.btn-danger')).toBeNull();
 
     page.startEdit();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    // ngModel disables its input a tick later. Wait for that rather than for the
+    // zone to settle: the open Firestore connection keeps it busy.
+    await waitFor(() => {
+      fixture.detectChanges();
+      return fixture.nativeElement.querySelector('input:disabled') !== null;
+    });
     expect(page.iCloudLocked()).toBeTrue();
     expect(text()).toContain('come from iCloud');
-    expect(fixture.nativeElement.querySelector('input:disabled')).not.toBeNull();
 
     page.form = { ...page.form, title: 'CEO', tags: 'client' };
     await page.saveContact();
@@ -318,7 +320,7 @@ describe('ContactService security', () => {
   it('a visitor who is not signed in cannot read contacts', async () => {
     await clearEmulators();
     const visitor = createEmulatorApp();
-    TestBed.configureTestingModule({ providers: [{ provide: Firestore, useValue: visitor.firestore }] });
+    TestBed.configureTestingModule({ providers: [{ provide: FIRESTORE, useValue: visitor.firestore }] });
     const service = TestBed.inject(ContactService);
 
     const error = await new Promise<{ code?: string }>((resolve) =>

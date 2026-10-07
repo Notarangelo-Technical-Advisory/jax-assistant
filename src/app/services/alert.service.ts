@@ -1,14 +1,16 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  Firestore, collection, collectionData, doc,
+  collection, doc,
   updateDoc, query, orderBy, where
-} from '@angular/fire/firestore';
+} from 'firebase/firestore';
+import { collectionData } from 'rxfire/firestore';
 import { Observable } from 'rxjs';
 import { Alert } from '../models/alert.model';
+import { FIRESTORE } from '../firebase';
 
 @Injectable({ providedIn: 'root' })
 export class AlertService {
-  private firestore = inject(Firestore);
+  private firestore = inject(FIRESTORE);
 
   getActiveAlerts(): Observable<Alert[]> {
     const ref = collection(this.firestore, 'alerts');

@@ -1,17 +1,18 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import {
-  Firestore, collection, query, where, orderBy, onSnapshot, doc,
-} from '@angular/fire/firestore';
+  collection, query, where, orderBy, onSnapshot, doc,
+} from 'firebase/firestore';
 import { AuthService } from './auth.service';
 import { firstValueFrom } from 'rxjs';
 import { ChatMessage } from '../models/chat-message.model';
+import { FIRESTORE } from '../firebase';
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
-  private firestore = inject(Firestore);
+  private firestore = inject(FIRESTORE);
 
   messages = signal<ChatMessage[]>([]);
   loading = signal(false);

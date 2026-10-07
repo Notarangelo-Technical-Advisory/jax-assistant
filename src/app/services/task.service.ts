@@ -1,11 +1,13 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  Firestore, collection, collectionData, doc,
+  collection, doc,
   addDoc, updateDoc, deleteDoc, query, orderBy, where,
   serverTimestamp, getDoc
-} from '@angular/fire/firestore';
+} from 'firebase/firestore';
+import { collectionData } from 'rxfire/firestore';
 import { Observable } from 'rxjs';
 import { Task, TaskRecurrence } from '../models/task.model';
+import { FIRESTORE } from '../firebase';
 
 function getNextOccurrence(recurrence: TaskRecurrence, fromDate: Date): string {
   const next = new Date(fromDate);
@@ -45,7 +47,7 @@ export interface TaskUpdates {
 
 @Injectable({ providedIn: 'root' })
 export class TaskService {
-  private firestore = inject(Firestore);
+  private firestore = inject(FIRESTORE);
   private collectionRef = collection(this.firestore, 'tasks');
 
   getActiveTasks(): Observable<Task[]> {

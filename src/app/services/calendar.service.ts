@@ -1,11 +1,13 @@
 import { Injectable, inject } from '@angular/core';
-import { Firestore, collection, query, where, orderBy, collectionData, Timestamp } from '@angular/fire/firestore';
+import { collection, query, where, orderBy, Timestamp } from 'firebase/firestore';
+import { collectionData } from 'rxfire/firestore';
 import { Observable, map } from 'rxjs';
 import { CalendarEvent } from '../models/calendar-event.model';
+import { FIRESTORE } from '../firebase';
 
 @Injectable({ providedIn: 'root' })
 export class CalendarService {
-  private firestore = inject(Firestore);
+  private firestore = inject(FIRESTORE);
 
   getTodayEvents(): Observable<CalendarEvent[]> {
     const now = new Date();

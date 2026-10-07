@@ -1,15 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  Firestore, collection, collectionData, doc,
+  collection, doc,
   addDoc, updateDoc, deleteDoc, query, orderBy,
   serverTimestamp, getDocs, where, writeBatch,
-} from '@angular/fire/firestore';
+} from 'firebase/firestore';
+import { collectionData } from 'rxfire/firestore';
 import { Observable } from 'rxjs';
 import { ChatSession } from '../models/chat-session.model';
+import { FIRESTORE } from '../firebase';
 
 @Injectable({ providedIn: 'root' })
 export class ChatSessionService {
-  private firestore = inject(Firestore);
+  private firestore = inject(FIRESTORE);
   private sessionsRef = collection(this.firestore, 'chatSessions');
   private messagesRef = collection(this.firestore, 'chatMessages');
 

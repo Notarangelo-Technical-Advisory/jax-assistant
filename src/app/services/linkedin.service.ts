@@ -1,15 +1,17 @@
 import { Injectable, inject } from '@angular/core';
-import { Firestore, doc, docData } from '@angular/fire/firestore';
+import { doc } from 'firebase/firestore';
+import { docData } from 'rxfire/firestore';
 import { HttpClient } from '@angular/common/http';
 import { Observable, map, firstValueFrom } from 'rxjs';
 import { LinkedInWeek } from '../models/linkedin.model';
 import { AuthService } from './auth.service';
+import { FIRESTORE } from '../firebase';
 
 export type LinkedInAction = 'refresh' | 'approve' | 'posted' | 'draft' | 'save';
 
 @Injectable({ providedIn: 'root' })
 export class LinkedInService {
-  private firestore = inject(Firestore);
+  private firestore = inject(FIRESTORE);
   private http = inject(HttpClient);
   private authService = inject(AuthService);
 
