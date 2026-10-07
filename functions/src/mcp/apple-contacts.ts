@@ -74,27 +74,38 @@ function run() {
   var seen = {};
   var contacts = [];
 
+  function add(c) {
+    var id = str(c.identifier);
+    if (seen[id]) return;
+    seen[id] = true;
+    contacts.push({
+      id: id,
+      type: num(c.contactType) === 1 ? 'organization' : 'person',
+      given: str(c.givenName),
+      family: str(c.familyName),
+      org: str(c.organizationName),
+      job: str(c.jobTitle),
+      emails: (ObjC.unwrap(c.emailAddresses) || []).map(function (lv) { return str(lv.value); }),
+      phones: (ObjC.unwrap(c.phoneNumbers) || []).map(function (lv) { return str(lv.value.stringValue); })
+    });
+  }
+
   containers.forEach(function (container) {
     var predicate = $.CNContact.predicateForContactsInContainerWithIdentifier(container.identifier);
     var found = ObjC.unwrap(store.unifiedContactsMatchingPredicateKeysToFetchError(predicate, keys, null)) || [];
-    found.forEach(function (c) {
-      var id = str(c.identifier);
-      if (seen[id]) return;
-      seen[id] = true;
-      contacts.push({
-        id: id,
-        type: num(c.contactType) === 1 ? 'organization' : 'person',
-        given: str(c.givenName),
-        family: str(c.familyName),
-        org: str(c.organizationName),
-        job: str(c.jobTitle),
-        emails: (ObjC.unwrap(c.emailAddresses) || []).map(function (lv) { return str(lv.value); }),
-        phones: (ObjC.unwrap(c.phoneNumbers) || []).map(function (lv) { return str(lv.value.stringValue); })
-      });
-    });
+    found.forEach(add);
   });
 
-  return JSON.stringify({ ok: true, containers: containers.length, contacts: contacts });
+  // On macOS 26 the container list comes back empty while the address book is
+  // not (Jack's: 0 containers, 1,217 contacts), so read them in one request.
+  var method = 'containers';
+  if (contacts.length === 0) {
+    method = 'enumerate';
+    var request = $.CNContactFetchRequest.alloc.initWithKeysToFetch(keys);
+    store.enumerateContactsWithFetchRequestErrorUsingBlock(request, null, function (c) { add(c); });
+  }
+
+  return JSON.stringify({ ok: true, containers: containers.length, method: method, contacts: contacts });
 }
 `.trim();
 

@@ -49,6 +49,7 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 - **Company cards** become companies. Cards with no name and no company are skipped.
 - **Needs from Jack:** his Mac, and permission for Terminal or VS Code to read Contacts the first time it runs.
 - **First real run:** do the dry run, check the counts and example names, then import.
+- **First dry run (2026-10-06):** 1,217 cards read; 1,147 new contacts, 10 updated, 26 already up to date, 28 company cards, 6 skipped, 282 new companies. It first read 0 cards, because macOS 26 lists no contact accounts; the reader now reads all contacts in one request when that happens.
 
 ## Phase 4: automatic linking (later)
 

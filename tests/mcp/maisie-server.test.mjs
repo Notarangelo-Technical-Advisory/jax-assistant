@@ -9,7 +9,7 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -155,6 +155,20 @@ describe('import_apple_contacts', () => {
     assert.equal(real.dryRun, false);
     const found = await call('find_contacts', { query: 'donohue' });
     assert.deepEqual(found.contacts.map(c => [c.name, c.company, c.emails[0]]), [['Brad Donohue', 'IHRDC', 'brad@ihrdc.com']]);
+  });
+
+  it('reads every contact even when macOS lists no contact accounts', async () => {
+    // On macOS 26 the account list comes back empty while the address book is
+    // not (Jack's Mac, 2026-10-06: 0 accounts, 1,217 contacts). Linux cannot run
+    // the script, so check that it falls back to one request for all contacts.
+    const script = readFileSync(`${functionsDir}src/mcp/apple-contacts.ts`, 'utf-8');
+    const fallback = script.slice(script.indexOf('if (contacts.length === 0)'));
+    assert.ok(script.includes('if (contacts.length === 0)'), 'no fallback when the accounts give no contacts');
+    assert.match(fallback, /enumerateContactsWithFetchRequestErrorUsingBlock/);
+
+    appleSays({ ...ADDRESS_BOOK, containers: 0, method: 'enumerate' });
+    const preview = await call('import_apple_contacts');
+    assert.deepEqual([preview.read, preview.created, preview.companyCards], [2, 1, 1]);
   });
 
   it('explains how to grant access when macOS refuses it', async () => {
