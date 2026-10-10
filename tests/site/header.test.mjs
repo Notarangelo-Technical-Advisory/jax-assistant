@@ -25,4 +25,14 @@ describe('dashboard header call button', () => {
   it('is named "Call Maisie" for screen readers', () => {
     assert.match(button, /aria-label="Call Maisie"/);
   });
+
+  it('sits on the right of the header, just left of the speaker button', () => {
+    const actions = template.slice(template.indexOf('<div class="header-actions">'));
+    const callAt = actions.search(/<button\s+class="btn-call-header"/);
+    const speakerAt = actions.lastIndexOf('<button', actions.indexOf('(click)="toggleMute()"'));
+    assert.ok(callAt >= 0, 'the call button should be in the right-hand header controls');
+    assert.ok(callAt < speakerAt, 'the call button should come before the speaker button');
+    const between = actions.slice(callAt, speakerAt).replace(/^<button[\s\S]*?<\/button>/, '');
+    assert.doesNotMatch(between, /<(button|a|select)\b/, 'nothing should sit between the call and speaker buttons');
+  });
 });
