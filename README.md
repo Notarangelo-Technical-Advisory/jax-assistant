@@ -139,7 +139,7 @@ Watch the queue with `cd bridge && npm run queue`.
 ## Automatic contact linking (Mac)
 
 `functions/src/mcp/autolink-contacts.ts` runs every 15 minutes via launchd and
-ties new emails and meetings to CRM contacts. See Phase 4 in
+ties new emails, meetings and text messages to CRM contacts. See Phase 4 in
 `projects/crm/README.md`.
 
 ```bash
@@ -148,6 +148,21 @@ launchctl load ~/Library/LaunchAgents/com.notarangelo.contact-autolink.plist
 ```
 
 The log is `/tmp/contact-autolink.log`.
+
+**Text messages** come from the Mac's Messages database
+(`~/Library/Messages/chat.db`), read-only, so Messages in iCloud must be on
+for the Mac to have the iPhone's texts. Each contact gets one link per day:
+the first line of the day's first message (at most 80 characters) and the
+number of messages. Nothing else of a conversation is stored. macOS protects
+that database, so the job needs Full Disk Access once:
+
+1. Open System Settings > Privacy & Security > Full Disk Access.
+2. Click **+**, press Cmd+Shift+G, type `/opt/homebrew/bin/node` and add it.
+3. Turn it on. If the log still says "Cannot open the Messages database", add
+   `/usr/bin/sqlite3` the same way.
+
+Until then, the log reports that error every run, and emails and meetings are
+still linked.
 
 Calendar writes from the cloud still flow through the older
 `pendingCalendarActions` queue, which `calendar-sync.ts` applies on its own

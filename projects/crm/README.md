@@ -45,6 +45,7 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 ## Phase 3: import from Apple Contacts (live)
 
 - **What it does:** copies everyone in Jack's iCloud contacts into MAISIE, every morning at 6:00 (`bridge/com.notarangelo.contacts-import.plist`, log `/tmp/contacts-import.log`, last result in `metadata/contactImport`). It never writes back to Apple Contacts. Jack chose everyone, not chosen groups, and iCloud only: the Mac also syncs 976 Google cards, which are left out and counted.
+- **Text messages (added 2026-10-10, Jack's request):** iMessage and SMS from the Mac's Messages database (`~/Library/Messages/chat.db`, read-only with `sqlite3`), matched by phone number (last 10 digits) or iMessage email address. One link per contact per day. Jack chose to store the day's date, the number of messages and the first line of the day's first message, cut to 80 characters; nothing else of a conversation is stored. A later run updates the day's count and first line; a removed day stays removed. Reactions (tapbacks) and conversation events are not counted. Group chats of more than 15 other people are skipped. Needs Full Disk Access for the job (see the root `README.md`). Text links are made only automatically; MAISIE cannot add one by hand.
 - **How to run it by hand:** in VS Code, ask "import my Apple contacts" (a dry run comes first), or in a terminal run `cd functions && npm run import:contacts -- --dry-run`, then without `--dry-run`.
 - **Matching:** by the Apple card from an earlier import, then by email, then by an exact name that only one contact has. Otherwise a new contact is created.
 - **iCloud wins (since 2026-10-06, Jack's choice):** the name, title, company, emails and phones of a contact from iCloud are replaced with the card's, including a field cleared in iCloud. Tags, notes and links are never touched. An email already on another contact stays with that contact. When two iCloud cards are the same person, the second only adds to the first.
@@ -58,7 +59,7 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 
 ## Phase 4: automatic linking (live)
 
-- **What it does:** every 15 minutes, ties new emails and meetings to the contacts taking part in them, matched by email address. Links show on the contact's page as "linked automatically", and MAISIE sees them in `get_contact`.
+- **What it does:** every 15 minutes, ties new emails, meetings and text messages to the contacts taking part in them, matched by email address (and, for texts, phone number). Links show on the contact's page as "linked automatically", and MAISIE sees them in `get_contact`.
 - **Emails:** received and sent, from the Inbox and Sent mailbox of every Mail account. Sender, To and Cc are matched.
 - **Meetings:** the Jax and IHRDC calendars only (Jack's choice), once a meeting has started, so one cancelled beforehand is never linked. Attendees and the organizer are matched; rooms are not.
 - **History:** the first run looks back 30 days. Each later run starts an hour before the previous one finished.
@@ -66,7 +67,7 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 - **Skipped:** emails and meetings with more than 15 other people, such as all-hands meetings and mailings, and emails from automated senders such as `no-reply@`, `notifications@` and `alerts@` (added 2026-10-06 after Thoropass alerts were linked to Brad Donohue).
 - **No repeats:** an item already linked to that contact, by hand or by an earlier run, is not linked again.
 - **Removing a link:** on the web page or through MAISIE, removing an automatic link records it in `contactLinkDismissals`, so it does not come back.
-- **If Mail or Calendar fails:** the other is still linked, and the failed one starts from the same place on the next run. Errors are in `/tmp/contact-autolink.log` and in `metadata/contactAutoLink`.
+- **If Mail, Calendar or Messages fails:** the others are still linked, and the failed one starts from the same place on the next run. Errors are in `/tmp/contact-autolink.log` and in `metadata/contactAutoLink`.
 - **How to run it by hand:** `cd functions && npm run autolink:contacts -- --dry-run`, then without `--dry-run`.
 - **First run (2026-10-06, 30 days):** launchd job loaded after a dry run. Meetings: 66 read, 57 links for 23 of them, 4 skipped as too large. Emails: 697 read, 313 links for 134 of them, 4 skipped as too large; 545 had no contact (mostly newsletters and notifications). 370 links in all, in about 95 seconds.
 

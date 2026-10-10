@@ -289,7 +289,7 @@ export const buildTools = (
     },
     {
       name: "get_contact",
-      description: "Get one contact's full record, their notes and their linked emails, meetings and web pages: the 100 newest dated links plus every web page. Emails and meetings on Jack's Jax and IHRDC calendars are linked automatically (automatic: true).",
+      description: "Get one contact's full record, their notes and their linked emails, meetings, text messages and web pages: the 100 newest dated links plus every web page. Emails, meetings on Jack's Jax and IHRDC calendars, and text messages are linked automatically (automatic: true). A text link (type text) covers one day: its title is the first line of that day's first message and its detail the number of messages; the rest of the conversation is not stored.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -300,7 +300,7 @@ export const buildTools = (
     },
     {
       name: "get_company",
-      description: "Get one company, the contacts who work there, its notes and its linked emails, meetings and web pages, newest first.",
+      description: "Get one company, the contacts who work there, its notes and its linked emails, meetings, text messages and web pages, newest first.",
       input_schema: {
         type: "object" as const,
         properties: {
