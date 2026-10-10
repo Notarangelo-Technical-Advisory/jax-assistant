@@ -17,6 +17,7 @@ import { CalendarService } from '../../services/calendar.service';
 import { TtsService } from '../../services/tts.service';
 import { SttService } from '../../services/stt.service';
 import { FeatureFlagService } from '../../services/feature-flag.service';
+import { DEFAULT_VOICE, voiceToUse } from '../../services/voice';
 import { LinkedInService, LinkedInAction } from '../../services/linkedin.service';
 import { LinkedInWeek } from '../../models/linkedin.model';
 import { Briefing, Headlines } from '../../models/briefing.model';
@@ -97,7 +98,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   newTaskDueDate = '';
   newTaskRecurrenceType = '';
   newTaskRecurrenceDay: number | null = null;
-  voice = localStorage.getItem('maisie-voice') || 'female-british';
+  voice = localStorage.getItem('maisie-voice') || DEFAULT_VOICE;
   ttsMuted = signal(localStorage.getItem('maisie-muted') === 'true');
 
   expandedCategories = signal<Set<string>>(new Set());
@@ -241,7 +242,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.ttsService.primeAudioContext();
       this.audioContextPrimed = true;
     }
-    this.ttsService.speak(text, this.voice, `chat-${Date.now()}`);
+    this.ttsService.speak(text, this.spokenVoice(), `chat-${Date.now()}`);
   }
 
   private billingLoaded = false;
@@ -626,7 +627,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // briefings written before narrativeAt existed.
     const narrativeAt = this.toDate(b.narrativeAt) ?? this.toDate(b.createdAt);
     const briefingKey = `briefing-${narrativeAt?.getTime() || b.date}`;
-    this.ttsService.speak(text, this.voice, briefingKey);
+    this.ttsService.speak(text, this.spokenVoice(), briefingKey);
   }
 
   stopSpeaking(): void {
@@ -735,6 +736,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   async dismissAlert(alert: Alert): Promise<void> {
     if (alert.id) await this.alertService.dismissAlert(alert.id);
+  }
+
+  private spokenVoice(): string {
+    return voiceToUse(this.voice, this.featureFlags.enableVoiceSelect());
   }
 
   onVoiceChange(voice: string): void {

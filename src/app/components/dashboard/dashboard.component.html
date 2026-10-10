@@ -22,12 +22,14 @@
     </div>
     <div class="header-actions">
       @if (featureFlags.enableTts()) {
-        <select [(ngModel)]="voice" (ngModelChange)="onVoiceChange($event)" class="voice-select">
-          <option value="female-british">Maisie (UK)</option>
-          <option value="female-american">Sophia (US)</option>
-          <option value="male-american">Ethan (US)</option>
-          <option value="male-british">Daniel (UK)</option>
-        </select>
+        @if (featureFlags.enableVoiceSelect()) {
+          <select [(ngModel)]="voice" (ngModelChange)="onVoiceChange($event)" class="voice-select">
+            <option value="female-british">Maisie (UK)</option>
+            <option value="female-american">Sophia (US)</option>
+            <option value="male-american">Ethan (US)</option>
+            <option value="male-british">Daniel (UK)</option>
+          </select>
+        }
         <button class="btn-icon" [class.muted]="ttsMuted()" (click)="toggleMute()" [title]="ttsMuted() ? 'Unmute TTS' : 'Mute TTS'">
           @if (ttsMuted()) {
             <!-- Speaker with X (muted) -->

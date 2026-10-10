@@ -11,6 +11,8 @@ const FLAG_DEFAULTS = {
   enable_tts: true,
   enable_billing_tab: true,
   enable_calendar_sync: true,
+  // Off while the app supports one voice. Turn on in Remote Config to show the voice dropdown.
+  enable_voice_select: false,
 } as const;
 
 type FlagKey = keyof typeof FLAG_DEFAULTS;
@@ -24,6 +26,7 @@ export class FeatureFlagService {
   readonly enableTts = signal<boolean>(FLAG_DEFAULTS.enable_tts);
   readonly enableBillingTab = signal<boolean>(FLAG_DEFAULTS.enable_billing_tab);
   readonly enableCalendarSync = signal<boolean>(FLAG_DEFAULTS.enable_calendar_sync);
+  readonly enableVoiceSelect = signal<boolean>(FLAG_DEFAULTS.enable_voice_select);
 
   constructor() {
     this.remoteConfig.defaultConfig = FLAG_DEFAULTS;
@@ -39,6 +42,7 @@ export class FeatureFlagService {
       this.enableTts.set(getValue(this.remoteConfig, 'enable_tts').asBoolean());
       this.enableBillingTab.set(getValue(this.remoteConfig, 'enable_billing_tab').asBoolean());
       this.enableCalendarSync.set(getValue(this.remoteConfig, 'enable_calendar_sync').asBoolean());
+      this.enableVoiceSelect.set(getValue(this.remoteConfig, 'enable_voice_select').asBoolean());
     } catch {
       // Falls back to defaults if fetch fails
     }
