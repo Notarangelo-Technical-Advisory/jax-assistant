@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maisie Wordmarks</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=Nunito:wght@400;700;800&family=Playfair+Display:ital,wght@1,500&family=Satisfy&family=Josefin+Sans:wght@300&display=swap" rel="stylesheet">
+<style>
+  :root { --teal: #2f7f86; --green: #8cc9a0; --ink: #22343a; --muted: #6b7f84;
+          --bg: #f7faf9; --card: #ffffff; --line: #dde8e5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px; background: var(--bg); color: var(--ink); font-family: Nunito, system-ui, sans-serif; }
+  h1 { font-family: Fraunces, serif; font-weight: 600; margin: 0 0 4px; text-align: center; }
+  p.lead { text-align: center; color: var(--muted); margin: 0 0 28px; }
+  .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); max-width: 1100px; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .art { height: 170px; display: flex; align-items: center; justify-content: center; }
+  .header { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line);
+            border-radius: 8px; padding: 10px 14px; margin-top: 8px; }
+  .header .wm { font-size: 22px; }
+  .header span.note { margin-left: auto; font-size: 11px; color: var(--muted); }
+  h2 { font-size: 17px; margin: 14px 0 4px; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.45; }
+
+  .wm { color: var(--teal); line-height: 1; white-space: nowrap; }
+  .i { position: relative; display: inline-block; }
+  .leaf { position: absolute; left: 50%; width: 0.36em; height: 0.36em; transform: translateX(-30%); }
+  .flower { position: absolute; left: 50%; width: 0.3em; height: 0.3em; transform: translateX(-50%); }
+
+  .w1 { font-family: Fraunces, serif; font-size: 76px; }
+  .w2 { font-family: Fraunces, serif; font-size: 76px; } .w2 .leaf { top: -0.06em; }
+  .w3 { font-family: Nunito, sans-serif; font-weight: 800; font-size: 72px; color: var(--ink); } .w3 .leaf { top: -0.02em; }
+  .w4 { font-family: Satisfy, cursive; font-size: 84px; }
+  .w5 { font-family: "Playfair Display", serif; font-style: italic; font-weight: 500; font-size: 78px; } .w5 .flower { top: 0.02em; left: 58%; }
+  .w6 { font-family: "Josefin Sans", sans-serif; font-weight: 300; font-size: 58px; letter-spacing: 0.32em; margin-right: -0.32em; }
+  .w6 .leaf { top: -0.42em; width: 0.4em; height: 0.4em; transform: translateX(-62%); }
+  .header .w6 { letter-spacing: 0.25em; font-size: 18px; }
+</style>
+</head>
+<body>
+<h1>Maisie wordmarks</h1>
+<p class="lead">Six options that use only the name. Each card also shows the wordmark at the small size it would have in the app's header.</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="leaf" viewBox="0 0 40 40">
+      <path d="M4 36 C4 16 18 4 36 4 C36 22 24 36 4 36 Z" fill="#8cc9a0"/>
+      <path d="M7 33 C15 24 23 16 32 8" stroke="#2f7f86" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="flower" viewBox="-10 -10 20 20">
+      <g fill="#8cc9a0"><circle cx="0" cy="-5" r="4"/><circle cx="4.8" cy="-1.5" r="4"/><circle cx="3" cy="4" r="4"/><circle cx="-3" cy="4" r="4"/><circle cx="-4.8" cy="-1.5" r="4"/></g>
+      <circle r="2.4" fill="#ffffff"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="grid">
+
+  <div class="card">
+    <div class="art"><span class="wm w1">maisie</span></div>
+    <div class="header"><span class="wm w1">maisie</span><span class="note">small size</span></div>
+    <h2>W1. Plain serif</h2>
+    <p>The name only, in lower case. Nothing added. The quietest choice.</p>
+  </div>
+
+  <div class="card">
+    <div class="art"><span class="wm w2">ma<span class="i">ı<svg class="leaf"><use href="#leaf"/></svg></span>sie</span></div>
+    <div class="header"><span class="wm w2">ma<span class="i">ı<svg class="leaf"><use href="#leaf"/></svg></span>sie</span><span class="note">small size</span></div>
+    <h2>W2. Serif with a leaf</h2>
+    <p>W1 with the leaf from favicon C as the dot on the first "i". Links the name to the favicon.</p>
+  </div>
+
+  <div class="card">
+    <div class="art"><span class="wm w3">Ma<span class="i">ı<svg class="leaf"><use href="#leaf"/></svg></span>sie</span></div>
+    <div class="header"><span class="wm w3">Ma<span class="i">ı<svg class="leaf"><use href="#leaf"/></svg></span>sie</span><span class="note">small size</span></div>
+    <h2>W3. Rounded and friendly</h2>
+    <p>A soft, bold font with the same leaf. Reads well at any size and feels like an assistant, not a firm.</p>
+  </div>
+
+  <div class="card">
+    <div class="art"><span class="wm w4">Maisie</span></div>
+    <div class="header"><span class="wm w4">Maisie</span><span class="note">small size</span></div>
+    <h2>W4. Simple script</h2>
+    <p>Handwritten, like the current logo, but one colour and nothing around it. Harder to read when small.</p>
+  </div>
+
+  <div class="card">
+    <div class="art"><span class="wm w5">Ma<span class="i">ı<svg class="flower"><use href="#flower"/></svg></span>sie</span></div>
+    <div class="header"><span class="wm w5">Ma<span class="i">ı<svg class="flower"><use href="#flower"/></svg></span>sie</span><span class="note">small size</span></div>
+    <h2>W5. Italic with a flower</h2>
+    <p>An elegant italic with a small flower as the dot on the "i". The most decorative of the six.</p>
+  </div>
+
+  <div class="card">
+    <div class="art"><span class="wm w6">MA<span class="i">I<svg class="leaf"><use href="#leaf"/></svg></span>SIE</span></div>
+    <div class="header"><span class="wm w6">MA<span class="i">I<svg class="leaf"><use href="#leaf"/></svg></span>SIE</span><span class="note">small size</span></div>
+    <h2>W6. Spaced capitals</h2>
+    <p>Thin, widely spaced capitals with a leaf above the first "I". Clean and modern.</p>
+  </div>
+
+</div>
+</body>
+</html>

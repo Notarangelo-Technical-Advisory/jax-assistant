@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maisie Logo Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Nunito:wght@400;700&family=Dancing+Script:wght@600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --teal: #2f7f86;
+    --teal-dark: #1f5f66;
+    --green: #8cc9a0;
+    --mint: #e8f4ef;
+    --ink: #22343a;
+    --muted: #6b7f84;
+    --bg: #f7faf9;
+    --card: #ffffff;
+    --line: #dde8e5;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px; background: var(--bg); color: var(--ink);
+         font-family: Nunito, system-ui, sans-serif; }
+  h1 { font-family: Fraunces, serif; font-weight: 600; margin: 0 0 4px; text-align: center; }
+  p.lead { text-align: center; color: var(--muted); margin: 0 0 28px; }
+  .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          max-width: 1100px; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .art { height: 220px; display: flex; align-items: center; justify-content: center; }
+  .art svg { max-height: 200px; max-width: 100%; }
+  .small { display: flex; gap: 14px; align-items: center; justify-content: center;
+           border-top: 1px solid var(--line); padding-top: 12px; margin-top: 8px; }
+  .small svg { width: 32px; height: 32px; }
+  .small span { font-size: 12px; color: var(--muted); }
+  h2 { font-size: 17px; margin: 14px 0 4px; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.45; }
+</style>
+</head>
+<body>
+<h1>Maisie logo options</h1>
+<p class="lead">Five simpler concepts. All keep the teal and green from the current logo. Bottom row in each card shows the mark at favicon size.</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="tg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8cc9a0"/><stop offset="1" stop-color="#2f7f86"/>
+    </linearGradient>
+    <!-- A: single-stroke script M -->
+    <symbol id="mA" viewBox="0 0 120 100">
+      <path d="M14 82 C22 60 30 30 36 18 C40 10 46 14 44 24 C41 42 40 62 42 80
+               C48 58 58 30 66 18 C70 12 76 14 74 24 C71 44 70 64 76 80
+               C80 88 92 88 104 76" fill="none" stroke="url(#tg)" stroke-width="7"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <!-- leaf -->
+    <symbol id="leaf" viewBox="0 0 40 40">
+      <path d="M4 36 C4 16 18 4 36 4 C36 22 24 36 4 36 Z" fill="#8cc9a0"/>
+      <path d="M6 34 C14 24 22 16 32 8" stroke="#2f7f86" stroke-width="2" fill="none" stroke-linecap="round"/>
+    </symbol>
+    <!-- C: badge -->
+    <symbol id="mC" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="48" fill="#2f7f86"/>
+      <text x="50" y="67" text-anchor="middle" font-family="Fraunces, Georgia, serif"
+            font-weight="600" font-size="54" fill="#ffffff">M</text>
+      <path d="M66 26 C66 18 72 12 80 12 C80 20 74 26 66 26 Z" fill="#8cc9a0"/>
+    </symbol>
+    <!-- E: geometric M of two arches, one dot flower -->
+    <symbol id="mE" viewBox="0 0 120 100">
+      <path d="M14 86 V46 A23 23 0 0 1 60 46 V86 M60 46 A23 23 0 0 1 106 46 V86"
+            fill="none" stroke="#2f7f86" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="60" cy="16" r="6" fill="#8cc9a0"/>
+      <circle cx="60" cy="16" r="2.5" fill="#2f7f86"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="grid">
+
+  <div class="card">
+    <div class="art">
+      <svg viewBox="0 0 240 200">
+        <use href="#mA" x="40" y="10" width="160" height="133"/>
+        <text x="120" y="182" text-anchor="middle" font-family="Fraunces, Georgia, serif"
+              font-size="30" fill="#2f7f86">Maisie</text>
+      </svg>
+    </div>
+    <div class="small"><svg viewBox="0 0 120 100"><use href="#mA"/></svg><span>32 px</span></div>
+    <h2>A. Script line</h2>
+    <p>The current flowing M, drawn as one clean line. No flowers or sparkles. Closest to today's look.</p>
+  </div>
+
+  <div class="card">
+    <div class="art">
+      <svg viewBox="0 0 240 200">
+        <use href="#mA" x="40" y="10" width="160" height="133"/>
+        <use href="#leaf" x="160" y="18" width="34" height="34"/>
+        <text x="120" y="182" text-anchor="middle" font-family="Fraunces, Georgia, serif"
+              font-size="30" fill="#2f7f86">Maisie</text>
+      </svg>
+    </div>
+    <div class="small"><svg viewBox="0 0 120 100"><use href="#mA"/><use href="#leaf" x="86" y="4" width="26" height="26"/></svg><span>32 px</span></div>
+    <h2>B. Script line with one leaf</h2>
+    <p>Option A plus a single leaf. Keeps a small touch of the garden theme without the clutter.</p>
+  </div>
+
+  <div class="card">
+    <div class="art">
+      <svg viewBox="0 0 240 200">
+        <use href="#mC" x="70" y="8" width="100" height="100"/>
+        <text x="120" y="160" text-anchor="middle" font-family="Nunito, sans-serif"
+              font-weight="700" font-size="32" fill="#22343a">Maisie</text>
+      </svg>
+    </div>
+    <div class="small"><svg viewBox="0 0 100 100"><use href="#mC"/></svg><span>32 px</span></div>
+    <h2>C. Round badge</h2>
+    <p>A teal circle with a white M. Best for the favicon and phone home screen. Easiest to read at small sizes.</p>
+  </div>
+
+  <div class="card">
+    <div class="art">
+      <svg viewBox="0 0 240 200">
+        <text x="120" y="118" text-anchor="middle" font-family="Fraunces, Georgia, serif"
+              font-size="62" fill="#2f7f86">maısie</text>
+        <use href="#leaf" x="136" y="52" width="18" height="18"/>
+      </svg>
+    </div>
+    <div class="small"><svg viewBox="0 0 40 40"><rect width="40" height="40" rx="9" fill="#e8f4ef"/><text x="20" y="29" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-size="26" fill="#2f7f86">m</text></svg><span>32 px</span></div>
+    <h2>D. Wordmark only</h2>
+    <p>The name in lower case, with a small leaf as the dot on the "i". Quiet and modern.</p>
+  </div>
+
+  <div class="card">
+    <div class="art">
+      <svg viewBox="0 0 240 200">
+        <use href="#mE" x="60" y="6" width="120" height="100"/>
+        <text x="120" y="160" text-anchor="middle" font-family="Nunito, sans-serif"
+              font-weight="700" font-size="30" letter-spacing="2" fill="#22343a">MAISIE</text>
+      </svg>
+    </div>
+    <div class="small"><svg viewBox="0 0 120 100"><use href="#mE"/></svg><span>32 px</span></div>
+    <h2>E. Geometric M</h2>
+    <p>Two simple arches with one small flower above. The most "app-like" of the five.</p>
+  </div>
+
+</div>
+</body>
+</html>

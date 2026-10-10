@@ -12,7 +12,8 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-jax-rules \"node --test --test-concurrency=1 tests/rules/*.test.mjs\"",
     "test:functions": "npm --prefix functions run build && firebase emulators:exec --only firestore --project demo-jax-test \"node --test --test-concurrency=1 tests/functions/*.test.mjs\"",
     "test:mcp": "npm --prefix functions run build && firebase emulators:exec --only firestore --project demo-jax-mcp \"node --test --test-concurrency=1 tests/mcp/*.test.mjs\"",
-    "test:all": "npm run test:ci && npm run test:rules && npm run test:functions && npm run test:mcp",
+    "test:site": "node --test tests/site/*.test.mjs",
+    "test:all": "npm run test:ci && npm run test:site && npm run test:rules && npm run test:functions && npm run test:mcp",
     "prepare": "husky"
   },
   "private": true,
