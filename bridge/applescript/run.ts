@@ -36,12 +36,47 @@ export function esc(value: string): string {
 }
 
 /**
- * Convert "2026-03-20" + "14:00" into the AppleScript date literal format
- * "03/20/2026 14:00:00".
+ * Seconds after midnight for "HH:MM" or "HH:MM:SS" (24-hour). Throws on
+ * anything else, so a bad time fails the action instead of landing at midnight.
  */
-export function appleScriptDate(dateStr: string, timeStr: string): string {
-  const [year, month, day] = dateStr.split("-");
-  return `${month}/${day}/${year} ${timeStr}:00`;
+export function secondsAfterMidnight(timeStr: string): number {
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(timeStr ?? "");
+  const [hours, minutes, seconds] = match ? match.slice(1).map((part) => Number(part ?? 0)) : [];
+  if (!match || hours > 23 || minutes > 59 || seconds > 59) {
+    throw new Error(`Invalid time "${timeStr}" — expected HH:MM (24-hour)`);
+  }
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+/**
+ * AppleScript statements that set `varName` to "2026-03-20" at "14:00".
+ *
+ * Never write a date as text, such as `date "03/20/2026 14:00:00"`.
+ * AppleScript reads that text in the Mac's own date format, and on a Mac set
+ * to a 12-hour clock it reads "14:00:00" as midnight without any error. That
+ * bug put every event MAISIE created at 12:00–12:00 AM. Setting each part of
+ * the date gives the same result on every Mac.
+ */
+export function appleScriptDateVar(varName: string, dateStr: string, timeStr: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr ?? "");
+  if (!match) throw new Error(`Invalid date "${dateStr}" — expected YYYY-MM-DD`);
+  const [year, month, day] = match.slice(1).map(Number);
+  // Day 1 first: moving 31 January to February would otherwise roll into March.
+  return [
+    `set ${varName} to current date`,
+    `set day of ${varName} to 1`,
+    `set year of ${varName} to ${year}`,
+    `set month of ${varName} to ${month}`,
+    `set day of ${varName} to ${day}`,
+    `set time of ${varName} to ${secondsAfterMidnight(timeStr)}`,
+  ].join("\n");
+}
+
+/** Throw unless `endTime` is later than `startTime` on the same day. */
+export function assertEndAfterStart(startTime: string, endTime: string): void {
+  if (secondsAfterMidnight(endTime) <= secondsAfterMidnight(startTime)) {
+    throw new Error(`End time ${endTime} must be after start time ${startTime}`);
+  }
 }
 
 /**

@@ -1,4 +1,4 @@
-import { runAppleScript, esc, appleScriptDate } from "./run.js";
+import { runAppleScript, esc, appleScriptDateVar, assertEndAfterStart } from "./run.js";
 
 /**
  * Calendar READS live in `eventkit/read-events.ts`, not here.
@@ -32,15 +32,16 @@ export const CALENDAR_NAME = "Jax";
 // ─── Script builders ─────────────────────────────────────────────
 
 export function createEventScript(payload: Record<string, string | null>): string {
-  const startStr = appleScriptDate(payload["date"] as string, payload["startTime"] as string);
-  const endStr = appleScriptDate(payload["date"] as string, payload["endTime"] as string);
+  assertEndAfterStart(payload["startTime"] as string, payload["endTime"] as string);
   const title = esc(payload["title"] as string);
   const location = payload["location"] ? `set location of newEvent to "${esc(payload["location"] as string)}"` : "";
   const notes = payload["notes"] ? `set description of newEvent to "${esc(payload["notes"] as string)}"` : "";
   return `
+${appleScriptDateVar("startDate", payload["date"] as string, payload["startTime"] as string)}
+${appleScriptDateVar("endDate", payload["date"] as string, payload["endTime"] as string)}
 tell application "Calendar"
   set cal to first calendar whose name is "${CALENDAR_NAME}"
-  set newEvent to make new event at end of events of cal with properties {summary:"${title}", start date:date "${startStr}", end date:date "${endStr}"}
+  set newEvent to make new event at end of events of cal with properties {summary:"${title}", start date:startDate, end date:endDate}
   ${location}
   ${notes}
   save
@@ -49,21 +50,25 @@ end tell
 }
 
 export function moveEventScript(payload: Record<string, string | null>): string {
+  assertEndAfterStart(payload["newStartTime"] as string, payload["newEndTime"] as string);
   const title = esc(payload["eventTitle"] as string);
-  const originalDateStr = payload["originalDate"] as string;
-  const [origYear, origMonth, origDay] = originalDateStr.split("-");
-  const newStartStr = appleScriptDate(payload["newDate"] as string, payload["newStartTime"] as string);
-  const newEndStr = appleScriptDate(payload["newDate"] as string, payload["newEndTime"] as string);
+  const originalDate = payload["originalDate"] as string;
+  const newDate = payload["newDate"] as string;
   return `
+${appleScriptDateVar("searchStart", originalDate, "00:00:00")}
+${appleScriptDateVar("searchEnd", originalDate, "23:59:59")}
+${appleScriptDateVar("newStart", newDate, payload["newStartTime"] as string)}
+${appleScriptDateVar("newEnd", newDate, payload["newEndTime"] as string)}
 tell application "Calendar"
   set cal to first calendar whose name is "${CALENDAR_NAME}"
-  set searchStart to date "${origMonth}/${origDay}/${origYear} 00:00:00"
-  set searchEnd to date "${origMonth}/${origDay}/${origYear} 23:59:59"
   set matchingEvents to (every event of cal whose summary is "${title}" and start date ≥ searchStart and start date ≤ searchEnd)
   if (count of matchingEvents) > 0 then
     set targetEvent to item 1 of matchingEvents
-    set start date of targetEvent to date "${newStartStr}"
-    set end date of targetEvent to date "${newEndStr}"
+    -- End is set before and after start: Calendar adjusts an end that falls
+    -- before the start, and the event may be moving earlier or later.
+    set end date of targetEvent to newEnd
+    set start date of targetEvent to newStart
+    set end date of targetEvent to newEnd
     save
     return "ok"
   else

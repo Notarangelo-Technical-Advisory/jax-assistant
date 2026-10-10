@@ -9,7 +9,8 @@
     "desktop": "npx tsx desktop-bridge.ts",
     "mcp:desktop": "npx tsx mcp/desktop-server.ts",
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0"

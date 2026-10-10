@@ -217,7 +217,8 @@ Nothing touches live data: each suite runs under its own `demo-` project.
 | `npm run test:rules` | Firestore security rules, using the same queries the web app makes | `tests/rules/` |
 | `npm run test:functions` | MAISIE's tools through `executeTool()`, the entry point shared by the chat function and the MCP server, and how the Headlines tab gathers stories | `tests/functions/` |
 | `npm run test:mcp` | The `maisie` MCP server started as VS Code starts it, driven by the official MCP client, and the automatic contact linking job run with Mail and Calendar output from fixture files | `tests/mcp/` |
-| `npm run test:all` | All five, in that order | |
+| `npm run test:bridge` | The AppleScript the desktop bridge runs to create and move Apple Calendar events: a 1 PM event lands at 1 PM on a 12-hour-clock Mac, and a bad or zero-length time is refused. The tests that run AppleScript are skipped outside macOS, and none of them touch the real calendar | `bridge/tests/` |
+| `npm run test:all` | All six, in that order | |
 
 `npm test` runs the browser tests in watch mode. The suites need the Firebase
 CLI (`npm install -g firebase-tools`) and Java 21 for the Firestore emulator.
