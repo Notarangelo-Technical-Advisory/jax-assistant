@@ -10,6 +10,11 @@ import { AUTH, FIRESTORE } from '../app/firebase';
 // `npm test` and `npm run test:ci` run Karma inside the Auth and Firestore
 // emulators under the demo project below, so nothing touches live data.
 
+// The emulators can pause for a few seconds on a busy machine, which made
+// tests that normally finish in under a second fail now and then. These
+// limits leave room for that; a real failure still fails, a little later.
+jasmine.DEFAULT_TIMEOUT_INTERVAL = 15000;
+
 export const EMULATOR_PROJECT = 'demo-jax-browser';
 const AUTH_URL      = 'http://127.0.0.1:9099';
 const FIRESTORE_URL = 'http://127.0.0.1:8080';
@@ -95,7 +100,7 @@ export async function seedDocument(path: string, fields: { [field: string]: Seed
 }
 
 /** Waits until `check` returns true, failing after `timeoutMs`. */
-export async function waitFor(check: () => boolean, timeoutMs = 5000): Promise<void> {
+export async function waitFor(check: () => boolean, timeoutMs = 10000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!check()) {
     if (Date.now() > deadline) throw new Error('Timed out waiting for the page to update');
