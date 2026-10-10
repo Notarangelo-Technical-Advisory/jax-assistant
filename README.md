@@ -198,7 +198,7 @@ Nothing touches live data: each suite runs under its own `demo-` project.
 | Command | What it covers | Where |
 | --- | --- | --- |
 | `npm run test:ci` | The contacts page and `ContactService` in headless Chrome, signed in against the Auth and Firestore emulators | `src/**/*.spec.ts` |
-| `npm run test:site` | The browser tab and phone home-screen icons exist at the sizes `src/index.html` declares, the dashboard header logo exists and draws without a web font, and the header logo and phone-only call button are named for screen readers | `tests/site/` |
+| `npm run test:site` | The browser tab and phone home-screen icons exist at the sizes `src/index.html` declares, the dashboard header logo exists and draws without a web font, the header logo and phone-only call button are named for screen readers, and the main area fills the page until Maisie is called | `tests/site/` |
 | `npm run test:rules` | Firestore security rules, using the same queries the web app makes | `tests/rules/` |
 | `npm run test:functions` | MAISIE's tools through `executeTool()`, the entry point shared by the chat function and the MCP server, and how the Headlines tab gathers stories | `tests/functions/` |
 | `npm run test:mcp` | The `maisie` MCP server started as VS Code starts it, driven by the official MCP client, and the automatic contact linking job run with Mail and Calendar output from fixture files | `tests/mcp/` |
