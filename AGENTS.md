@@ -27,6 +27,7 @@ Follow [`docs/standards/testing.md`](docs/standards/testing.md). In this app, ad
 - A new or changed Firestore collection or rule → `tests/rules/`
 - A new or changed MAISIE tool (`functions/src/tools/`) → `tests/functions/`
 - Anything a VS Code client sees from the `maisie` MCP server → `tests/mcp/`
+- A new or changed AppleScript that the desktop bridge runs (`bridge/applescript/`) → `bridge/tests/`
 - A new or changed web page or service → a `*.spec.ts` file next to it, run against the emulators (`src/testing/emulator-testing.ts`)
 
-`npm run test:all` runs `test:ci`, `test:rules`, `test:functions` and `test:mcp`. `tests.yml` runs the same suites on every pull request and before every deploy. See the Tests section of `README.md` for what each suite covers.
+`npm run test:all` runs `test:ci`, `test:site`, `test:rules`, `test:functions`, `test:mcp` and `test:bridge`. `tests.yml` runs the same suites on every pull request and before every deploy. See the Tests section of `README.md` for what each suite covers.

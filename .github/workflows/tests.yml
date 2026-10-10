@@ -26,6 +26,9 @@ jobs:
       - name: Install Cloud Functions dependencies
         run: npm install --prefix functions
 
+      - name: Install desktop bridge dependencies
+        run: npm install --prefix bridge
+
       # Every test suite runs on the Firebase emulators. The Firestore emulator
       # needs Java 21 with this Firebase CLI version.
       - uses: actions/setup-java@v4
@@ -53,3 +56,7 @@ jobs:
 
       - name: Run MCP server tests
         run: npm run test:mcp
+
+      # The tests that run AppleScript skip on Linux; the rest still run.
+      - name: Run desktop bridge tests
+        run: npm run test:bridge
