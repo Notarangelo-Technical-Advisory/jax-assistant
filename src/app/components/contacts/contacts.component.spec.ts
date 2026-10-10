@@ -14,6 +14,7 @@ import {
 describe('ContactsComponent', () => {
   let emulator: EmulatorApp;
   let page: ContactsComponent;
+  let fixture: ComponentFixture<ContactsComponent>;
 
   beforeEach(async () => {
     await clearEmulators();
@@ -23,7 +24,7 @@ describe('ContactsComponent', () => {
       imports: [ContactsComponent],
       providers: [provideRouter([]), { provide: FIRESTORE, useValue: emulator.firestore }],
     }).compileComponents();
-    const fixture = TestBed.createComponent(ContactsComponent);
+    fixture = TestBed.createComponent(ContactsComponent);
     fixture.detectChanges();
     page = fixture.componentInstance;
   });
@@ -87,6 +88,26 @@ describe('ContactsComponent', () => {
     expect(page.filtered().map((c) => c.firstName)).toEqual(['Tom']);
     page.search.set('');
     expect(page.filtered().map((c) => c.firstName)).toEqual(['Brad', 'Tom']);
+  });
+
+  it('opens a contact in place of the list on a phone, and goes back to the list', async () => {
+    await addContact({ firstName: 'Brad', lastName: 'Donohue' });
+    await waitFor(() => page.selectedContact() !== null);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const layout = el.querySelector('.layout')!;
+
+    // The phone styles hide the list while this class is set, and show the back button.
+    expect(layout.classList).toContain('has-selection');
+    const back = el.querySelector<HTMLButtonElement>('.btn-back-list');
+    expect(back?.textContent).toContain('All contacts');
+
+    back!.click();
+    fixture.detectChanges();
+
+    expect(page.selection()).toBeNull();
+    expect(page.notes()).toEqual([]);
+    expect(layout.classList).not.toContain('has-selection');
   });
 
   it('keeps notes on a contact, newest first, and deletes them with the contact', async () => {

@@ -45,7 +45,28 @@ $border: #334155;
   gap: 1rem;
   padding-top: 1rem;
 
-  @media (max-width: 760px) { grid-template-columns: 1fr; }
+  // On a phone the list and the details take turns: the details replace the
+  // list while a contact, company or new-contact form is open.
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr;
+    &.has-selection .list { display: none; }
+    &:not(.has-selection) .detail { display: none; }
+  }
+}
+
+.btn-back-list {
+  display: none;
+  align-self: flex-start;
+  padding: 0.3rem 0;
+  background: none;
+  border: none;
+  color: $text-secondary;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  &:hover { color: $text-primary; }
+
+  @media (max-width: 760px) { display: block; }
 }
 
 .list {

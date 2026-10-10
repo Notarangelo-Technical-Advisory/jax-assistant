@@ -5,7 +5,7 @@
     <button class="btn-primary" (click)="startNew()">+ New contact</button>
   </header>
 
-  <div class="layout">
+  <div class="layout" [class.has-selection]="selection() !== null">
     <!-- List -->
     <aside class="list">
       <input
@@ -32,6 +32,8 @@
 
     <!-- Detail -->
     <main class="detail">
+      <!-- Shown on a phone, where the details take the place of the list -->
+      <button class="btn-back-list" (click)="closeDetail()">&larr; All contacts</button>
       @let c = selectedContact();
       @let co = selectedCompany();
       @if (error()) {

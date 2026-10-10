@@ -166,6 +166,14 @@ export class ContactsComponent implements OnDestroy {
     this.watchRecord('companyId', id);
   }
 
+  /** Closes the open contact or company. On a phone this brings the list back. */
+  closeDetail(): void {
+    this.clearRecord();
+    this.selection.set(null);
+    this.editing.set(false);
+    this.error.set(null);
+  }
+
   startNew(): void {
     this.clearRecord();
     this.form = emptyForm();
