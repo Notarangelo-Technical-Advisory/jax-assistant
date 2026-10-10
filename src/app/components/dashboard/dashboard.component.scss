@@ -130,10 +130,6 @@ $border: #334155;
   flex: 1;
   min-height: 0;
   padding: 1rem 0;
-
-  &:not(.chat-open) .panel-left {
-    max-width: 760px;
-  }
 }
 
 .panel-left {
