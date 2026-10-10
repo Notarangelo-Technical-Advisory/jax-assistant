@@ -6,7 +6,7 @@ import { REMOTE_CONFIG } from '../firebase';
  * Feature flags with their default values (used when Remote Config is unavailable).
  * To add a flag: add it here, then create a matching parameter in the Firebase console.
  */
-const FLAG_DEFAULTS = {
+export const FLAG_DEFAULTS = {
   enable_voice_input: true,
   enable_tts: true,
   enable_billing_tab: true,

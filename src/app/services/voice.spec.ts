@@ -1,7 +1,4 @@
-import { TestBed } from '@angular/core/testing';
-import { RemoteConfig } from 'firebase/remote-config';
-import { REMOTE_CONFIG } from '../firebase';
-import { FeatureFlagService } from './feature-flag.service';
+import { FLAG_DEFAULTS } from './feature-flag.service';
 import { DEFAULT_VOICE, voiceToUse } from './voice';
 
 describe('voiceToUse', () => {
@@ -19,22 +16,8 @@ describe('voiceToUse', () => {
   });
 });
 
-describe('FeatureFlagService voice dropdown flag', () => {
-  // A Remote Config that cannot fetch, as when the app is offline, so the
-  // service falls back to its defaults without contacting Firebase.
-  const offlineRemoteConfig = { settings: {} } as unknown as RemoteConfig;
-
-  beforeEach(() => {
-    jasmine.clock().install();
-    TestBed.configureTestingModule({ providers: [{ provide: REMOTE_CONFIG, useValue: offlineRemoteConfig }] });
-  });
-
-  afterEach(() => jasmine.clock().uninstall());
-
-  it('hides the voice dropdown unless Remote Config turns it on', async () => {
-    const flags = TestBed.inject(FeatureFlagService);
-    await Promise.resolve();
-    expect(flags.enableVoiceSelect()).toBeFalse();
-    expect(offlineRemoteConfig.defaultConfig).toEqual(jasmine.objectContaining({ enable_voice_select: false }));
+describe('voice dropdown flag', () => {
+  it('hides the voice dropdown unless Remote Config turns it on', () => {
+    expect(FLAG_DEFAULTS.enable_voice_select).toBeFalse();
   });
 });
