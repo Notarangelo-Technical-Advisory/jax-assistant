@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maisie Spaced Capitals</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Nunito:wght@400;700&family=Josefin+Sans:wght@300;600&family=Raleway:wght@300&family=Cormorant+Garamond:wght@500&family=Montserrat:wght@400&family=Quicksand:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root { --teal: #2f7f86; --green: #8cc9a0; --ink: #22343a; --muted: #6b7f84;
+          --bg: #f7faf9; --card: #ffffff; --line: #dde8e5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px; background: var(--bg); color: var(--ink); font-family: Nunito, system-ui, sans-serif; }
+  h1 { font-family: Fraunces, serif; font-weight: 600; margin: 0 0 4px; text-align: center; }
+  p.lead { text-align: center; color: var(--muted); margin: 0 0 28px; }
+  .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); max-width: 1100px; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .art { height: 150px; display: flex; align-items: center; justify-content: center; }
+  .header { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--line);
+            border-radius: 8px; padding: 10px 14px; margin-top: 8px; }
+  .header .badge { width: 30px; height: 30px; flex: none; }
+  .header .wm { font-size: 19px; }
+  .header span.note { margin-left: auto; font-size: 11px; color: var(--muted); }
+  h2 { font-size: 17px; margin: 14px 0 4px; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.45; }
+
+  .wm { color: var(--teal); line-height: 1; white-space: nowrap; font-size: 50px;
+        letter-spacing: 0.3em; margin-right: -0.3em; }
+  .g { position: relative; display: inline-block; }
+  .g > svg { position: absolute; overflow: visible; pointer-events: none; }
+  .hide { color: transparent; }
+
+  .josefin { font-family: "Josefin Sans", sans-serif; font-weight: 300; }
+  .josefin-bold { font-family: "Josefin Sans", sans-serif; font-weight: 600; letter-spacing: 0.26em; margin-right: -0.26em; }
+  .raleway { font-family: Raleway, sans-serif; font-weight: 300; }
+  .cormorant { font-family: "Cormorant Garamond", serif; font-weight: 500; font-size: 56px; }
+  .montserrat { font-family: Montserrat, sans-serif; font-weight: 400; font-size: 44px; }
+  .quicksand { font-family: Quicksand, sans-serif; font-weight: 500; }
+  .green { color: var(--green); }
+  .rule { display: inline-flex; flex-direction: column; align-items: center; gap: 0.22em; }
+  .rule .line { display: flex; align-items: center; gap: 0.3em; width: 100%; }
+  .rule .line i { flex: 1; height: 1.5px; background: var(--teal); opacity: 0.5; }
+  .rule .line svg { width: 0.34em; height: 0.34em; }
+</style>
+</head>
+<body>
+<h1>Spaced capitals: more options</h1>
+<p class="lead">Eight versions in the style of W6. The small strip in each card shows the wordmark next to favicon C, as it would sit in the app header.</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="leaf" viewBox="0 0 40 40">
+      <path d="M4 36 C4 16 18 4 36 4 C36 22 24 36 4 36 Z" fill="#8cc9a0"/>
+      <path d="M7 33 C15 24 23 16 32 8" stroke="#2f7f86" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="leafsolid" viewBox="0 0 40 40">
+      <path d="M4 36 C4 16 18 4 36 4 C36 22 24 36 4 36 Z" fill="#8cc9a0"/>
+    </symbol>
+    <symbol id="badge" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="48" fill="#2f7f86"/>
+      <text x="50" y="67" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="54" fill="#ffffff">M</text>
+      <path d="M66 26 C66 18 72 12 80 12 C80 20 74 26 66 26 Z" fill="#8cc9a0"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="grid" id="grid"></div>
+
+<script>
+// Each option: its font class, how the letters are built, and the card text.
+// Marks are drawn by script against the real glyph shapes, so a leaf sits in
+// the same place in every font and at every size.
+const options = [
+  { id: 'S1', cls: 'josefin', mark: 'float',
+    title: 'S1. W6, leaf lifted clear',
+    text: 'The W6 you liked, with the leaf larger and raised clear of the "I", so it reads as a leaf, not an accent.' },
+  { id: 'S2', cls: 'josefin', mark: 'sprout',
+    title: 'S2. Leaf grows from the I',
+    text: 'The leaf grows out of the top of the first "I", like a seedling.' },
+  { id: 'S3', cls: 'josefin', mark: 'crossbar',
+    title: 'S3. Leaf as the bar of the A',
+    text: 'The A has no bar; a small leaf sits in its place. Subtle until you notice it.' },
+  { id: 'S4', cls: 'josefin-bold', mark: 'float',
+    title: 'S4. Same font, heavier',
+    text: 'S1 in a bolder weight. Easier to read at small sizes, such as the app header.' },
+  { id: 'S5', cls: 'cormorant', mark: 'float',
+    title: 'S5. Spaced serif',
+    text: 'Classic serif capitals with the same spacing. More formal; matches the M in favicon C.' },
+  { id: 'S6', cls: 'raleway', mark: 'greenI',
+    title: 'S6. No leaf, green I',
+    text: 'No leaf at all. The first "I" is green instead. The plainest of the eight.' },
+  { id: 'S7', cls: 'montserrat', mark: 'rule',
+    title: 'S7. With a leaf line',
+    text: 'The name sits above a thin line with a leaf in the middle. Suits a page header or signature.' },
+  { id: 'S8', cls: 'quicksand', mark: 'float',
+    title: 'S8. Rounded capitals',
+    text: 'Softer, rounded letters with the leaf above the "I". Friendlier than S1.' },
+];
+
+function word(o) {
+  if (o.mark === 'greenI') return 'MA<span class="green">I</span>SIE';
+  if (o.mark === 'crossbar') return 'M<span class="g" data-mark="crossbar"><span class="hide">A</span></span>ISIE';
+  const plain = 'MA<span class="g" data-mark="' + o.mark + '">I</span>SIE';
+  if (o.mark === 'rule') return '<span class="rule"><span>MAISIE</span><span class="line"><i></i><svg><use href="#leaf"/></svg><i></i></span></span>';
+  return plain;
+}
+
+const grid = document.getElementById('grid');
+for (const o of options) {
+  grid.insertAdjacentHTML('beforeend', `
+    <div class="card">
+      <div class="art"><span class="wm ${o.cls}">${word(o)}</span></div>
+      <div class="header"><svg class="badge"><use href="#badge"/></svg><span class="wm ${o.cls}">${word(o)}</span><span class="note">app header</span></div>
+      <h2>${o.title}</h2><p>${o.text}</p>
+    </div>`);
+}
+
+// Find the cap height and baseline of a glyph inside its span, in pixels.
+function metrics(span, ch) {
+  const cs = getComputedStyle(span);
+  const ctx = document.createElement('canvas').getContext('2d');
+  ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const m = ctx.measureText(ch);
+  const probe = document.createElement('span');
+  probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+  span.appendChild(probe);
+  const baseline = probe.getBoundingClientRect().top - span.getBoundingClientRect().top;
+  probe.remove();
+  return { size: parseFloat(cs.fontSize), cap: m.actualBoundingBoxAscent, baseline,
+           left: -m.actualBoundingBoxLeft, right: m.actualBoundingBoxRight };
+}
+
+function draw() {
+  for (const g of document.querySelectorAll('.g')) {
+    g.querySelector('svg')?.remove();
+    const kind = g.dataset.mark;
+    const ch = kind === 'crossbar' ? 'A' : 'I';
+    const { size, cap, baseline, left, right } = metrics(g, ch);
+    const capTop = baseline - cap;
+    const mid = (left + right) / 2;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    let html = '';
+    if (kind === 'float') {
+      const s = size * 0.34;
+      Object.assign(svg.style, { left: `${mid - s / 2}px`, top: `${capTop - s * 1.15}px`, width: `${s}px`, height: `${s}px` });
+      svg.setAttribute('viewBox', '0 0 40 40');
+      html = '<g transform="rotate(-15 20 20)"><use href="#leaf" width="40" height="40"/></g>';
+    } else if (kind === 'sprout') {
+      // The leaf's base corner (4, 36 in its box) touches the top of the I.
+      const s = size * 0.36;
+      Object.assign(svg.style, { left: `${mid - s * 0.1}px`, top: `${capTop - s * 0.86}px`, width: `${s}px`, height: `${s}px` });
+      svg.setAttribute('viewBox', '0 0 40 40');
+      html = '<use href="#leafsolid" width="40" height="40"/>';
+    } else if (kind === 'crossbar') {
+      // Draw an A with no bar, using the stroke weight of the font's I.
+      const w = right - left, h = cap, sw = size * 0.045;
+      Object.assign(svg.style, { left: `${left}px`, top: `${capTop}px`, width: `${w}px`, height: `${h}px` });
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      const s = h * 0.32;
+      html = `<path d="M${sw / 2} ${h} L${w / 2} ${sw / 2} L${w - sw / 2} ${h}" fill="none" stroke="#2f7f86" stroke-width="${sw}" stroke-linejoin="round"/>
+              <use href="#leafsolid" x="${w / 2 - s / 2}" y="${h * 0.56}" width="${s}" height="${s}"/>`;
+    }
+    svg.innerHTML = html;
+    g.appendChild(svg);
+  }
+}
+document.fonts.ready.then(draw);
+</script>
+</body>
+</html>
