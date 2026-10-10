@@ -63,11 +63,15 @@ describe('ChatService', () => {
   });
 
   it('shows the step MAISIE is working on, live', async () => {
+    // Wait for the first step to arrive, so the listener is live before the
+    // step changes. A write made while the listener is still starting can be
+    // missed by the emulator, which made this test fail about one run in ten.
+    await seedDocument('chatThinking/s1', { step: 'Starting...' });
     service.watchSession('s1');
-    expect(service.thinkingStep()).toBeNull();
+    await waitFor(() => service.thinkingStep() === 'Starting...');
 
     await seedDocument('chatThinking/s1', { step: 'Reading the calendar...' });
-    await waitFor(() => service.thinkingStep() !== null);
+    await waitFor(() => service.thinkingStep() === 'Reading the calendar...');
     expect(service.thinkingStep()).toBe('Reading the calendar...');
   });
 
