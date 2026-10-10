@@ -91,26 +91,25 @@ describe('ContactsComponent', () => {
 
   it('keeps notes on a contact, newest first, and deletes them with the contact', async () => {
     spyOn(window, 'confirm').and.returnValue(true);
-    const t0 = Date.now(); const lap = (l: string) => console.log('[LAP]', l, Date.now() - t0);
-    await addContact({ firstName: 'Brad', lastName: 'Donohue' }); lap('saved');
-    await waitFor(() => page.selectedContact() !== null); lap('selected');
+    await addContact({ firstName: 'Brad', lastName: 'Donohue' });
+    await waitFor(() => page.selectedContact() !== null);
 
     page.newNote = 'Prefers Teams to email.';
-    await page.addNote(); lap('note1 written');
-    await waitFor(() => page.notes().length === 1 && page.noteDate(page.notes()[0]) !== null, 20000).catch((e) => { lap('note1 STUCK notes=' + JSON.stringify(page.notes().map(n => [n.body, !!page.noteDate(n)]))); throw e; }); lap('note1 shown');
+    await page.addNote();
+    await waitFor(() => page.notes().length === 1 && page.noteDate(page.notes()[0]) !== null);
     page.newNote = 'Lunch on Friday.';
-    await page.addNote(); lap('note2 written');
-    await waitFor(() => page.notes().length === 2 && page.notes().every((n) => page.noteDate(n) !== null), 20000).catch((e) => { lap('note2 STUCK notes=' + JSON.stringify(page.notes().map(n => [n.body, !!page.noteDate(n)]))); throw e; }); lap('note2 shown');
+    await page.addNote();
+    await waitFor(() => page.notes().length === 2 && page.notes().every((n) => page.noteDate(n) !== null));
 
     expect(page.newNote).toBe('');
     expect(page.notes().map((n) => n.body)).toEqual(['Lunch on Friday.', 'Prefers Teams to email.']);
 
-    await page.deleteContact(); lap('deleted');
+    await page.deleteContact();
 
     expect(page.selection()).toBeNull();
     expect((await listDocuments('contacts')).length).toBe(0);
     expect((await listDocuments('contactNotes')).length).toBe(0);
-  }, 45000);
+  });
 
   it('opens a company with its people and edits its website', async () => {
     await addContact({ firstName: 'Brad', company: 'IHRDC' });

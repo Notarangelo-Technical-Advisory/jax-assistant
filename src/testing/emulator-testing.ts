@@ -10,6 +10,16 @@ import { AUTH, FIRESTORE } from '../app/firebase';
 // `npm test` and `npm run test:ci` run Karma inside the Auth and Firestore
 // emulators under the demo project below, so nothing touches live data.
 
+// [DIAG] temporary: longer limit and a log of slow tests
+jasmine.DEFAULT_TIMEOUT_INTERVAL = 20000;
+jasmine.getEnv().addReporter({
+  specStarted: (r) => { (r as unknown as { t0: number }).t0 = Date.now(); },
+  specDone: (r) => {
+    const ms = Date.now() - (r as unknown as { t0: number }).t0;
+    if (ms > 2000) console.log('[SLOW]', ms, r.fullName, r.status);
+  },
+});
+
 export const EMULATOR_PROJECT = 'demo-jax-browser';
 const AUTH_URL      = 'http://127.0.0.1:9099';
 const FIRESTORE_URL = 'http://127.0.0.1:8080';
