@@ -48,11 +48,20 @@ $border: #334155;
   gap: 1rem;
 }
 
-.header-logo {
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
-  object-fit: cover;
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header-badge {
+  width: 44px;
+  height: 44px;
+}
+
+.header-wordmark {
+  height: 22px;
+  width: auto;
 }
 
 .header-actions {

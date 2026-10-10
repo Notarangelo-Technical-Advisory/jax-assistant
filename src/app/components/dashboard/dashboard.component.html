@@ -2,7 +2,10 @@
   <!-- Header -->
   <header class="header">
     <div class="header-left">
-      <img src="/maisie.png" alt="Maisie" class="header-logo" />
+      <div class="header-brand">
+        <img src="/maisie-favicon.png" alt="" class="header-badge" />
+        <img src="/maisie-logo-light.svg" alt="Maisie" class="header-wordmark" />
+      </div>
       @if (!chatOpen() && featureFlags.enableVoiceInput()) {
         <button
           class="btn-call-header"
