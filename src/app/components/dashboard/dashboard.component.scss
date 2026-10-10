@@ -73,14 +73,14 @@ $border: #334155;
 .btn-call-header {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.9rem;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   background: $success;
   border: none;
-  border-radius: 20px;
+  border-radius: 50%;
   color: #fff;
-  font-size: 0.82rem;
-  font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
 
