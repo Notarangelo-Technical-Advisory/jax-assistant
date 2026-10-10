@@ -359,6 +359,10 @@ export class ContactsComponent implements OnDestroy {
     return link.url && isWebUrl(link.url) ? link.url : null;
   }
 
+  linkLabel(link: ContactLink): string {
+    return { url: 'Web', email: 'Email', meeting: 'Meeting', text: 'Text' }[link.type];
+  }
+
   /** A YYYY-MM-DD date is a calendar day, so it must not be shifted by time zone. */
   linkDate(link: ContactLink): Date | null {
     if (!link.date) return null;

@@ -384,7 +384,8 @@ export async function addContactNote(
 // mirror deletes events once they pass and Mail is only reachable from Jack's
 // Mac. The Message-ID or calendar uid is kept so the item can be found again.
 
-export type LinkType = "email" | "meeting" | "url";
+export type LinkType = "email" | "meeting" | "url" | "text";
+/** The types MAISIE may link by hand. Text links are made only by automatic linking. */
 const LINK_TYPES: LinkType[] = ["email", "meeting", "url"];
 const LINK_LIMIT = 100;
 
@@ -446,6 +447,8 @@ export function linkKey(l: Pick<LinkDoc, "type" | "sourceId" | "url" | "date" | 
   // Every occurrence of a recurring meeting shares one uid, so the date is part
   // of a meeting's identity; without a uid, its title stands in.
   case "meeting": return `meeting|${l.sourceId ?? l.title.toLowerCase()}|${(l.date ?? "").slice(0, 10)}`;
+  // One text link per contact per day; its id includes the contact.
+  case "text": return `text|${l.sourceId}`;
   default: return `url|${l.url}`;
   }
 }

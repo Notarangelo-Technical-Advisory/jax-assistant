@@ -36,10 +36,10 @@ export interface ContactNote {
   createdAt?: { toDate(): Date } | null;
 }
 
-export type ContactLinkType = 'email' | 'meeting' | 'url';
+export type ContactLinkType = 'email' | 'meeting' | 'url' | 'text';
 
 /**
- * An email, meeting or web page tied to a contact OR a company. Self-contained:
+ * An email, meeting, text conversation or web page tied to a contact OR a company. Self-contained:
  * it keeps its own title and date, because the calendar mirror drops past
  * events and Mail lives only on Jack's Mac. Same shape as the server's LinkDoc.
  */
@@ -49,13 +49,13 @@ export interface ContactLink {
   companyId: string | null;
   type: ContactLinkType;
   title: string;
-  /** Email: the Message-ID. Meeting: the Apple Calendar uid. */
+  /** Email: the Message-ID. Meeting: the Apple Calendar uid. Text: the day, YYYY-MM-DD. */
   sourceId: string | null;
   /** http(s) only. */
   url: string | null;
   /** YYYY-MM-DD or an ISO timestamp. */
   date: string | null;
-  /** Email: the sender. Meeting: the calendar name. */
+  /** Email: the sender. Meeting: the calendar name. Text: the number of messages that day. */
   detail: string | null;
   note: string | null;
   /** 'auto' when automatic linking made it (functions/src/tools/contact-autolink.ts). */

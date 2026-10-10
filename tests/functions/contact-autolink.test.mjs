@@ -1,5 +1,5 @@
-// Tests for automatic contact linking (CRM Phase 4): which emails and meetings
-// are tied to which contacts. The Mac-side readers are covered in
+// Tests for automatic contact linking (CRM Phase 4): which emails, meetings and
+// text messages are tied to which contacts. The Mac-side readers are covered in
 // tests/mcp/autolink.test.mjs.
 
 import { before, beforeEach, describe, it } from 'node:test';
@@ -9,7 +9,7 @@ import { all, read, reset, seed, setUp, tool } from './helpers.mjs';
 
 const fromFunctions = createRequire(new URL('../../functions/package.json', import.meta.url));
 const admin = fromFunctions('firebase-admin');
-const { autoLinkItems, isAutomatedSender } = fromFunctions('./lib/tools/contact-autolink.js');
+const { autoLinkItems, autoLinkTexts, isAutomatedSender } = fromFunctions('./lib/tools/contact-autolink.js');
 
 before(setUp);
 beforeEach(async () => {
@@ -167,5 +167,116 @@ describe('get_contact with many links', () => {
     assert.equal(emails[0].automatic, true);
     assert.ok(!links.some(l => l.title === 'Email 4'), 'the oldest emails are left out');
     assert.ok(links.some(l => l.title === 'IHRDC website' && l.automatic === false));
+  });
+});
+
+describe('text messages', () => {
+  // One conversation on one day, as the reader on Jack's Mac groups them.
+  const textDay = (fields = {}) => ({
+    chatId: '7', day: '2020-03-06', firstAt: '2020-03-06T13:00:00.000Z', count: 6,
+    firstLine: 'See you at the demo on Friday', handles: ['+1 (617) 555-0100'], ...fields,
+  });
+  const texts = (items, options = {}) => autoLinkTexts(admin.firestore(), items, options);
+
+  beforeEach(async () => {
+    await seed('contacts/brad', { firstName: 'Brad', lastName: 'Donohue', emails: ['brad@ihrdc.com'], phones: ['617.555.0100'], tags: [], companyId: null });
+  });
+
+  it('links a day of texts to the contact with that phone number, however it is written', async () => {
+    const s = await texts([textDay(), textDay({ chatId: '8', handles: ['+44 20 7946 0000'] })]);
+
+    assert.deepEqual([s.linked, s.noContact], [1, 1]);
+    const [brad] = await linksOf('brad');
+    assert.equal(brad.type, 'text');
+    assert.equal(brad.date, '2020-03-06');
+    assert.equal(brad.title, 'See you at the demo on Friday');
+    assert.equal(brad.detail, '6 messages');
+    assert.equal(brad.origin, 'auto');
+    assert.equal((await all('contactLinks')).length, 1);
+  });
+
+  it('matches the email address someone uses for iMessage', async () => {
+    await texts([textDay({ handles: ['Brad@IHRDC.com'], count: 1 })]);
+
+    const [brad] = await linksOf('brad');
+    assert.equal(brad.detail, '1 message');
+  });
+
+  it('gives a contact one link a day, counting every conversation they were in', async () => {
+    await texts([
+      textDay({ chatId: '7', firstAt: '2020-03-06T15:00:00.000Z', count: 2, firstLine: 'Later chat' }),
+      textDay({ chatId: '9', firstAt: '2020-03-06T09:00:00.000Z', count: 3, firstLine: 'Morning group chat', handles: ['6175550100', 'amy@ihrdc.com'] }),
+      textDay({ day: '2020-03-07', firstAt: '2020-03-07T09:00:00.000Z', count: 1, firstLine: 'Next day' }),
+    ]);
+
+    const brad = (await linksOf('brad')).sort((a, b) => a.date.localeCompare(b.date));
+    assert.deepEqual(brad.map(l => [l.date, l.title, l.detail]), [
+      ['2020-03-06', 'Morning group chat', '5 messages'],
+      ['2020-03-07', 'Next day', '1 message'],
+    ]);
+    const [amy] = await linksOf('amy');
+    assert.deepEqual([amy.title, amy.detail], ['Morning group chat', '3 messages']);
+  });
+
+  it('updates the day as more texts arrive, without adding a second link', async () => {
+    await texts([textDay({ count: 2 })]);
+    const again = await texts([textDay({ count: 5 })]);
+    const unchanged = await texts([textDay({ count: 5 })]);
+
+    assert.deepEqual([again.linked, again.updated], [0, 1]);
+    assert.deepEqual([unchanged.updated, unchanged.alreadyLinked], [0, 1]);
+    const links = await linksOf('brad');
+    assert.equal(links.length, 1);
+    assert.equal(links[0].detail, '5 messages');
+    assert.ok(links[0].createdAt, 'the update keeps the original link');
+  });
+
+  it('stays removed when Jack removes a day of texts', async () => {
+    await texts([textDay()]);
+    const [brad] = await linksOf('brad');
+    await tool('remove_contact_link', { link_id: brad.id });
+
+    const again = await texts([textDay({ count: 9 })]);
+
+    assert.deepEqual([again.dismissed, again.linked, again.updated], [1, 0, 0]);
+    assert.equal((await linksOf('brad')).length, 0);
+  });
+
+  it('skips a group chat of more than 15 other people', async () => {
+    const crowd = Array.from({ length: 16 }, (_, i) => `+1 617 555 01${String(i).padStart(2, '0')}`);
+    const s = await texts([textDay({ handles: crowd })]);
+
+    assert.deepEqual([s.tooManyPeople, s.linked], [1, 0]);
+  });
+
+  it('keeps only the first line, cut to 80 characters, and names a day with no words', async () => {
+    const long = 'Thank you for leading the session today. ' + 'It helped the whole team understand the plan. '.repeat(3);
+    await texts([
+      textDay({ firstLine: `${long}\nSecond line, never stored` }),
+      textDay({ day: '2020-03-08', firstLine: '' }),
+    ]);
+
+    const brad = (await linksOf('brad')).sort((a, b) => a.date.localeCompare(b.date));
+    assert.equal(brad[0].title.length, 80);
+    assert.ok(brad[0].title.endsWith('…'));
+    assert.ok(!brad[0].title.includes('Second line'));
+    assert.equal(brad[1].title, '(photo or attachment)');
+  });
+
+  it('writes nothing in a dry run', async () => {
+    const s = await texts([textDay()], { dryRun: true });
+
+    assert.deepEqual([s.dryRun, s.linked], [true, 1]);
+    assert.deepEqual(s.examples, ['Brad Donohue: 2020-03-06, 6 messages']);
+    assert.equal((await all('contactLinks')).length, 0);
+  });
+
+  it('shows text links in get_contact, and MAISIE cannot add one by hand', async () => {
+    await texts([textDay()]);
+
+    const { links } = await tool('get_contact', { contact_id: 'brad' });
+    assert.ok(links.some(l => l.type === 'text' && l.automatic === true && l.detail === '6 messages'));
+    const refused = await tool('link_to_contact', { contact_id: 'brad', type: 'text', title: 'Hi', date: '2020-03-06' });
+    assert.equal(refused.success, false);
   });
 });
