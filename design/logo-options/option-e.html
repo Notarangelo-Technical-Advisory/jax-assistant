@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maisie Option E</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #22343a; --muted: #6b7f84; --bg: #f7faf9; --card: #ffffff; --line: #dde8e5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px; background: var(--bg); color: var(--ink); font-family: Nunito, system-ui, sans-serif; }
+  h1 { font-family: Fraunces, serif; font-weight: 600; margin: 0 0 4px; text-align: center; }
+  h3 { max-width: 1100px; margin: 28px auto 12px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  p.lead { text-align: center; color: var(--muted); margin: 0 0 8px; }
+  .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); max-width: 1100px; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .art { height: 200px; display: flex; align-items: center; justify-content: center; }
+  .art svg { max-height: 190px; max-width: 100%; }
+  .small { display: flex; gap: 14px; align-items: center; justify-content: center; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 8px; }
+  .small svg { width: 32px; height: 32px; }
+  .small span { font-size: 12px; color: var(--muted); }
+  h2 { font-size: 17px; margin: 14px 0 4px; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.45; }
+</style>
+</head>
+<body>
+<h1>Option E: variations</h1>
+<p class="lead">Five versions of the geometric M, and two favicons that pair with it.</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="tg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8cc9a0"/><stop offset="1" stop-color="#2f7f86"/>
+    </linearGradient>
+    <!-- E1: as shown before -->
+    <symbol id="e1" viewBox="0 0 120 100">
+      <path d="M14 86 V46 A23 23 0 0 1 60 46 V86 M60 46 A23 23 0 0 1 106 46 V86" fill="none" stroke="#2f7f86" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="60" cy="16" r="6" fill="#8cc9a0"/><circle cx="60" cy="16" r="2.5" fill="#2f7f86"/>
+    </symbol>
+    <!-- E2: lighter line, five-petal flower -->
+    <symbol id="e2" viewBox="0 0 120 100">
+      <path d="M16 86 V46 A22 22 0 0 1 60 46 V86 M60 46 A22 22 0 0 1 104 46 V86" fill="none" stroke="#2f7f86" stroke-width="6" stroke-linecap="round"/>
+      <g transform="translate(60 14)" fill="#8cc9a0">
+        <circle cx="0" cy="-5" r="4"/><circle cx="4.8" cy="-1.5" r="4"/><circle cx="3" cy="4" r="4"/><circle cx="-3" cy="4" r="4"/><circle cx="-4.8" cy="-1.5" r="4"/>
+        <circle r="2.6" fill="#ffffff"/><circle r="1.6" fill="#2f7f86"/>
+      </g>
+    </symbol>
+    <!-- E3: green-to-teal fade, like the current logo -->
+    <symbol id="e3" viewBox="0 0 120 100">
+      <path d="M14 86 V46 A23 23 0 0 1 60 46 V86 M60 46 A23 23 0 0 1 106 46 V86" fill="none" stroke="url(#tg)" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="60" cy="16" r="6" fill="#8cc9a0"/>
+    </symbol>
+    <!-- E4: leaf grows from the middle stroke -->
+    <symbol id="e4" viewBox="0 0 120 100">
+      <path d="M14 86 V46 A23 23 0 0 1 60 46 V86 M60 46 A23 23 0 0 1 106 46 V86" fill="none" stroke="#2f7f86" stroke-width="10" stroke-linecap="round"/>
+      <path d="M60 22 C60 10 70 2 82 2 C82 14 72 22 60 22 Z" fill="#8cc9a0"/>
+      <path d="M62 20 C68 14 74 9 79 5" stroke="#2f7f86" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+    </symbol>
+    <!-- Favicon F1: E1 on teal tile -->
+    <symbol id="f1" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="48" fill="#2f7f86"/>
+      <path d="M26 72 V48 A12 12 0 0 1 50 48 V72 M50 48 A12 12 0 0 1 74 48 V72" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round"/>
+      <circle cx="50" cy="26" r="5" fill="#8cc9a0"/>
+    </symbol>
+    <!-- Favicon C: serif M badge, as chosen -->
+    <symbol id="c" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="48" fill="#2f7f86"/>
+      <text x="50" y="67" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="54" fill="#ffffff">M</text>
+      <path d="M66 26 C66 18 72 12 80 12 C80 20 74 26 66 26 Z" fill="#8cc9a0"/>
+    </symbol>
+  </defs>
+</svg>
+
+<h3>Main logo</h3>
+<div class="grid">
+  <div class="card">
+    <div class="art"><svg viewBox="0 0 240 190"><use href="#e1" x="60" y="4" width="120" height="100"/>
+      <text x="120" y="158" text-anchor="middle" font-family="Nunito, sans-serif" font-weight="700" font-size="30" letter-spacing="2" fill="#22343a">MAISIE</text></svg></div>
+    <div class="small"><svg viewBox="0 0 120 100"><use href="#e1"/></svg><span>32 px</span></div>
+    <h2>E1. As shown before</h2>
+    <p>Thick teal arches, one dot flower, name in capitals.</p>
+  </div>
+  <div class="card">
+    <div class="art"><svg viewBox="0 0 240 190"><use href="#e2" x="60" y="4" width="120" height="100"/>
+      <text x="120" y="158" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-size="32" fill="#2f7f86">Maisie</text></svg></div>
+    <div class="small"><svg viewBox="0 0 120 100"><use href="#e2"/></svg><span>32 px</span></div>
+    <h2>E2. Lighter and softer</h2>
+    <p>Thinner line, a five-petal flower, and a serif name. Feels warmer and more personal.</p>
+  </div>
+  <div class="card">
+    <div class="art"><svg viewBox="0 0 240 190"><use href="#e3" x="60" y="4" width="120" height="100"/>
+      <text x="120" y="158" text-anchor="middle" font-family="Nunito, sans-serif" font-weight="700" font-size="30" fill="#22343a">Maisie</text></svg></div>
+    <div class="small"><svg viewBox="0 0 120 100"><use href="#e3"/></svg><span>32 px</span></div>
+    <h2>E3. Colour fade</h2>
+    <p>The arches fade from green to teal, as the current logo does. Keeps a link to the original.</p>
+  </div>
+  <div class="card">
+    <div class="art"><svg viewBox="0 0 240 190"><use href="#e4" x="60" y="4" width="120" height="100"/>
+      <text x="120" y="158" text-anchor="middle" font-family="Nunito, sans-serif" font-weight="700" font-size="30" fill="#22343a">Maisie</text></svg></div>
+    <div class="small"><svg viewBox="0 0 120 100"><use href="#e4"/></svg><span>32 px</span></div>
+    <h2>E4. Leaf instead of flower</h2>
+    <p>A leaf grows from the middle of the M. Uses the same leaf as favicon C.</p>
+  </div>
+  <div class="card">
+    <div class="art"><svg viewBox="0 0 300 120"><use href="#e4" x="6" y="16" width="100" height="84"/>
+      <text x="118" y="86" font-family="Fraunces, Georgia, serif" font-size="54" fill="#2f7f86">Maisie</text></svg></div>
+    <div class="small"><svg viewBox="0 0 120 100"><use href="#e4"/></svg><span>32 px</span></div>
+    <h2>E5. Side by side</h2>
+    <p>E4 with the name to the right. Fits a page header or email signature better than a stacked logo.</p>
+  </div>
+</div>
+
+<h3>Favicon pairing</h3>
+<div class="grid">
+  <div class="card">
+    <div class="art"><svg viewBox="0 0 100 100" style="width:140px"><use href="#c"/></svg></div>
+    <div class="small"><svg viewBox="0 0 100 100"><use href="#c"/></svg><span>32 px</span></div>
+    <h2>C. Your choice</h2>
+    <p>Serif M with a leaf. Pairs best with E4 or E5, which share the leaf.</p>
+  </div>
+  <div class="card">
+    <div class="art"><svg viewBox="0 0 100 100" style="width:140px"><use href="#f1"/></svg></div>
+    <div class="small"><svg viewBox="0 0 100 100"><use href="#f1"/></svg><span>32 px</span></div>
+    <h2>C with the E shape</h2>
+    <p>Same teal badge, but with the arch M from E inside. Only worth it if E becomes the main logo.</p>
+  </div>
+</div>
+</body>
+</html>
