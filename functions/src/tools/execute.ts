@@ -6,6 +6,7 @@ import {
 } from "../fta-client";
 import {readCalendarEvents, formatEventTime, extractMeetingLink, extractPasscode} from "./calendar-read";
 import {Category, DEFAULT_CATEGORY_KEYS} from "./definitions";
+import {etDateKey, etDaysWindow, addDaysToKey} from "../et-time";
 import {refreshWeek, approvePost, markPosted, writeDraft, describeWeek, LinkedInWeek} from "../linkedin";
 import {
   findContacts,
@@ -125,10 +126,7 @@ export async function executeTool(
   case "get_calendar": {
     const input = rawInput as {days_ahead?: number};
     const daysAhead = input.days_ahead || 1;
-    const calStart = new Date();
-    calStart.setHours(0, 0, 0, 0);
-    const calEnd = new Date(calStart);
-    calEnd.setDate(calEnd.getDate() + daysAhead);
+    const {start: calStart, end: calEnd} = etDaysWindow(new Date(), daysAhead);
     const events = await readCalendarEvents(db, calStart, calEnd).catch(() => []);
     const formatted = events.map((e) => {
       const day = e.startTime.toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York"});
@@ -300,7 +298,8 @@ export async function executeTool(
       customer_id?: string;
     };
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    // ET, not UTC: after 8 PM ET the UTC date is already tomorrow.
+    const todayStr = etDateKey(new Date());
     let startDate: string;
     let endDate: string;
 
@@ -308,10 +307,7 @@ export async function executeTool(
       startDate = input.start_date;
       endDate = input.end_date || todayStr;
     } else {
-      const daysBack = input.days_back ?? 7;
-      const start = new Date();
-      start.setDate(start.getDate() - daysBack);
-      startDate = start.toISOString().split("T")[0];
+      startDate = addDaysToKey(todayStr, -(input.days_back ?? 7));
       endDate = todayStr;
     }
 
