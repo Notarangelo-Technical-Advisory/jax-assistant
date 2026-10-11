@@ -18,6 +18,7 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
 - **Every link comes from a feed.** The model names a story by its id, and the code copies the link, source and date from that story. The model cannot write a link that does not exist.
 - **The model uses only what the feeds say.** It sees each story's title and short description, not the full article, and is told not to add details from memory.
 - **A feed that fails** is listed in the `sourceErrors` field, and the other sources still count. The run fails only when no source can be read.
+- **The foot of the Headlines tab** shows how many stories the model chose from (`usage.candidates`) and how many sources could not be read. Click the line to see each failed source and its error.
 - **Results go to `briefings/headlines`**, not `briefings/live`, so the 30-minute facts refresh never overwrites them.
 - **If a run fails**, the last good headlines stay on screen, and `lastError` is recorded beside them.
 - **The dashboard** now has "Today" and "Headlines" tabs in the Briefing section. The browser remembers which tab was open last.

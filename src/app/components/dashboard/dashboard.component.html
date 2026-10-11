@@ -189,6 +189,20 @@
               <p class="empty-state">No headlines yet. They are gathered at 6:45 AM and 12:45 PM, and at 9:45 AM on weekdays.</p>
             }
           }
+          @if (headlineSources(); as src) {
+            @if (src.errors.length > 0) {
+              <details class="headline-sources" [class.warning]="src.warning">
+                <summary>{{ src.summary }}</summary>
+                <ul>
+                  @for (error of src.errors; track $index) {
+                    <li>{{ error }}</li>
+                  }
+                </ul>
+              </details>
+            } @else {
+              <p class="headline-sources">{{ src.summary }}</p>
+            }
+          }
         } @else {
         @if (briefing(); as b) {
           @if (b.narrativeSummary) {

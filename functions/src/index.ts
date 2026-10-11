@@ -1331,8 +1331,9 @@ async function runHeadlines(): Promise<void> {
       date: etDateKey(now),
       sections: result.sections,
       market,
-      // Kept off the dashboard but on the document, so the cost of a run and
-      // any feed that stopped working can be seen without reading the logs.
+      // So the cost of a run and any feed that stopped working can be seen
+      // without reading the logs. The Headlines tab shows the story count and
+      // the failed sources at its foot; the cost stays on the document only.
       usage,
       sourceErrors: result.sourceErrors,
       generatedAt: admin.firestore.FieldValue.serverTimestamp(),

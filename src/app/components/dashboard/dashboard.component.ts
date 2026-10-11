@@ -21,6 +21,7 @@ import { DEFAULT_VOICE, voiceToUse } from '../../services/voice';
 import { LinkedInService, LinkedInAction } from '../../services/linkedin.service';
 import { LinkedInWeek } from '../../models/linkedin.model';
 import { Briefing, Headlines } from '../../models/briefing.model';
+import { headlineSourceNote } from './headline-sources';
 import { Task, TaskRecurrence } from '../../models/task.model';
 import { TaskCategory } from '../../models/task-category.model';
 import { Alert } from '../../models/alert.model';
@@ -161,6 +162,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   headlineSections = computed(() =>
     (this.headlines()?.sections ?? []).filter((s) => s.items.length > 0)
   );
+
+  /** How many stories the last run had, and which sources failed. */
+  headlineSources = computed(() => headlineSourceNote(this.headlines()));
 
   selectBriefingTab(tab: 'today' | 'headlines'): void {
     this.briefingTab.set(tab);
