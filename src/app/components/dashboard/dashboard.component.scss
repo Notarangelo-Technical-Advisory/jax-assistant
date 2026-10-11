@@ -368,6 +368,27 @@ $border: #334155;
   margin: 0 0 0.75rem;
 }
 
+// Foot of the Headlines tab: story count and any sources that failed
+.headline-sources {
+  margin: 0.75rem 0 0;
+  font-size: 0.7rem;
+  color: $text-secondary;
+
+  &.warning summary {
+    color: $warning;
+  }
+
+  summary {
+    cursor: pointer;
+  }
+
+  ul {
+    margin: 0.35rem 0 0;
+    padding-left: 1.1rem;
+    overflow-wrap: anywhere;
+  }
+}
+
 // Narrative Summary
 .narrative-summary {
   margin: 0 0 1rem;

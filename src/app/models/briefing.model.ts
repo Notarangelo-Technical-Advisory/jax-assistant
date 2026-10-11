@@ -64,6 +64,10 @@ export interface Headlines {
   market?: MarketSnapshot | null;
   generatedAt?: Date | null;
   lastError?: string | null;
+  /** How many stories the model chose from, and what the run cost. */
+  usage?: { candidates: number; inputTokens: number; outputTokens: number; estimatedCostUsd: number };
+  /** Feeds and searches that could not be read on the last run, with the reason. */
+  sourceErrors?: string[];
 }
 
 export interface HeadlineSection {
