@@ -10,6 +10,7 @@ import {
 import {readCalendarEvents, formatEventWhen, CalendarEvent} from "./calendar-read";
 import {Category, DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS} from "./definitions";
 import {CustomerInfo} from "./execute";
+import {etDateKey, etDateLabel, etDaysWindow} from "../et-time";
 
 export interface MaisieContext {
   totalUnbilled: number;
@@ -36,12 +37,9 @@ export async function loadMaisieContext(
   db: admin.firestore.Firestore,
   sessionId?: string
 ): Promise<MaisieContext> {
-  const now = new Date();
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-  const tomorrowEnd = new Date(now);
-  tomorrowEnd.setDate(tomorrowEnd.getDate() + 2);
-  tomorrowEnd.setHours(0, 0, 0, 0);
+  // Today and tomorrow in ET. setHours here would use the runtime's UTC day,
+  // which after 8 PM ET is already tomorrow.
+  const {start: todayStart, end: tomorrowEnd} = etDaysWindow(new Date(), 2);
 
   const [
     unbilledEntries,
@@ -167,7 +165,7 @@ When Jack asks to fix a bug, add a feature, or change any code, use the code_wit
  * second system block, positioned after the cache breakpoint so it never
  * invalidates the cached prefix.
  */
-export function buildStateBlock(ctx: MaisieContext): string {
+export function buildStateBlock(ctx: MaisieContext, now = new Date()): string {
   return `Current context:
 - Unbilled hours: ${ctx.totalUnbilled.toFixed(1)}h ($${ctx.unbilledAmount.toFixed(0)}) at $150/hr
 - Last invoice: ${ctx.lastInvoice ? `${ctx.lastInvoice.issueDate} for $${ctx.lastInvoice.total}` : "None found"}
@@ -185,7 +183,7 @@ export function buildStateBlock(ctx: MaisieContext): string {
   }).join("; ") : "No upcoming events"}
 - Task categories: ${ctx.categories.map((c) => `${c.key} (${c.label})`).join(", ")}
 
-Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", year: "numeric", month: "long", day: "numeric"})}.`;
+Today is ${etDateLabel(now)} (${etDateKey(now)}), Eastern Time.`;
 }
 
 /**
