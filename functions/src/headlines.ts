@@ -77,8 +77,12 @@ const FETCH_TIMEOUT_MS = 15_000;
 const DESCRIPTION_CHARS = 400;
 const USER_AGENT = "Mozilla/5.0 (compatible; MAISIE-headlines/2.0; +https://notarangelo.com)";
 
-/** List price of MODEL per million tokens, for the cost recorded on each run. Update with MODEL. */
-const PRICE_PER_MTOK = {input: 2, output: 10};
+/**
+ * List price of LIGHT_MODEL per million tokens, for the cost recorded on each
+ * run. Update with LIGHT_MODEL. This is the rate for prompts of 100K tokens or
+ * fewer; a headlines run reads about 15K.
+ */
+const PRICE_PER_MTOK = {input: 0.1, output: 0.5};
 
 export interface HeadlineItem {
   section: SectionKey;
@@ -418,8 +422,8 @@ export async function generateHeadlines(
 
   const usage = {inputTokens: 0, outputTokens: 0};
   let submit: Anthropic.Messages.ToolUseBlock | undefined;
-  // tool_choice cannot force the call on this model, so ask once more if the
-  // first reply ends without it.
+  // Ask once more if the first reply ends without the call. A forced
+  // tool_choice would avoid this, but Haiku 5.5 then skips thinking.
   for (let attempt = 0; attempt < 2 && !submit; attempt++) {
     const response = await anthropic.messages.create(request());
     usage.inputTokens += response.usage.input_tokens;
