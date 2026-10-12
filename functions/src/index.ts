@@ -11,7 +11,7 @@ import {loadMaisieContext, MAISIE_PERSONA, buildStateBlock, historyToMessages} f
 import {readCalendarEvents, formatEventTime} from "./tools/calendar-read";
 import {generateHeadlines} from "./headlines";
 import {getMarketSnapshot} from "./markets";
-import {MODEL} from "./model";
+import {LIGHT_MODEL, MODEL} from "./model";
 import {refreshWeek, draftIfIdea, approvePost, markPosted, writeDraft, saveDraftText, describeWeek, textJack} from "./linkedin";
 // Every "what day is it" question here is "what day is it in Norwell" — see et-time.ts.
 import {ET_ZONE, etDateKey, etDayStart, etNextDayStart, etDayParts} from "./et-time";
@@ -759,12 +759,12 @@ async function generateNarrative(
         : "";
 
       const aiResponse = await anthropic.messages.create({
-        model: MODEL,
+        model: LIGHT_MODEL,
         // Room for a short think as well as the reply: thinking counts toward
         // max_tokens.
         max_tokens: 2048,
-        // Pure summarization of JSON assembled above. Sonnet 5.5 rejects
-        // disabled thinking; at low effort it skips thinking on simple requests.
+        // Pure summarization of JSON assembled above. Haiku 5.5 thinks by
+        // default and its default effort is medium, so set low explicitly.
         thinking: {type: "adaptive"},
         output_config: {effort: "low"},
         system: systemMsg + changeMsg,
@@ -1323,7 +1323,7 @@ async function runHeadlines(): Promise<void> {
       })
       : null;
     const anthropic = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
-    const result = await generateHeadlines(anthropic, MODEL, todayLabel, market, isPreMarket(now));
+    const result = await generateHeadlines(anthropic, LIGHT_MODEL, todayLabel, market, isPreMarket(now));
     const {usage} = result;
     console.log(`[headlines] ${usage.candidates} candidates, ${usage.inputTokens} input and ` +
       `${usage.outputTokens} output tokens, about $${usage.estimatedCostUsd}`);
@@ -1582,12 +1582,12 @@ ${taskListStr}`;
     try {
       console.log("[receiveSms] calling Haiku for intent parse");
       const aiResponse = await anthropic.messages.create({
-        model: MODEL,
+        model: LIGHT_MODEL,
         max_tokens: 1024,
         // Low effort on both SMS calls: Twilio's webhook timeout is ~15s and
-        // this handler makes two sequential model calls. Sonnet 5.5 rejects
-        // disabled thinking; at low effort it skips thinking on simple
-        // requests. max_tokens leaves room for a short think if it does.
+        // this handler makes two sequential model calls. Haiku 5.5's default
+        // effort is medium, so set low explicitly. max_tokens leaves room for
+        // a short think.
         thinking: {type: "adaptive"},
         output_config: {effort: "low"},
         system: systemPrompt,
@@ -1667,7 +1667,7 @@ ${taskListStr}`;
     try {
       console.log("[receiveSms] calling Haiku for personalized reply");
       const replyResponse = await anthropic.messages.create({
-        model: MODEL,
+        model: LIGHT_MODEL,
         // The system prompt keeps the reply to 1-2 sentences; the headroom is
         // for a short think, which counts toward max_tokens.
         max_tokens: 1024,
