@@ -10,7 +10,9 @@
  * Press 'q' or Ctrl-C to exit.
  */
 
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+// Certificate checks stay on (engineering-standards decision 0006). If a network
+// replaces Google's certificates, set NODE_EXTRA_CA_CERTS to its root certificate
+// instead of turning the checks off.
 process.env.GRPC_SSL_CIPHER_SUITES = "HIGH+ECDSA";
 
 import { initializeApp, cert } from "firebase-admin/app";
