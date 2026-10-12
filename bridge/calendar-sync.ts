@@ -13,9 +13,10 @@
  * (gitignored — download from Firebase Console > Project Settings > Service Accounts)
  */
 
-// SSL bypass for this machine's certificate issues (same as Firebase CLI)
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-// gRPC also needs the env var before any imports touch it
+// Certificate checks stay on (engineering-standards decision 0006). If a network
+// replaces Google's certificates, set NODE_EXTRA_CA_CERTS to its root certificate
+// instead of turning the checks off.
+// gRPC needs this env var before any imports touch it
 process.env.GRPC_SSL_CIPHER_SUITES = "HIGH+ECDSA";
 
 import {
@@ -41,7 +42,8 @@ const serviceAccountPath = join(__dirname, "service-account.json");
 const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, "utf-8"));
 
 initializeApp({ credential: cert(serviceAccount) });
-// Use REST instead of gRPC — gRPC has its own TLS stack that ignores NODE_TLS_REJECT_UNAUTHORIZED
+// REST instead of gRPC, kept from the earlier certificate workaround: REST uses
+// Node's own TLS stack, the same one the rest of this process uses.
 const db = getFirestore();
 db.settings({ preferRest: true });
 
