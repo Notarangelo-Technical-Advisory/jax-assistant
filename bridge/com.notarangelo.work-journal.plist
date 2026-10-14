@@ -2,8 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   Work journal: every 15 minutes, collects what Jack did on GitHub, in Jira,
-  in Claude Code and in meetings on his Jax and IHRDC calendars into MAISIE's
-  journal, with each day's estimated time per client. The job is functions/src/mcp/collect-journal.ts; the rules are in
+  in Claude Code, in meetings on his Jax and IHRDC calendars and in meetings
+  he recorded in Wispr Flow into MAISIE's journal, with each day's estimated
+  time per client. The job is functions/src/mcp/collect-journal.ts; the rules are in
   functions/src/tools/journal.ts.
 
   Install:
