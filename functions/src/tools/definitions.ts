@@ -77,6 +77,7 @@ export const MCP_TOOL_NAMES = [
   "get_unbilled_detail",
   "get_time_entries",
   "get_invoice_status",
+  "get_journal",
   "find_contacts",
   "get_contact",
   "get_company",
@@ -270,6 +271,20 @@ export const buildTools = (
             enum: ["all", "unpaid", "paid"],
             description: "'unpaid' = sent+overdue, 'paid' = paid only, 'all' = everything. Defaults to 'all'.",
           },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "get_journal",
+      description: "Get Jack's work journal: what he did and when, for each client, collected every 15 minutes on his Mac from GitHub (pull requests, reviews, comments, pushes), Jira (issues he created, moved, edited or commented on) and Claude Code (when he worked in which repo and branch). Returns estimated hours per client and per day, the work sessions behind them, and each item with its time in Eastern Time. Use it when Jack asks what he worked on, where his time went, or needs help filling in time entries; compare with get_time_entries to find work he has not logged. Hours are estimates, not logged time.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          start_date: {type: "string", description: "First day, YYYY-MM-DD. Defaults to days_back days before end_date, or today."},
+          end_date: {type: "string", description: "Last day, YYYY-MM-DD. Defaults to start_date when start_date is given (one day), otherwise today. For 'since Monday', give both."},
+          days_back: {type: "number", description: "Days before end_date to start from when start_date is not given (0 = that day only). At most 30."},
+          client: {type: "string", description: "Optional: one client's work only, by task category key, e.g. 'ihrdc', 'solomon', 'church', 'general'."},
         },
         required: [],
       },

@@ -28,8 +28,10 @@ Glorify God and Enjoy Him Forever. Everything else supports this.
 Two local stdio MCP servers make MAISIE usable from VS Code. See `README.md` for
 setup; `.mcp.json` is gitignored because it holds absolute paths.
 
-- **`maisie`** (`functions/src/mcp/server.ts`) — MAISIE's task and billing tools
-  plus `get_maisie_context` and a `maisie` persona prompt. Shares
+- **`maisie`** (`functions/src/mcp/server.ts`) — MAISIE's task, billing,
+  contact and work journal tools plus `get_maisie_context` and a `maisie`
+  persona prompt. Use `get_journal` when Jack asks what he worked on or needs
+  help filling in time entries (see `projects/work-journal/README.md`). Shares
   `functions/src/tools/` with the cloud `chat` function, so there is one
   implementation per tool.
 - **`desktop`** (`bridge/mcp/desktop-server.ts`) — Apple Mail and Calendar.

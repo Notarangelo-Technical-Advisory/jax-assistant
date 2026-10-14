@@ -12,6 +12,11 @@ export const routes: Routes = [
       import('./components/contacts/contacts.component').then((m) => m.ContactsComponent),
   },
   {
+    path: 'journal',
+    loadComponent: () =>
+      import('./components/journal/journal.component').then((m) => m.JournalComponent),
+  },
+  {
     path: '',
     loadComponent: () =>
       import('./components/dashboard/dashboard.component').then((m) => m.DashboardComponent),

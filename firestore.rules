@@ -120,6 +120,23 @@ service cloud.firestore {
       allow read, create, update, delete: if isAuthenticated();
     }
 
+    // journal, journalDays — the work journal, read-only for the authenticated user.
+    // Written only by the journal job on Jack's Mac (Admin SDK), so a page cannot
+    // change the record of what was done.
+    match /journal/{itemId} {
+      allow read:   if isAuthenticated();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /journalDays/{day} {
+      allow read:   if isAuthenticated();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

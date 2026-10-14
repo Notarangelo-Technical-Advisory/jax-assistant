@@ -1,4 +1,4 @@
-// Firestore security rules tests for the CRM collections. Run with
+// Firestore security rules tests for the CRM and work journal collections. Run with
 // `npm run test:rules`, which starts the Firestore emulator under a demo
 // project (no live data).
 //
@@ -12,7 +12,7 @@ import {
   assertFails, assertSucceeds, initializeTestEnvironment
 } from '@firebase/rules-unit-testing';
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, setDoc, updateDoc, where
+  addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, setDoc, updateDoc, where
 } from 'firebase/firestore';
 
 const NOW = new Date('2026-10-06T12:00:00Z');
@@ -25,6 +25,8 @@ const SEED = {
   'contactNotes/n1':  { contactId: 'brad', companyId: null, body: 'Prefers Teams to email.', createdAt: NOW },
   'contactNotes/n2':  { contactId: null, companyId: 'ihrdc', body: 'Contract renews in January.', createdAt: NOW },
   'contactLinks/l1':  { contactId: 'brad', companyId: null, type: 'email', title: 'Friday demo agenda', sourceId: 'abc@ihrdc.com', url: null, date: '2026-10-02', detail: 'Brad Donohue', note: null, createdAt: NOW },
+  'journal/j1':       { source: 'github', sourceId: '1', client: 'ihrdc', day: '2026-10-13', at: '2026-10-13T13:21:00.000Z', endAt: null, action: 'Opened PR #674', subject: 'Fix saved grid layout', detail: null, url: null, repo: 'IHRDC/cmsonline', ticket: null },
+  'journalDays/2026-10-13': { day: '2026-10-13', totalMinutes: 6, itemCount: 1, clients: [] },
 };
 
 let testEnv;
@@ -136,6 +138,30 @@ describe('contactLinkDismissals', () => {
     const visitor = db(null);
     await assertFails(setDoc(doc(visitor, 'contactLinkDismissals/auto_abc'), { contactId: 'brad' }));
     await assertFails(getDoc(doc(visitor, 'contactLinkDismissals/auto_abc')));
+  });
+});
+
+describe('journal and journalDays', () => {
+  it("Jack can read the newest days and one day's items, as the journal page does", async () => {
+    const jack = db('jack');
+    await assertSucceeds(getDocs(query(collection(jack, 'journalDays'), orderBy('day', 'desc'), limit(14))));
+    await assertSucceeds(getDocs(query(collection(jack, 'journal'), where('day', '==', '2026-10-13'), orderBy('at'))));
+  });
+
+  it('nobody can add to, change or remove from the journal through the app, not even Jack', async () => {
+    for (const who of [db('jack'), db(null)]) {
+      await assertFails(addDoc(collection(who, 'journal'), { action: 'Made up', day: '2026-10-13' }));
+      await assertFails(updateDoc(doc(who, 'journal/j1'), { subject: 'Changed' }));
+      await assertFails(deleteDoc(doc(who, 'journal/j1')));
+      await assertFails(setDoc(doc(who, 'journalDays/2026-10-13'), { totalMinutes: 600 }));
+      await assertFails(deleteDoc(doc(who, 'journalDays/2026-10-13')));
+    }
+  });
+
+  it('a visitor who is not signed in cannot read the journal', async () => {
+    const visitor = db(null);
+    await assertFails(getDocs(collection(visitor, 'journalDays')));
+    await assertFails(getDoc(doc(visitor, 'journal/j1')));
   });
 });
 

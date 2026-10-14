@@ -20,6 +20,7 @@ import {
   LinkInput,
   SaveContactInput,
 } from "./contacts";
+import {getJournal, GetJournalInput} from "./journal";
 
 export interface CustomerInfo {
   name: string;
@@ -395,6 +396,10 @@ export async function executeTool(
     };
   }
 
+  // ─── Work journal ────────────────────────────────────────────
+  case "get_journal":
+    return getJournal(db, rawInput as GetJournalInput);
+
   // ─── Contacts / CRM ──────────────────────────────────────────
   case "find_contacts":
     return findContacts(db, rawInput as {query?: string; tag?: string; limit?: number});
@@ -602,6 +607,7 @@ export const toolLabel = (name: string, input: Record<string, unknown>): string 
   case "get_unbilled_detail": return "Fetching unbilled time entries...";
   case "get_time_entries": return "Loading time log...";
   case "get_invoice_status": return "Checking invoice status...";
+  case "get_journal": return "Reading your work journal...";
   case "find_contacts": return input["query"] ? `Looking up "${input["query"]}"...` : "Loading contacts...";
   case "get_contact": return "Opening the contact...";
   case "get_company": return "Opening the company...";
