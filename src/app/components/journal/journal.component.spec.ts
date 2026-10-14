@@ -152,6 +152,24 @@ describe('JournalComponent', () => {
       expect(link?.target).toBe('_blank');
     });
 
+    it('shows a meeting from the calendar with its start and end, marked Calendar', async () => {
+      await seedDocument('journal/meeting', item({
+        source: 'meeting', sourceId: 'uid-review:2026-10-09T14:30:00.000Z', day: '2026-10-09',
+        at: '2026-10-09T14:30:00.000Z', endAt: '2026-10-09T15:00:00.000Z',
+        action: 'Meeting with 11 others', subject: 'Product Review Meeting', detail: 'IHRDC calendar',
+      }));
+      page.select('2026-10-09', null);
+      await waitFor(() => page.dayItems().length === 1);
+
+      const shown = text();
+      expect(shown).toContain('10:30 AM–11:00 AM');
+      expect(shown).toContain('Calendar Meeting with 11 others');
+      expect(shown).toContain('Product Review Meeting');
+      expect(shown).toContain('IHRDC calendar');
+      const badge = (fixture.nativeElement as HTMLElement).querySelector('.source[data-source="meeting"]');
+      expect(badge?.textContent?.trim()).toBe('Calendar');
+    });
+
     it('opens the whole day as every item in time order, each marked with its client', async () => {
       page.select('2026-10-13', null);
       await waitFor(() => page.dayItems().length === 4);

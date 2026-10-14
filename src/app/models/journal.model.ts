@@ -3,9 +3,9 @@
  * journal job on Jack's Mac writes with; the page only reads them.
  */
 
-export type JournalSource = 'github' | 'jira' | 'claude';
+export type JournalSource = 'github' | 'jira' | 'claude' | 'meeting';
 
-/** One piece of work: a pull request, a Jira change, a Claude Code session. */
+/** One piece of work: a pull request, a Jira change, a Claude Code session, a meeting. */
 export interface JournalItem {
   id?: string;
   source: JournalSource;
@@ -16,11 +16,11 @@ export interface JournalItem {
   day: string;
   /** ISO timestamp. */
   at: string;
-  /** Claude Code only: when the session's last activity was. */
+  /** Claude Code and meetings: when the session's last activity was, or when the meeting ended. */
   endAt: string | null;
   /** What Jack did: "Opened PR #674", "Moved CNG-7183 to Code Review". */
   action: string;
-  /** What it was about: the pull request title, the Jira summary, the session title. */
+  /** What it was about: the pull request title, the Jira summary, the session title, the meeting title. */
   subject: string;
   detail: string | null;
   /** http(s) only. */

@@ -7,8 +7,15 @@
  * Keychain under the service name maisie-jira. To add it once:
  *
  *   1. Create a token at https://id.atlassian.com/manage-profile/security/api-tokens
+ *      with "Create API token with scopes": app Jira, scopes read:jira-work and
+ *      read:jira-user. It can only read.
  *   2. security add-generic-password -s maisie-jira -a jnotarangelo@ihrdc.com -w
  *      (it asks for the token, so the token never appears in shell history)
+ *
+ * A token with scopes works only through Atlassian's gateway
+ * (api.atlassian.com/ex/jira/<cloud id>); a token without scopes works through
+ * the site's own address. The first request tries the gateway, then the site,
+ * and the rest of the run uses whichever accepted the token.
  *
  * Jira's updatedBy() search finds the issues he changed since the start time;
  * each issue's change history and comments then give the times.
@@ -19,6 +26,8 @@ import {readFileSync} from "fs";
 import {JournalItemInput} from "../tools/journal";
 
 export const JIRA_SITE = "ihrdcdev.atlassian.net";
+/** The site's cloud id, from https://ihrdcdev.atlassian.net/_edge/tenant_info. It does not change. */
+export const JIRA_CLOUD_ID = "c853d768-3d73-4621-9f5b-59d345a7db12";
 const KEYCHAIN_SERVICE = "maisie-jira";
 
 export class JiraActivityError extends Error {
@@ -61,16 +70,30 @@ export function jiraApi(): JiraApi {
     };
   }
   const {email, token} = keychainLogin();
+  return httpJiraApi(email, token);
+}
+
+/** The Jira API over HTTPS, through the gateway for a token with scopes or the site for one without. */
+export function httpJiraApi(email: string, token: string, fetchJira: typeof fetch = fetch): JiraApi {
   const auth = "Basic " + Buffer.from(`${email}:${token}`).toString("base64");
+  const bases = [`https://api.atlassian.com/ex/jira/${JIRA_CLOUD_ID}`, `https://${JIRA_SITE}`];
+  let chosen: string | null = null;
   return async (path) => {
-    const response = await fetch(`https://${JIRA_SITE}${path}`, {headers: {Authorization: auth, Accept: "application/json"}});
-    if (response.status === 401 || response.status === 403) {
-      throw new JiraActivityError(`Jira refused the token in the Keychain (HTTP ${response.status}). It may have expired; create a new one.`);
+    for (const base of chosen ? [chosen] : bases) {
+      const response = await fetchJira(`${base}${path}`, {headers: {Authorization: auth, Accept: "application/json"}});
+      const refused = response.status === 401 || response.status === 403;
+      if (refused && !chosen && base !== bases[bases.length - 1]) continue;
+      if (refused) {
+        throw new JiraActivityError(`Jira refused the token in the Keychain (HTTP ${response.status}). ` +
+          "It may have expired, or lack the read:jira-work and read:jira-user scopes; create a new one.");
+      }
+      if (!response.ok) {
+        throw new JiraActivityError(`Jira answered ${response.status} for ${path.split("?")[0]}: ${(await response.text()).slice(0, 300)}`);
+      }
+      chosen = base;
+      return response.json();
     }
-    if (!response.ok) {
-      throw new JiraActivityError(`Jira answered ${response.status} for ${path.split("?")[0]}: ${(await response.text()).slice(0, 300)}`);
-    }
-    return response.json();
+    throw new JiraActivityError("Jira could not be reached.");
   };
 }
 

@@ -11,7 +11,7 @@ import { all, read, reset, setUp, tool } from './helpers.mjs';
 const fromFunctions = createRequire(new URL('../../functions/package.json', import.meta.url));
 const admin = fromFunctions('firebase-admin');
 const {
-  clientFor, ticketInBranch, workSessions, summarizeDay, saveJournalItems, summarizeDays,
+  clientFor, ticketInBranch, workSessions, summarizeDay, saveJournalItems, summarizeDays, meetingClient, meetingItems,
 } = fromFunctions('./lib/tools/journal.js');
 
 before(setUp);
@@ -56,6 +56,91 @@ describe('clients', () => {
     assert.equal(ticketInBranch('CNG-42-fix-grid'), 'CNG-42');
     assert.equal(ticketInBranch('fix/mcp-certificate-checks'), null);
     assert.equal(ticketInBranch('main'), null);
+  });
+});
+
+// A meeting as the calendar reader on the Mac returns it: 10:30–11:30 AM on 13 October.
+const meeting = (fields = {}) => ({
+  uid: 'uid-product-review', title: 'Product Review Meeting', start: '2026-10-13T14:30:00.000Z', end: '2026-10-13T15:30:00.000Z',
+  allDay: false, free: false, declined: false, calendar: 'IHRDC', people: ['brad@ihrdc.com', 'gabor@ihrdc.com'], ...fields,
+});
+const AFTER = new Date('2026-10-14T12:00:00Z');
+
+describe('meetings', () => {
+  it('puts meetings on the IHRDC calendar, and meetings with IHRDC people anywhere, under IHRDC', () => {
+    assert.equal(meetingClient(meeting()), 'ihrdc');
+    assert.equal(meetingClient(meeting({ calendar: 'Jax', title: 'Lunch', people: ['Brad@IHRDC.com'] })), 'ihrdc');
+  });
+
+  it('leaves out an event on the IHRDC calendar with nobody else invited, such as a doctor\'s appointment', () => {
+    assert.equal(meetingClient(meeting({ title: 'Norma Dr Appt', people: [] })), null);
+  });
+
+  it('puts Cox meetings under Cox Engineering, by a coxeng.com invitee or by the word Cox in the title', () => {
+    assert.equal(meetingClient(meeting({ calendar: 'Jax', title: 'Jack Notarangelo Introduction - Development Advisor',
+      people: ['someone@c-port.com', 'joe@CoxEng.com'] })), 'cox');
+    assert.equal(meetingClient(meeting({ calendar: 'Jax', title: 'Cox discovery', people: [] })), 'cox');
+    assert.equal(meetingClient(meeting({ calendar: 'Jax', title: 'Send Cox Roadmap', people: [] })), 'cox');
+  });
+
+  it('puts the church meetings Jack chose under Church', () => {
+    for (const title of ['Officer Meeting', 'Grace Prayer Meeting', 'Community Group', 'Praying Avidly', 'Worship Almighty God']) {
+      assert.equal(meetingClient(meeting({ calendar: 'Jax', title, people: [] })), 'church', title);
+    }
+  });
+
+  it('leaves out personal events on the Jax calendar, even with people invited, and matches whole words only', () => {
+    assert.equal(meetingClient(meeting({ calendar: 'Jax', title: 'Edge the driveway', people: [] })), null);
+    assert.equal(meetingClient(meeting({ calendar: 'Jax', title: 'Furnace: Scott Gallagher', people: ['scott@example.com'] })), null);
+    assert.equal(meetingClient(meeting({ calendar: 'Jax', title: 'Coxswain practice', people: [] })), null);
+  });
+
+  it('journals each ended meeting for its scheduled length, with how many others were invited', () => {
+    const { items } = meetingItems([meeting()], AFTER);
+
+    assert.deepEqual(items, [{
+      source: 'meeting', sourceId: 'uid-product-review:2026-10-13T14:30:00.000Z',
+      at: '2026-10-13T14:30:00.000Z', endAt: '2026-10-13T15:30:00.000Z',
+      action: 'Meeting with 2 others', subject: 'Product Review Meeting', detail: 'IHRDC calendar', client: 'ihrdc',
+    }]);
+    const solo = meetingItems([meeting({ calendar: 'Jax', title: 'Cox discovery', people: [] })], AFTER).items[0];
+    assert.equal(solo.action, 'Meeting');
+  });
+
+  it('leaves out all-day events, events marked Free, meetings Jack declined, meetings not over yet and meetings with no client', () => {
+    const r = meetingItems([
+      meeting({ uid: 'all-day', allDay: true }),
+      meeting({ uid: 'reminder', title: 'Request demo for Friday', free: true, people: [] }),
+      meeting({ uid: 'declined', declined: true }),
+      meeting({ uid: 'running', end: '2026-10-14T12:30:00.000Z' }),
+      meeting({ uid: 'personal', calendar: 'Jax', title: 'Start the chicken cook', people: [] }),
+      meeting(),
+    ], AFTER);
+
+    assert.deepEqual(r.items.map(i => i.sourceId.split(':')[0]), ['uid-product-review']);
+    assert.deepEqual([r.read, r.allDay, r.free, r.declined, r.notEnded, r.noClient], [6, 1, 1, 1, 1, 1]);
+  });
+
+  it('journals each occurrence of a repeating meeting as its own item', async () => {
+    const { items } = meetingItems([
+      meeting(),
+      meeting({ start: '2026-10-06T14:30:00.000Z', end: '2026-10-06T15:30:00.000Z' }),
+    ], AFTER);
+    const s = await save(items);
+
+    assert.equal(s.added, 2);
+    assert.deepEqual(s.days, ['2026-10-06', '2026-10-13']);
+  });
+
+  it("counts a meeting for its whole length in the day's time, and once where it overlaps other work", async () => {
+    // A pull request opened during the meeting adds no time.
+    await save([...meetingItems([meeting()], AFTER).items, pr({ at: '2026-10-13T14:45:00Z' })]);
+    await summarizeDays(admin.firestore(), ['2026-10-13']);
+
+    const day = await read('journalDays/2026-10-13');
+    assert.deepEqual(day.clients.map(c => [c.label, c.minutes, c.itemCount]), [['IHRDC', 60, 2]]);
+    const stored = (await all('journal')).find(i => i.source === 'meeting');
+    assert.deepEqual([stored.client, stored.day, stored.url, stored.repo], ['ihrdc', '2026-10-13', null, null]);
   });
 });
 
@@ -147,6 +232,17 @@ describe('get_journal', () => {
   beforeEach(async () => {
     await save([pr(), jira(), session(), pr({ sourceId: 'e3', at: '2026-10-13T19:00:00Z', repo: 'Notarangelo-Technical-Advisory/jax-assistant', action: 'Pushed to main', subject: 'Turn certificate checks back on' })]);
     await summarizeDays(admin.firestore(), ['2026-10-13']);
+  });
+
+  it('shows a meeting with its start and end in Eastern Time', async () => {
+    await save(meetingItems([meeting({ start: '2026-10-13T20:00:00.000Z', end: '2026-10-13T20:30:00.000Z' })], AFTER).items);
+    await summarizeDays(admin.firestore(), ['2026-10-13']);
+    const r = await tool('get_journal', { start_date: '2026-10-13' });
+
+    const shown = r.items.find(i => i.source === 'meeting');
+    assert.deepEqual([shown.time, shown.client, shown.action, shown.subject, shown.detail],
+      ['4:00 PM–4:30 PM', 'IHRDC', 'Meeting with 2 others', 'Product Review Meeting', 'IHRDC calendar']);
+    assert.match(r.note, /calendars/);
   });
 
   it("gives a day's estimated hours per client, its work sessions, and each item in Eastern Time", async () => {
