@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { FIRESTORE } from '../../firebase';
-import { JournalComponent, hours, weekStart } from './journal.component';
+import { JOURNAL_NOW, JournalComponent, addDays, hours, presetRange, weekStart } from './journal.component';
 import {
   EmulatorApp, clearEmulators, createEmulatorApp, seedDocument, signInAsJack, waitFor
 } from '../../../testing/emulator-testing';
@@ -9,6 +9,10 @@ import {
 // The journal page against the Firestore emulator, signed in as Jack, with the
 // real security rules. The journal job on Jack's Mac writes the journal; here
 // seedDocument stands in for it.
+
+// The page opens on Wednesday 14 October 2026, at noon in Eastern Time (UTC-4),
+// so its first 14 days are 1 to 14 October.
+const NOW = new Date('2026-10-14T16:00:00Z');
 
 // Tuesday 13 October 2026, Eastern Time (UTC-4).
 const IHRDC_SESSIONS = [
@@ -69,16 +73,22 @@ describe('JournalComponent', () => {
   async function openPage(): Promise<void> {
     await TestBed.configureTestingModule({
       imports: [JournalComponent],
-      providers: [provideRouter([]), { provide: FIRESTORE, useValue: emulator.firestore }],
+      providers: [
+        provideRouter([]),
+        { provide: FIRESTORE, useValue: emulator.firestore },
+        { provide: JOURNAL_NOW, useValue: () => NOW },
+      ],
     }).compileComponents();
     fixture = TestBed.createComponent(JournalComponent);
     fixture.detectChanges();
     page = fixture.componentInstance;
   }
 
-  const text = (): string => {
+  const text = (selector?: string): string => {
     fixture.detectChanges();
-    return (fixture.nativeElement as HTMLElement).textContent?.replace(/\s+/g, ' ') ?? '';
+    const root = fixture.nativeElement as HTMLElement;
+    const element = selector ? root.querySelector(selector) : root;
+    return element?.textContent?.replace(/\s+/g, ' ') ?? '';
   };
 
   beforeEach(async () => {
@@ -92,7 +102,7 @@ describe('JournalComponent', () => {
   it('says the journal is empty until the job on the Mac has run', async () => {
     await openPage();
     await waitFor(() => page.loaded());
-    expect(text()).toContain('Nothing in the journal yet');
+    expect(text()).toContain('Nothing in the journal between these dates');
   });
 
   describe('with a journal', () => {
@@ -170,6 +180,91 @@ describe('JournalComponent', () => {
       expect(badge?.textContent?.trim()).toBe('Calendar');
     });
 
+    it('opens on the last 14 days, with their total hours per client', () => {
+      expect([page.rangeStart(), page.rangeEnd()]).toEqual(['2026-10-01', '2026-10-14']);
+      expect(page.clientFilter()).toBeNull();
+      expect(page.rangeTotals()).toEqual({
+        totalMinutes: 233, itemCount: 7,
+        clients: [
+          { client: 'ihrdc', label: 'IHRDC', minutes: 167 },
+          { client: 'solomon', label: 'Solomon', minutes: 60 },
+          { client: 'general', label: 'General', minutes: 6 },
+        ],
+      });
+      expect(text('.range-total .week-head span')).toBe('All clients, October 1, 2026 to October 14, 2026');
+      expect(text('.range-total .hours')).toBe('3.9 h');
+      expect(text('.range-total .week-clients')).toContain('IHRDC 2.8 h · Solomon 1.0 h · General 0.1 h');
+    });
+
+    it('shows only the days between the dates typed in', async () => {
+      const root = fixture.nativeElement as HTMLElement;
+      const from = root.querySelector<HTMLInputElement>('input[name="rangeStart"]')!;
+      from.value = '2026-10-12';
+      from.dispatchEvent(new Event('input'));
+      await waitFor(() => page.loaded() && page.days().length === 2);
+
+      expect(page.rangeStart()).toBe('2026-10-12');
+      expect(page.weeks().map((w) => w.days.map((d) => d.day))).toEqual([['2026-10-13', '2026-10-12']]);
+      expect(text('.range-total .week-head span')).toBe('All clients, October 12, 2026 to October 14, 2026');
+      expect(text('.range-total .hours')).toBe('3.4 h');
+    });
+
+    it('shows one client\'s days and hours only when chosen, and every client again with All clients', async () => {
+      await waitFor(() => page.categories().length > 0);
+      fixture.detectChanges();
+      const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>('select[name="client"]')!;
+      const options = [...select.options].map((o) => o.textContent?.trim());
+      expect(options[0]).toBe('All clients');
+      expect(options).toContain('IHRDC');
+      expect(options).toContain('Cox Engineering');
+
+      select.value = 'ihrdc';
+      select.dispatchEvent(new Event('change'));
+      expect(page.clientFilter()).toBe('ihrdc');
+      expect(page.weeks().flatMap((w) => w.days.map((d) => [d.day, d.totalMinutes]))).toEqual([['2026-10-13', 137], ['2026-10-09', 30]]);
+      expect(text('.range-total .week-head span')).toBe('IHRDC, October 1, 2026 to October 14, 2026');
+      expect(text('.range-total .hours')).toBe('2.8 h');
+      expect(text('.range-total .week-clients')).toBe('4 items');
+      const list = text('.list');
+      expect(list).not.toContain('Solomon');
+      expect(list).not.toContain('General');
+      expect((fixture.nativeElement as HTMLElement).querySelectorAll('.client-row').length).toBe(0);
+
+      select.value = '';
+      select.dispatchEvent(new Event('change'));
+      expect(page.clientFilter()).toBeNull();
+      expect(page.weeks().flatMap((w) => w.days).length).toBe(3);
+      expect(text('.list')).toContain('Solomon');
+    });
+
+    it('opens the chosen client\'s work sessions when a day is clicked', async () => {
+      page.setClient('ihrdc');
+      fixture.detectChanges();
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.day-head')!.click();
+      await waitFor(() => page.dayItems().length === 4);
+
+      expect(page.selection()).toEqual({ day: '2026-10-13', client: 'ihrdc' });
+      expect(page.groups().map((g) => g.items.length)).toEqual([2, 1]);
+      expect(text()).toContain('IHRDC · Tuesday, October 13');
+    });
+
+    it('picks a range from the buttons, and marks the one in use', async () => {
+      page.applyPreset('last-week');
+      await waitFor(() => page.loaded() && page.days().length === 1);
+
+      expect([page.rangeStart(), page.rangeEnd()]).toEqual(['2026-10-05', '2026-10-11']);
+      expect(page.days().map((d) => d.day)).toEqual(['2026-10-09']);
+      expect(text('.preset.active')).toBe('Last week');
+    });
+
+    it('says when the start date is after the end date, and shows no days', async () => {
+      page.setRange('2026-10-14', '2026-10-01');
+
+      expect(page.days()).toEqual([]);
+      expect(text('.list')).toContain('The start date is after the end date.');
+      expect(text('.list')).not.toContain('Week of');
+    });
+
     it('opens the whole day as every item in time order, each marked with its client', async () => {
       page.select('2026-10-13', null);
       await waitFor(() => page.dayItems().length === 4);
@@ -191,6 +286,21 @@ describe('journal helpers', () => {
     expect(weekStart('2026-10-12')).toBe('2026-10-12');
     expect(weekStart('2026-10-18')).toBe('2026-10-12');
     expect(weekStart('2026-10-19')).toBe('2026-10-19');
+  });
+
+  it('counts days across the end of a month', () => {
+    expect(addDays('2026-10-01', -1)).toBe('2026-09-30');
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+  });
+
+  it('works out each range button from today', () => {
+    // Wednesday 4 March 2026.
+    expect(presetRange('last-14-days', '2026-03-04')).toEqual({ start: '2026-02-19', end: '2026-03-04' });
+    expect(presetRange('this-week', '2026-03-04')).toEqual({ start: '2026-03-02', end: '2026-03-04' });
+    expect(presetRange('last-week', '2026-03-04')).toEqual({ start: '2026-02-23', end: '2026-03-01' });
+    expect(presetRange('this-month', '2026-03-04')).toEqual({ start: '2026-03-01', end: '2026-03-04' });
+    expect(presetRange('last-month', '2026-03-04')).toEqual({ start: '2026-02-01', end: '2026-02-28' });
+    expect(presetRange('last-month', '2026-01-15')).toEqual({ start: '2025-12-01', end: '2025-12-31' });
   });
 
   it('shows minutes as hours to one decimal place', () => {

@@ -1,21 +1,65 @@
-import { Component, OnDestroy, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, InjectionToken, OnDestroy, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { JournalService } from '../../services/journal.service';
+import { TaskCategoryService } from '../../services/task-category.service';
 import { JournalDay, JournalItem, JournalSource } from '../../models/journal.model';
 
 const ET_ZONE = 'America/New_York';
-const PAGE_DAYS = 14;
+/** The page opens on the last 14 days, today included. */
+const DEFAULT_DAYS = 14;
+
+/** The time now. Tests give a fixed time, so "today" does not move. */
+export const JOURNAL_NOW = new InjectionToken<() => Date>('JOURNAL_NOW', {
+  providedIn: 'root',
+  factory: () => () => new Date(),
+});
 
 /** A day's key at noon UTC, so no time zone can move it to another date. */
 const noon = (day: string): Date => new Date(`${day}T12:00:00Z`);
 
+/** Today in Eastern Time, the time zone the journal's days are counted in, as YYYY-MM-DD. */
+export function etToday(now: Date): string {
+  return now.toLocaleDateString('en-CA', { timeZone: ET_ZONE });
+}
+
+/** The day `count` days after `day` (or before, when `count` is negative), as YYYY-MM-DD. */
+export function addDays(day: string, count: number): string {
+  const d = noon(day);
+  d.setUTCDate(d.getUTCDate() + count);
+  return d.toISOString().slice(0, 10);
+}
+
 /** The Monday of the week a day falls in, as YYYY-MM-DD. */
 export function weekStart(day: string): string {
-  const d = noon(day);
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-  return d.toISOString().slice(0, 10);
+  return addDays(day, -((noon(day).getUTCDay() + 6) % 7));
+}
+
+export type RangePreset = 'last-14-days' | 'this-week' | 'last-week' | 'this-month' | 'last-month';
+
+export const RANGE_PRESETS: Array<{ key: RangePreset; label: string }> = [
+  { key: 'last-14-days', label: 'Last 14 days' },
+  { key: 'this-week', label: 'This week' },
+  { key: 'last-week', label: 'Last week' },
+  { key: 'this-month', label: 'This month' },
+  { key: 'last-month', label: 'Last month' },
+];
+
+/** The first and last day of a preset range, counted from `today`. Weeks start on Monday. */
+export function presetRange(preset: RangePreset, today: string): { start: string; end: string } {
+  const monthStart = `${today.slice(0, 8)}01`;
+  switch (preset) {
+    case 'last-14-days': return { start: addDays(today, -(DEFAULT_DAYS - 1)), end: today };
+    case 'this-week': return { start: weekStart(today), end: today };
+    case 'last-week': return { start: addDays(weekStart(today), -7), end: addDays(weekStart(today), -1) };
+    case 'this-month': return { start: monthStart, end: today };
+    case 'last-month': {
+      const end = addDays(monthStart, -1);
+      return { start: `${end.slice(0, 8)}01`, end };
+    }
+  }
 }
 
 /** Minutes as hours to one decimal place, as time is billed: "3.4 h". */
@@ -28,6 +72,13 @@ export interface JournalWeek {
   totalMinutes: number;
   clients: Array<{ client: string; label: string; minutes: number }>;
   days: JournalDay[];
+}
+
+/** The chosen dates' time, in total and per client. */
+export interface RangeTotals {
+  totalMinutes: number;
+  itemCount: number;
+  clients: Array<{ client: string; label: string; minutes: number }>;
 }
 
 /** Items under one heading of the details: a work session, or the whole day. */
@@ -46,54 +97,135 @@ const SOURCE_LABELS: Record<JournalSource, string> = { github: 'GitHub', jira: '
 @Component({
   selector: 'app-journal',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './journal.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './journal.component.scss',
 })
 export class JournalComponent implements OnDestroy {
   private journal = inject(JournalService);
+  private categoriesSub: Subscription | null = null;
   private daysSub: Subscription | null = null;
   private itemsSub: Subscription | null = null;
+  private readonly today = etToday(inject(JOURNAL_NOW)());
 
+  /** Every day with work between the chosen dates, for every client. */
   days = signal<JournalDay[]>([]);
   loaded = signal(false);
-  dayLimit = signal(PAGE_DAYS);
+  rangeStart = signal(presetRange('last-14-days', this.today).start);
+  rangeEnd = signal(this.today);
+  /** The client chosen in the filter; null for all clients. */
+  clientFilter = signal<string | null>(null);
+  categories = signal<Array<{ key: string; label: string }>>([]);
   selection = signal<Selection>(null);
   /** Every item of the selected day. */
   dayItems = signal<JournalItem[]>([]);
 
   readonly hours = hours;
+  readonly presets = RANGE_PRESETS;
 
   constructor() {
+    this.categoriesSub = inject(TaskCategoryService).getCategories().subscribe((list) => this.categories.set(list));
     this.loadDays();
   }
 
   ngOnDestroy(): void {
+    this.categoriesSub?.unsubscribe();
     this.daysSub?.unsubscribe();
     this.itemsSub?.unsubscribe();
   }
 
+  /** Why the chosen dates cannot be shown, or null when they can. */
+  rangeError = computed<string | null>(() => {
+    const isDay = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+    if (!isDay(this.rangeStart()) || !isDay(this.rangeEnd())) return 'Choose a start date and an end date.';
+    if (this.rangeStart() > this.rangeEnd()) return 'The start date is after the end date.';
+    return null;
+  });
+
   private loadDays(): void {
     this.daysSub?.unsubscribe();
-    this.daysSub = this.journal.getDays(this.dayLimit()).subscribe((days) => {
+    this.daysSub = null;
+    this.loaded.set(false);
+    this.days.set([]);
+    if (this.rangeError()) return;
+    this.daysSub = this.journal.getDays(this.rangeStart(), this.rangeEnd()).subscribe((days) => {
       this.days.set(days);
       this.loaded.set(true);
     });
   }
 
-  /** True when there may be older days than the ones shown. */
-  hasMore = computed(() => this.days().length >= this.dayLimit());
-
-  showMore(): void {
-    this.dayLimit.update((n) => n + PAGE_DAYS);
+  setRange(start: string, end: string): void {
+    if (start === this.rangeStart() && end === this.rangeEnd()) return;
+    this.rangeStart.set(start ?? '');
+    this.rangeEnd.set(end ?? '');
+    this.selection.set(null);
     this.loadDays();
   }
+
+  applyPreset(preset: RangePreset): void {
+    const { start, end } = presetRange(preset, this.today);
+    this.setRange(start, end);
+  }
+
+  isPreset(preset: RangePreset): boolean {
+    const { start, end } = presetRange(preset, this.today);
+    return start === this.rangeStart() && end === this.rangeEnd();
+  }
+
+  /** Choose one client, or every client with '' or null. */
+  setClient(client: string | null): void {
+    this.clientFilter.set(client || null);
+    this.selection.set(null);
+  }
+
+  /** The clients the filter offers: the task categories, then any other client with work in the chosen dates. */
+  clientOptions = computed(() => {
+    const options = [...this.categories()];
+    for (const day of this.days()) {
+      for (const c of day.clients) {
+        if (!options.some((o) => o.key === c.client)) options.push({ key: c.client, label: c.label });
+      }
+    }
+    return options;
+  });
+
+  /** The chosen client's name, or null for all clients. */
+  clientFilterLabel = computed(() => {
+    const key = this.clientFilter();
+    return key ? this.clientOptions().find((o) => o.key === key)?.label ?? key : null;
+  });
+
+  /** The days shown: with a client chosen, only that client's days, each with that client's time only. */
+  shownDays = computed<JournalDay[]>(() => {
+    const client = this.clientFilter();
+    if (!client) return this.days();
+    return this.days().flatMap((d) => {
+      const c = d.clients.find((x) => x.client === client);
+      return c ? [{ ...d, totalMinutes: c.minutes, itemCount: c.itemCount, clients: [c] }] : [];
+    });
+  });
+
+  /** The time across the chosen dates, counting overlapping work once a day. */
+  rangeTotals = computed<RangeTotals>(() => {
+    const totals: RangeTotals = { totalMinutes: 0, itemCount: 0, clients: [] };
+    for (const day of this.shownDays()) {
+      totals.totalMinutes += day.totalMinutes;
+      totals.itemCount += day.itemCount;
+      for (const c of day.clients) {
+        const total = totals.clients.find((x) => x.client === c.client);
+        if (total) total.minutes += c.minutes;
+        else totals.clients.push({ client: c.client, label: c.label, minutes: c.minutes });
+      }
+    }
+    totals.clients.sort((a, b) => b.minutes - a.minutes);
+    return totals;
+  });
 
   /** The days shown, by week, newest first, with each week's time per client. */
   weeks = computed<JournalWeek[]>(() => {
     const weeks = new Map<string, JournalWeek>();
-    for (const day of [...this.days()].sort((a, b) => b.day.localeCompare(a.day))) {
+    for (const day of [...this.shownDays()].sort((a, b) => b.day.localeCompare(a.day))) {
       const start = weekStart(day.day);
       const week = weeks.get(start) ?? { start, totalMinutes: 0, clients: [], days: [] };
       week.days.push(day);
@@ -168,6 +300,11 @@ export class JournalComponent implements OnDestroy {
   /** "Tuesday, October 13". */
   dayLabel(day: string): string {
     return noon(day).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  /** "October 1, 2026". */
+  dateLabel(day: string): string {
+    return noon(day).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long', day: 'numeric', year: 'numeric' });
   }
 
   /** "October 12". */

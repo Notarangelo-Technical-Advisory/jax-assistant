@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { collection, limit, orderBy, query, where } from 'firebase/firestore';
+import { collection, orderBy, query, where } from 'firebase/firestore';
 import { collectionData } from 'rxfire/firestore';
 import { Observable } from 'rxjs';
 import { JournalDay, JournalItem } from '../models/journal.model';
@@ -16,9 +16,9 @@ export class JournalService {
   private daysRef = collection(this.firestore, 'journalDays');
   private itemsRef = collection(this.firestore, 'journal');
 
-  /** The newest `count` days that have any work, newest first. */
-  getDays(count: number): Observable<JournalDay[]> {
-    const q = query(this.daysRef, orderBy('day', 'desc'), limit(count));
+  /** The days from `start` to `end` (YYYY-MM-DD, both included) that have any work, newest first. */
+  getDays(start: string, end: string): Observable<JournalDay[]> {
+    const q = query(this.daysRef, where('day', '>=', start), where('day', '<=', end), orderBy('day', 'desc'));
     return collectionData(q, { idField: 'id' }) as Observable<JournalDay[]>;
   }
 

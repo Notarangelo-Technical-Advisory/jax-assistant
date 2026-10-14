@@ -9,9 +9,56 @@
     Hours are estimates: items less than 20 minutes apart count as one stretch of work.
   </p>
 
+  <!-- Filters: the dates and the client to show -->
+  <section class="filters" aria-label="Filters">
+    <label class="field">
+      <span>From</span>
+      <input type="date" name="rangeStart" [ngModel]="rangeStart()" (ngModelChange)="setRange($event, rangeEnd())" />
+    </label>
+    <label class="field">
+      <span>To</span>
+      <input type="date" name="rangeEnd" [ngModel]="rangeEnd()" (ngModelChange)="setRange(rangeStart(), $event)" />
+    </label>
+    <label class="field">
+      <span>Client</span>
+      <select name="client" [ngModel]="clientFilter() ?? ''" (ngModelChange)="setClient($event)">
+        <option value="">All clients</option>
+        @for (c of clientOptions(); track c.key) {
+          <option [value]="c.key">{{ c.label }}</option>
+        }
+      </select>
+    </label>
+    <div class="presets">
+      @for (p of presets; track p.key) {
+        <button type="button" class="preset" [class.active]="isPreset(p.key)" (click)="applyPreset(p.key)">{{ p.label }}</button>
+      }
+    </div>
+  </section>
+
   <div class="layout" [class.has-selection]="selection() !== null">
     <!-- Summary: weeks, days and clients -->
     <aside class="list">
+      @if (rangeError(); as error) {
+        <p class="filter-error">{{ error }}</p>
+      } @else if (loaded()) {
+        @let totals = rangeTotals();
+        <section class="range-total">
+          <h2 class="week-head">
+            <span>{{ clientFilterLabel() ?? 'All clients' }}, {{ dateLabel(rangeStart()) }} to {{ dateLabel(rangeEnd()) }}</span>
+            <span class="hours">{{ hours(totals.totalMinutes) }}</span>
+          </h2>
+          <p class="week-clients">
+            @if (clientFilterLabel()) {
+              <span>{{ totals.itemCount }} {{ totals.itemCount === 1 ? 'item' : 'items' }}</span>
+            } @else {
+              @for (c of totals.clients; track c.client; let last = $last) {
+                <span>{{ c.label }} {{ hours(c.minutes) }}</span>@if (!last) {<span class="sep"> · </span>}
+              }
+            }
+          </p>
+        </section>
+      }
+
       @for (week of weeks(); track week.start) {
         <section class="week">
           <h2 class="week-head">
@@ -26,11 +73,11 @@
 
           @for (day of week.days; track day.day) {
             <div class="day">
-              <button class="day-head" [class.active]="isSelected(day.day, null)" (click)="select(day.day, null)">
+              <button class="day-head" [class.active]="isSelected(day.day, clientFilter())" (click)="select(day.day, clientFilter())">
                 <span class="day-name">{{ dayLabel(day.day) }}</span>
                 <span class="hours">{{ hours(day.totalMinutes) }}</span>
               </button>
-              @for (c of day.clients; track c.client) {
+              @for (c of clientFilter() ? [] : day.clients; track c.client) {
                 <button class="client-row" [class.active]="isSelected(day.day, c.client)" (click)="select(day.day, c.client)">
                   <span class="client-name">{{ c.label }}</span>
                   <span class="count">{{ c.itemCount }} {{ c.itemCount === 1 ? 'item' : 'items' }}</span>
@@ -42,11 +89,14 @@
         </section>
       } @empty {
         @if (loaded()) {
-          <p class="empty">Nothing in the journal yet. It fills in once the journal job runs on your Mac.</p>
+          <p class="empty">
+            @if (clientFilterLabel(); as label) {
+              No work for {{ label }} between these dates.
+            } @else {
+              Nothing in the journal between these dates. It fills in as the journal job runs on your Mac.
+            }
+          </p>
         }
-      }
-      @if (hasMore()) {
-        <button class="btn-more" (click)="showMore()">Show earlier days</button>
       }
     </aside>
 

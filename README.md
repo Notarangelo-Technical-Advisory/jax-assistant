@@ -185,7 +185,8 @@ records what Jack did, when, and for which client: pull requests, reviews,
 comments and pushes on GitHub; issues he created, moved, edited or commented on
 in IHRDC's Jira; when he worked in Claude Code, in which repo and branch; and
 meetings on his Jax and IHRDC calendars, once they have ended. The `/journal` page (book icon in the dashboard header) shows estimated hours
-per week, day and client, and each client's work sessions and items. MAISIE
+per week, day and client, and each client's work sessions and items. It opens
+on the last 14 days; filters choose other dates and one client or all clients. MAISIE
 reads it with `get_journal`. See `projects/work-journal/README.md`.
 
 ```bash
