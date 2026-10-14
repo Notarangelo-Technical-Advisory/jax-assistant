@@ -20,7 +20,7 @@ MAISIE keeps a journal of what Jack did, when he did it, and for which client. J
 - **Jira** (`ihrdcdev.atlassian.net`), with an API token in the Keychain: issues Jack created, each status change, each assignee change, other edits (by field name), and his comments. Changes by other people are left out.
 - **Meetings**, from the Jax and IHRDC calendars through EventKit, once they have ended: each meeting's title, start, end, calendar and the number of other people invited. Each occurrence of a repeating meeting is its own item. All-day events, events marked Free, meetings Jack declined and meetings with no client are left out. Attendee addresses are used to choose the client and are not stored.
 - **Recordings**, from Wispr Flow's database on the Mac (`~/Library/Application Support/Wispr Flow/flow.sqlite`, opened read-only), once they have ended: each recording's title, start, end and notes link. Its notes, summary and transcript are not read. Wispr Flow has no calendar connected, so a recording has no attendees; see "Recordings" under Clients for how it gets a client.
-- **Claude Code**, from the session files in `~/.claude/projects`: when Jack worked, in which repo and branch, how many prompts he typed, and the short title Claude Code gives each session. **Prompts and replies are not stored.** A session is split wherever it was idle for more than 20 minutes or moved to another repo or branch. A part with no prompt from Jack is left out, because that is a background task or a long tool run, not Jack working.
+- **Claude Code**, from the session files in `~/.claude/projects`: when Jack worked, in which repo and branch, how many prompts he typed, and the short title Claude Code gives each session. **Prompts and replies are not stored.** A session is split into stretches of work wherever it was idle for more than 20 minutes, and each stretch into parts wherever it moved to another folder or branch. A stretch with no prompt from Jack is left out, because that is a background task or a long tool run, not Jack working. A part with no prompt of its own still counts when its stretch has one: until 2026-10-14 such parts were left out too, which dropped about 9.6 hours in the 7 days to 2026-10-14.
 
 ## Clients
 
@@ -35,9 +35,11 @@ Each item gets a client from where the work happened. The clients are MAISIE's t
 | `Prophet-Priest-King` | PPK |
 | `Grace-Pres`, `SNEP_SRT`, `bible-studies` | Church |
 | `embassy-book-series` | Embassy Series |
-| Everything else (`nta-time-tracker`, `engineering-standards`, `fractional-tech-advisory` and so on) | General |
+| Everything else (`nta-time-tracker`, `engineering-standards`, `fractional-tech-advisory` and so on), and work outside any repo | General, unless its words name IHRDC (below) |
 
-The table is `REPO_CLIENTS`, `OWNER_CLIENTS` and `JIRA_SITE_CLIENTS` in `functions/src/tools/journal.ts`. A Claude Code session in a scratch folder counts for the repo of the session that made the folder. A client can be any task category, including one Jack added, such as Executive Assistant (`executive_assistant`); the journal shows it by its name.
+The table is `REPO_CLIENTS`, `OWNER_CLIENTS` and `JIRA_SITE_CLIENTS` in `functions/src/tools/journal.ts`. A Claude Code session in a scratch folder counts for the repo of the session that made the folder. Work that would be General is IHRDC when its title, action, detail or ticket names an IHRDC Jira key (CNG, THREEX or ITSP, in any case) or the words "Jira", "Aishwarya", "QA test agent" or "QA testing agent". This covers Claude Code sessions Jack starts outside any repo, such as "CNG-7189 QA testing agent". The words are `TEXT_CLIENTS` in `functions/src/tools/journal.ts`. Work in a repo with its own client keeps it: a Maisie session about a Jira token stays Executive Assistant.
+
+A client can be any task category, including one Jack added, such as Executive Assistant (`executive_assistant`); the journal shows it by its name.
 
 After changing `REPO_CLIENTS` or `OWNER_CLIENTS`, move the GitHub and Claude Code items already in the journal from the Mac, once the change is on `main`:
 

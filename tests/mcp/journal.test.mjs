@@ -279,6 +279,27 @@ describe('work journal job', () => {
     assert.equal((await state()).meetingsCheckedThrough, undefined, 'the calendar starts from the same place next time');
   });
 
+  it("counts Claude Code work that moves to another folder or branch after Jack's prompt, with no pause", async () => {
+    const subfolder = join(CHECKOUT, 'functions');
+    mkdirSync(subfolder, { recursive: true });
+    const at = (minutesAgo, type, content, extra) => line(minutesAgo, type, content, { sessionId: 'sess-2', ...extra });
+    write(join(SESSIONS, '-cmsonline', 'sess-2.jsonl'), [
+      at(50, 'user', [{ type: 'text', text: 'Run the tests' }], { gitBranch: 'main' }),
+      at(45, 'assistant', [{ type: 'text', text: 'Running.' }], { gitBranch: 'main' }),
+      // No prompt from Jack here, but no pause either: still his work.
+      at(40, 'assistant', [{ type: 'text', text: 'On the branch now.' }], { cwd: subfolder, gitBranch: 'feature/CNG-7200' }),
+      at(30, 'assistant', [{ type: 'text', text: 'Done.' }], { cwd: subfolder, gitBranch: 'feature/CNG-7200' }),
+    ].join('\n'));
+    const { output, code } = await runJob();
+    assert.equal(code, 0, output);
+
+    const spans = (await bySource('claude')).filter(i => i.sourceId.startsWith('sess-2')).map(i => [i.detail, i.ticket, i.at, i.endAt]);
+    assert.deepEqual(spans, [
+      ['main · 1 prompt', null, ago(50), ago(45)],
+      ['feature/CNG-7200', 'CNG-7200', ago(40), ago(30)],
+    ]);
+  });
+
   it("builds each day's summary and records how far each source was read", async () => {
     const { output, code } = await runJob();
     assert.equal(code, 0, output);
