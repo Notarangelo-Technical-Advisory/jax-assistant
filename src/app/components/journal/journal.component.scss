@@ -1,0 +1,209 @@
+// Same palette as the dashboard and the contacts page.
+$bg-dark: #0f172a;
+$bg-card: #1e293b;
+$text-primary: #f8fafc;
+$text-secondary: #94a3b8;
+$accent: #3b82f6;
+$border: #334155;
+$github: #a78bfa;
+$jira: #38bdf8;
+$claude: #f59e0b;
+
+:host {
+  display: block;
+  min-height: 100vh;
+  background: $bg-dark;
+  color: $text-primary;
+}
+
+.journal-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem 2rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid $border;
+
+  h1 { flex: 1; margin: 0; font-size: 1.5rem; }
+}
+
+.back {
+  color: $text-secondary;
+  text-decoration: none;
+  font-size: 0.9rem;
+  &:hover { color: $text-primary; }
+}
+
+.intro { margin: 0.75rem 0 0; color: $text-secondary; font-size: 0.85rem; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 1rem;
+  padding-top: 1rem;
+
+  // On a phone the list and the details take turns, as on the contacts page.
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr;
+    &.has-selection .list { display: none; }
+    &:not(.has-selection) .detail { display: none; }
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+
+  @media (max-width: 760px) { max-height: none; }
+}
+
+.hours { color: $text-primary; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.week {
+  background: $bg-card;
+  border: 1px solid $border;
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.week-head {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.week-clients { margin: 0.25rem 0 0.5rem; color: $text-secondary; font-size: 0.8rem; }
+
+.day { margin-top: 0.5rem; }
+
+%row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: $text-primary;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover { background: rgba(255, 255, 255, 0.04); }
+  &.active { background: rgba($accent, 0.15); border-color: rgba($accent, 0.5); }
+}
+
+.day-head {
+  @extend %row;
+  padding: 0.4rem 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  .day-name { flex: 1; }
+}
+
+.client-row {
+  @extend %row;
+  padding: 0.3rem 0.5rem 0.3rem 1.25rem;
+  font-size: 0.85rem;
+  .client-name { flex: 1; }
+  .count { color: $text-secondary; font-size: 0.75rem; }
+}
+
+.btn-more, .btn-back-list {
+  padding: 0.3rem 0;
+  background: none;
+  border: none;
+  color: $text-secondary;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  &:hover { color: $text-primary; }
+}
+
+.btn-back-list {
+  display: none;
+  align-self: flex-start;
+  @media (max-width: 760px) { display: block; }
+}
+
+.detail { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+
+.detail-head { margin: 0; font-size: 1.25rem; }
+.detail-sub { margin: 0; color: $text-secondary; font-size: 0.88rem; }
+
+.group {
+  background: $bg-card;
+  border: 1px solid $border;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+}
+
+.group-head {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 0.5rem;
+  color: $text-secondary;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.items { margin: 0; padding: 0; list-style: none; }
+
+.item {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid rgba($border, 0.6);
+  &:first-child { border-top: none; }
+
+  @media (max-width: 560px) { grid-template-columns: 1fr; gap: 0.2rem; }
+}
+
+.time { color: $text-secondary; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+
+.what { min-width: 0; }
+.action { font-size: 0.85rem; color: $text-secondary; }
+.subject { display: block; font-size: 0.92rem; overflow-wrap: anywhere; }
+a.subject { color: $accent; text-decoration: none; &:hover { text-decoration: underline; } }
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin-top: 0.15rem;
+  color: $text-secondary;
+  font-size: 0.75rem;
+}
+
+.source {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  &[data-source='github'] { background: rgba($github, 0.15); color: $github; }
+  &[data-source='jira'] { background: rgba($jira, 0.15); color: $jira; }
+  &[data-source='claude'] { background: rgba($claude, 0.15); color: $claude; }
+}
+
+.client-tag, .ticket {
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: rgba($accent, 0.15);
+  color: $accent;
+  font-size: 0.7rem;
+}
+.client-tag { margin-left: 0.35rem; }
+
+.empty { color: $text-secondary; font-size: 0.9rem; }
+.hint { margin-top: 2rem; text-align: center; }

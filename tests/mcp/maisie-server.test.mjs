@@ -19,6 +19,7 @@ const fromFunctions = createRequire(`${functionsDir}package.json`);
 const { Client } = fromFunctions('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = fromFunctions('@modelcontextprotocol/sdk/client/stdio.js');
 const { buildTools } = fromFunctions('./lib/tools/definitions.js');
+const admin = fromFunctions('firebase-admin');
 
 const PROJECT_ID = 'demo-jax-mcp';
 const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080';
@@ -110,6 +111,23 @@ describe('maisie MCP server', () => {
 
     assert.equal(duplicate.isError, true);
     assert.match(duplicate.error, /already exists/);
+  });
+
+  it("offers the work journal, and reads a day's estimated hours and items", async () => {
+    const { tools } = await client.listTools();
+    assert.ok(tools.find(t => t.name === 'get_journal')?.description.includes('estimated hours'));
+
+    const day = { day: '2026-10-13', totalMinutes: 6, itemCount: 1, clients: [{ client: 'ihrdc', label: 'IHRDC', minutes: 6, itemCount: 1,
+      sessions: [{ start: '2026-10-13T13:21:00.000Z', end: '2026-10-13T13:21:00.000Z', minutes: 6, itemCount: 1 }] }] };
+    if (!admin.apps.length) admin.initializeApp({ projectId: PROJECT_ID });
+    await admin.firestore().doc('journalDays/2026-10-13').set(day);
+    await admin.firestore().doc('journal/j1').set({ source: 'github', sourceId: '1', client: 'ihrdc', day: '2026-10-13', at: '2026-10-13T13:21:00.000Z',
+      endAt: null, action: 'Opened PR #674', subject: 'Fix saved grid layout', detail: null, url: null, repo: 'IHRDC/cmsonline', ticket: 'CNG-7039' });
+
+    const journal = await call('get_journal', { start_date: '2026-10-13' });
+    assert.equal(journal.isError, false);
+    assert.deepEqual(journal.clients.map(c => [c.label, c.estimatedHours]), [['IHRDC', 0.1]]);
+    assert.deepEqual(journal.items.map(i => [i.time, i.action, i.ticket]), [['9:21 AM', 'Opened PR #674', 'CNG-7039']]);
   });
 });
 

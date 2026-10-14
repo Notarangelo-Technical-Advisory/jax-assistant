@@ -1,0 +1,110 @@
+<div class="journal-page">
+  <header class="header">
+    <a routerLink="/" class="back">&larr; Dashboard</a>
+    <h1>Journal</h1>
+  </header>
+  <p class="intro">
+    What you did on GitHub, in Jira and in Claude Code, collected on your Mac every 15 minutes.
+    Hours are estimates: items less than 20 minutes apart count as one stretch of work.
+  </p>
+
+  <div class="layout" [class.has-selection]="selection() !== null">
+    <!-- Summary: weeks, days and clients -->
+    <aside class="list">
+      @for (week of weeks(); track week.start) {
+        <section class="week">
+          <h2 class="week-head">
+            <span>Week of {{ weekLabel(week.start) }}</span>
+            <span class="hours">{{ hours(week.totalMinutes) }}</span>
+          </h2>
+          <p class="week-clients">
+            @for (c of week.clients; track c.client; let last = $last) {
+              <span>{{ c.label }} {{ hours(c.minutes) }}</span>@if (!last) {<span class="sep"> · </span>}
+            }
+          </p>
+
+          @for (day of week.days; track day.day) {
+            <div class="day">
+              <button class="day-head" [class.active]="isSelected(day.day, null)" (click)="select(day.day, null)">
+                <span class="day-name">{{ dayLabel(day.day) }}</span>
+                <span class="hours">{{ hours(day.totalMinutes) }}</span>
+              </button>
+              @for (c of day.clients; track c.client) {
+                <button class="client-row" [class.active]="isSelected(day.day, c.client)" (click)="select(day.day, c.client)">
+                  <span class="client-name">{{ c.label }}</span>
+                  <span class="count">{{ c.itemCount }} {{ c.itemCount === 1 ? 'item' : 'items' }}</span>
+                  <span class="hours">{{ hours(c.minutes) }}</span>
+                </button>
+              }
+            </div>
+          }
+        </section>
+      } @empty {
+        @if (loaded()) {
+          <p class="empty">Nothing in the journal yet. It fills in once the journal job runs on your Mac.</p>
+        }
+      }
+      @if (hasMore()) {
+        <button class="btn-more" (click)="showMore()">Show earlier days</button>
+      }
+    </aside>
+
+    <!-- Details: the items behind one day, or one client's day -->
+    <main class="detail">
+      <!-- Shown on a phone, where the details take the place of the list -->
+      <button class="btn-back-list" (click)="closeDetail()">&larr; All days</button>
+      @let sel = selection();
+      @if (sel) {
+        @let client = selectedClient();
+        <h2 class="detail-head">{{ client ? client.label : 'All clients' }} · {{ dayLabel(sel.day) }}</h2>
+        <p class="detail-sub">
+          About {{ hours(client ? client.minutes : selectedDay()?.totalMinutes ?? 0) }}
+          from {{ client ? client.itemCount : selectedDay()?.itemCount ?? 0 }} items
+        </p>
+
+        @for (group of groups(); track group.key) {
+          <section class="group">
+            @if (group.start && group.end) {
+              <h3 class="group-head">
+                <span>{{ time(group.start) }}–{{ time(group.end) }}</span>
+                <span class="hours">{{ hours(group.minutes ?? 0) }}</span>
+              </h3>
+            } @else if (group.key === 'other') {
+              <h3 class="group-head"><span>Collected since the summary was made</span></h3>
+            }
+            <ul class="items">
+              @for (item of group.items; track item.id) {
+                <li class="item">
+                  <span class="time">{{ time(item.at) }}@if (item.endAt) {–{{ time(item.endAt) }}}</span>
+                  <div class="what">
+                    <div class="action">
+                      <span class="source" [attr.data-source]="item.source">{{ sourceLabel(item.source) }}</span>
+                      {{ item.action }}
+                      @if (!client) {<span class="client-tag">{{ clientLabel(item.client) }}</span>}
+                    </div>
+                    @if (item.url) {
+                      <a class="subject" [href]="item.url" target="_blank" rel="noopener">{{ item.subject }}</a>
+                    } @else {
+                      <span class="subject">{{ item.subject }}</span>
+                    }
+                    @if (item.repo || item.detail || item.ticket) {
+                      <div class="meta">
+                        @if (item.ticket) {<span class="ticket">{{ item.ticket }}</span>}
+                        @if (item.repo) {<span>{{ item.repo }}</span>}
+                        @if (item.detail) {<span>{{ item.detail }}</span>}
+                      </div>
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+          </section>
+        } @empty {
+          <p class="empty">Loading the day's items...</p>
+        }
+      } @else {
+        <p class="empty hint">Choose a day to see everything you did, or a client to see its work sessions.</p>
+      }
+    </main>
+  </div>
+</div>

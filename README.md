@@ -16,7 +16,7 @@ runtime does not install.
 
 | Server | Path | Tools |
 | --- | --- | --- |
-| `maisie` | `functions/src/mcp/server.ts` | `add_task`, `complete_task`, `reopen_task`, `update_task`, `create_task_category`, `delete_task_category`, `get_unbilled_detail`, `get_time_entries`, `get_invoice_status`, `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `link_to_contact`, `remove_contact_link`, `get_maisie_context`, `import_apple_contacts` (VS Code only) — plus a `maisie` prompt that loads her persona and current state |
+| `maisie` | `functions/src/mcp/server.ts` | `add_task`, `complete_task`, `reopen_task`, `update_task`, `create_task_category`, `delete_task_category`, `get_unbilled_detail`, `get_time_entries`, `get_invoice_status`, `get_journal`, `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `link_to_contact`, `remove_contact_link`, `get_maisie_context`, `import_apple_contacts` (VS Code only) — plus a `maisie` prompt that loads her persona and current state |
 | `desktop` | `bridge/mcp/desktop-server.ts` | `calendar_read`, `calendar_create`, `calendar_move`, `mail_search`, `mail_read`, `mail_draft`, `mail_send` |
 
 Tool implementations are shared, not duplicated: `functions/src/tools/`
@@ -169,6 +169,29 @@ Calendar writes from the cloud still flow through the older
 schedule. `desktop-bridge.ts` understands `calendar.*` actions too, so that path
 can migrate later without adding another queue.
 
+## Work journal (Mac)
+
+`functions/src/mcp/collect-journal.ts` runs every 15 minutes via launchd and
+records what Jack did, when, and for which client: pull requests, reviews,
+comments and pushes on GitHub; issues he created, moved, edited or commented on
+in IHRDC's Jira; and when he worked in Claude Code, in which repo and branch.
+The `/journal` page (book icon in the dashboard header) shows estimated hours
+per week, day and client, and each client's work sessions and items. MAISIE
+reads it with `get_journal`. See `projects/work-journal/README.md`.
+
+```bash
+cp bridge/com.notarangelo.work-journal.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.notarangelo.work-journal.plist
+```
+
+The log is `/tmp/work-journal.log`. Jira needs an API token in the Keychain
+once; until then the log reports a Jira error and GitHub and Claude Code are
+still collected:
+
+1. Create a token at https://id.atlassian.com/manage-profile/security/api-tokens.
+2. Run `security add-generic-password -s maisie-jira -a jnotarangelo@ihrdc.com -w`
+   and paste the token when asked.
+
 ## Development server
 
 To start a local development server, run:
@@ -212,11 +235,11 @@ Nothing touches live data: each suite runs under its own `demo-` project.
 
 | Command | What it covers | Where |
 | --- | --- | --- |
-| `npm run test:ci` | The contacts page and `ContactService` in headless Chrome, signed in against the Auth and Firestore emulators | `src/**/*.spec.ts` |
+| `npm run test:ci` | The contacts page, the journal page and their services in headless Chrome, signed in against the Auth and Firestore emulators | `src/**/*.spec.ts` |
 | `npm run test:site` | The browser tab and phone home-screen icons exist at the sizes `src/index.html` declares, the dashboard header logo exists and draws without a web font, the header logo and phone-only call button are named for screen readers, the call button sits just left of the speaker button, the main area fills the page until Maisie is called, and on a phone the contacts page shows a contact in place of the list | `tests/site/` |
 | `npm run test:rules` | Firestore security rules, using the same queries the web app makes | `tests/rules/` |
-| `npm run test:functions` | MAISIE's tools through `executeTool()`, the entry point shared by the chat function and the MCP server, and how the Headlines tab gathers stories | `tests/functions/` |
-| `npm run test:mcp` | The `maisie` MCP server started as VS Code starts it, driven by the official MCP client, and the automatic contact linking job run with Mail and Calendar output from fixture files | `tests/mcp/` |
+| `npm run test:functions` | MAISIE's tools through `executeTool()`, the entry point shared by the chat function and the MCP server, how the Headlines tab gathers stories, and the work journal's clients and time estimates | `tests/functions/` |
+| `npm run test:mcp` | The `maisie` MCP server started as VS Code starts it, driven by the official MCP client, the automatic contact linking job run with Mail and Calendar output from fixture files, and the work journal job run with saved GitHub and Jira answers and sample Claude Code session files | `tests/mcp/` |
 | `npm run test:bridge` | The AppleScript the desktop bridge runs to create and move Apple Calendar events: a 1 PM event lands at 1 PM on a 12-hour-clock Mac, and a bad or zero-length time is refused. The tests that run AppleScript are skipped outside macOS, and none of them touch the real calendar | `bridge/tests/` |
 | `npm run test:all` | All six, in that order | |
 

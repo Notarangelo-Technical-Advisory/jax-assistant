@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Work journal: every 15 minutes, collects what Jack did on GitHub, in Jira
+  and in Claude Code into MAISIE's journal, with each day's estimated time per
+  client. The job is functions/src/mcp/collect-journal.ts; the rules are in
+  functions/src/tools/journal.ts.
+
+  Install:
+    cp bridge/com.notarangelo.work-journal.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.notarangelo.work-journal.plist
+
+  NEEDS: the gh CLI signed in as Jack (`gh auth status`), and a Jira API token
+  in the Keychain under the service maisie-jira (see jira-activity.ts). Until
+  the token is there, the log reports a Jira error each run and GitHub and
+  Claude Code are still collected. Run `cd functions && npm run journal:collect`
+  once from a terminal to confirm.
+
+  The first run looks back 30 days (a few minutes, mostly Jira); later runs
+  read the last 15 minutes plus an hour of overlap. launchd does not start a
+  run while the previous one is still going.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.notarangelo.work-journal</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/npx</string>
+        <string>tsx</string>
+        <string>/Users/jacknotarangelo/Documents/GitHub/jax-assistant/functions/src/mcp/collect-journal.ts</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jacknotarangelo/Documents/GitHub/jax-assistant/functions</string>
+
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/work-journal.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/work-journal.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

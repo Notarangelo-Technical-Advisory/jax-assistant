@@ -1,0 +1,451 @@
+import * as admin from "firebase-admin";
+import {createHash} from "crypto";
+import {ET_ZONE, addDaysToKey, etDateKey} from "../et-time";
+import {DEFAULT_CATEGORIES} from "./definitions";
+
+// ─── Work journal ──────────────────────────────────────────────
+//
+// A record of what Jack did and when, and for which client, so he can account
+// for work done a few minutes at a time across a day. The readers live on
+// Jack's Mac (src/mcp/collect-journal.ts), because the gh login, the Jira token
+// in the Keychain and Claude Code's session files are only there. This file
+// decides the client, stores the items and estimates the time, so the rules are
+// tested against the emulator.
+//
+// - Each item has a fixed id made from its source and the source's own id, so
+//   a second run finds it and writes nothing.
+// - The client comes from where the work happened: the GitHub repo or its
+//   owner, the Jira site, or the repo a Claude Code session ran in. Clients are
+//   the task categories, so the journal and the task list use the same names.
+// - Time is an estimate. Items less than GAP_MINUTES apart form one work
+//   session, timed from its first item to its last, and a session is never
+//   shorter than MIN_SESSION_MINUTES.
+// - journalDays holds each day's summary, rebuilt from that day's items
+//   whenever one of them is written, so a page or a tool reads one document a day.
+
+export const GAP_MINUTES = 20;
+export const MIN_SESSION_MINUTES = 6;
+export const DEFAULT_CLIENT = "general";
+
+/** Repos whose client is not their owner's. Keys are lower case "owner/name". */
+const REPO_CLIENTS: Record<string, string> = {
+  "notarangelo-technical-advisory/solomon": "solomon",
+  "notarangelo-technical-advisory/dora-tma": "dial",
+  "notarangelo-technical-advisory/prophet-priest-king": "ppk",
+  "notarangelo-technical-advisory/grace-pres": "church",
+  "notarangelo-technical-advisory/snep_srt": "church",
+  "jacknota/bible-studies": "church",
+  "jacknota/embassy-book-series": "embassy",
+};
+
+/** Every other repo of these owners belongs to the owner's client. Keys are lower case. */
+const OWNER_CLIENTS: Record<string, string> = {
+  "ihrdc": "ihrdc",
+};
+
+/** Jira sites and their client. */
+export const JIRA_SITE_CLIENTS: Record<string, string> = {
+  "ihrdcdev.atlassian.net": "ihrdc",
+};
+
+export type JournalSource = "github" | "jira" | "claude";
+
+/** One piece of work, as a reader on the Mac finds it. */
+export interface JournalItemInput {
+  source: JournalSource;
+  /** The source's own id for this piece of work, unique within the source. */
+  sourceId: string;
+  /** ISO timestamp: when the work happened, or when a Claude Code session began. */
+  at: string;
+  /** Claude Code only: the ISO timestamp of the session's last activity. */
+  endAt?: string | null;
+  /** What Jack did: "Opened PR #674", "Moved CNG-7183 to Code Review". */
+  action: string;
+  /** What it was about: the pull request title, the Jira summary, the session title. */
+  subject: string;
+  /** More detail, such as "In Progress → Code Review" or "3 commits". */
+  detail?: string | null;
+  /** http(s) only; anything else is dropped. */
+  url?: string | null;
+  /** "IHRDC/cmsonline". GitHub and Claude Code. */
+  repo?: string | null;
+  /** "CNG-7183": the Jira issue, or a key found in a branch name or title. */
+  ticket?: string | null;
+  /** Jira only: the site, which decides the client. */
+  site?: string | null;
+}
+
+/** An item as it is stored in the journal collection. */
+export interface JournalItem {
+  source: JournalSource;
+  sourceId: string;
+  client: string;
+  /** YYYY-MM-DD in Eastern Time. */
+  day: string;
+  at: string;
+  endAt: string | null;
+  action: string;
+  subject: string;
+  detail: string | null;
+  url: string | null;
+  repo: string | null;
+  ticket: string | null;
+}
+
+export interface WorkSession {
+  start: string;
+  end: string;
+  minutes: number;
+  itemCount: number;
+}
+
+export interface ClientDay {
+  client: string;
+  label: string;
+  minutes: number;
+  itemCount: number;
+  sessions: WorkSession[];
+}
+
+/** A journalDays document. */
+export interface JournalDay {
+  day: string;
+  /** Time across all clients, counting overlapping work once. */
+  totalMinutes: number;
+  itemCount: number;
+  /** Most time first. */
+  clients: ClientDay[];
+}
+
+export interface SaveSummary {
+  dryRun: boolean;
+  read: number;
+  /** New items, written or that would be written. */
+  added: number;
+  /** Items already stored that changed, such as a Claude Code session that went on longer. */
+  updated: number;
+  unchanged: number;
+  /** Items with no usable time or id. */
+  skipped: number;
+  /** The days with a new or changed item, whose summaries need rebuilding. */
+  days: string[];
+  /** Items per client. */
+  byClient: Record<string, number>;
+}
+
+const BATCH_LIMIT = 400;
+
+const chunks = <T>(list: T[], size: number): T[][] =>
+  Array.from({length: Math.ceil(list.length / size)}, (_, i) => list.slice(i * size, i * size + size));
+
+const CLIENT_LABELS = new Map(DEFAULT_CATEGORIES.map((c) => [c.key, c.label]));
+
+/** "IHRDC" for "ihrdc"; the key itself for a client with no task category. */
+export function clientLabel(client: string): string {
+  return CLIENT_LABELS.get(client) ?? client;
+}
+
+/** The client of a GitHub repo ("owner/name"), a Jira site, or neither. */
+export function clientFor(where: {repo?: string | null; site?: string | null}): string {
+  const site = where.site?.trim().toLowerCase();
+  if (site && JIRA_SITE_CLIENTS[site]) return JIRA_SITE_CLIENTS[site];
+  const repo = where.repo?.trim().toLowerCase();
+  if (repo) {
+    if (REPO_CLIENTS[repo]) return REPO_CLIENTS[repo];
+    const owner = repo.split("/")[0];
+    if (OWNER_CLIENTS[owner]) return OWNER_CLIENTS[owner];
+  }
+  return DEFAULT_CLIENT;
+}
+
+/**
+ * The Jira key ("CNG-7183") in a branch name such as feature/CNG-7183, or null.
+ * Only branch names: a title can hold look-alikes such as "UTF-8".
+ */
+export function ticketInBranch(branch: string | null | undefined): string | null {
+  return branch?.match(/(?:^|[^A-Za-z0-9])([A-Z][A-Z0-9]{1,9}-\d+)(?![A-Za-z0-9])/)?.[1] ?? null;
+}
+
+/** The fixed id of one item. */
+export function journalId(source: JournalSource, sourceId: string): string {
+  return `${source}_` + createHash("sha1").update(sourceId).digest("hex").slice(0, 32);
+}
+
+function webUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function isoOrNull(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+/** The stored form of an item, or null when it has no usable time or id. */
+export function toJournalItem(input: JournalItemInput): JournalItem | null {
+  const at = isoOrNull(input.at);
+  const sourceId = input.sourceId?.trim();
+  if (!at || !sourceId) return null;
+  const endAt = isoOrNull(input.endAt);
+  const repo = input.repo?.trim() || null;
+  const subject = input.subject?.trim() || "(no title)";
+  return {
+    source: input.source,
+    sourceId,
+    client: clientFor({repo, site: input.site}),
+    day: etDateKey(new Date(at)),
+    at,
+    endAt: endAt && endAt > at ? endAt : null,
+    action: input.action.trim(),
+    subject,
+    detail: input.detail?.trim() || null,
+    url: webUrl(input.url),
+    repo,
+    ticket: input.ticket?.trim().toUpperCase() || null,
+  };
+}
+
+const SAME_FIELDS: Array<keyof JournalItem> =
+  ["client", "day", "at", "endAt", "action", "subject", "detail", "url", "repo", "ticket"];
+
+/** Store items, skipping ones already stored unchanged. */
+export async function saveJournalItems(
+  db: admin.firestore.Firestore,
+  inputs: JournalItemInput[],
+  options: {dryRun?: boolean} = {}
+): Promise<SaveSummary> {
+  const summary: SaveSummary = {
+    dryRun: !!options.dryRun, read: inputs.length, added: 0, updated: 0, unchanged: 0, skipped: 0, days: [], byClient: {},
+  };
+  const items = new Map<string, JournalItem>();
+  for (const input of inputs) {
+    const item = toJournalItem(input);
+    if (!item) {
+      summary.skipped++;
+      continue;
+    }
+    // A later reading of the same item (a longer session) replaces an earlier one.
+    items.set(journalId(item.source, item.sourceId), item);
+  }
+
+  const col = db.collection("journal");
+  const writes: Array<{id: string; item: JournalItem; isNew: boolean}> = [];
+  const days = new Set<string>();
+  for (const part of chunks([...items.keys()], 100)) {
+    const snaps = await db.getAll(...part.map((id) => col.doc(id)));
+    for (const snap of snaps) {
+      const item = items.get(snap.id)!;
+      summary.byClient[item.client] = (summary.byClient[item.client] ?? 0) + 1;
+      const old = snap.data();
+      if (old && SAME_FIELDS.every((f) => (old[f] ?? null) === item[f])) {
+        summary.unchanged++;
+        continue;
+      }
+      if (old) {
+        summary.updated++;
+        // A changed time can move an item to another day; both need rebuilding.
+        if (typeof old["day"] === "string") days.add(old["day"]);
+      } else {
+        summary.added++;
+      }
+      days.add(item.day);
+      writes.push({id: snap.id, item, isNew: !old});
+    }
+  }
+  summary.days = [...days].sort();
+
+  if (!options.dryRun) {
+    for (const part of chunks(writes, BATCH_LIMIT)) {
+      const batch = db.batch();
+      for (const w of part) {
+        batch.set(col.doc(w.id), {
+          ...w.item,
+          ...(w.isNew ? {createdAt: admin.firestore.FieldValue.serverTimestamp()} : {}),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, {merge: true});
+      }
+      await batch.commit();
+    }
+  }
+  return summary;
+}
+
+/**
+ * Join items into work sessions: items less than GAP_MINUTES apart are one
+ * session, from the first to the last, and no session is shorter than
+ * MIN_SESSION_MINUTES. A Claude Code item covers its own start to end.
+ */
+export function workSessions(items: Array<{at: string; endAt?: string | null}>): WorkSession[] {
+  const spans = items
+    .map((i) => {
+      const start = Date.parse(i.at);
+      const end = i.endAt ? Date.parse(i.endAt) : start;
+      return {start, end: Number.isFinite(end) ? Math.max(start, end) : start};
+    })
+    .filter((s) => Number.isFinite(s.start))
+    .sort((a, b) => a.start - b.start);
+
+  const sessions: Array<{start: number; end: number; itemCount: number}> = [];
+  for (const span of spans) {
+    const last = sessions[sessions.length - 1];
+    if (last && span.start - last.end <= GAP_MINUTES * 60_000) {
+      last.end = Math.max(last.end, span.end);
+      last.itemCount++;
+    } else {
+      sessions.push({...span, itemCount: 1});
+    }
+  }
+  return sessions.map((s) => ({
+    start: new Date(s.start).toISOString(),
+    end: new Date(s.end).toISOString(),
+    minutes: Math.max(MIN_SESSION_MINUTES, Math.round((s.end - s.start) / 60_000)),
+    itemCount: s.itemCount,
+  }));
+}
+
+const sumMinutes = (sessions: WorkSession[]): number => sessions.reduce((n, s) => n + s.minutes, 0);
+
+/** One day's summary from that day's items. */
+export function summarizeDay(day: string, items: Array<Pick<JournalItem, "client" | "at" | "endAt">>): JournalDay {
+  const byClient = new Map<string, typeof items>();
+  for (const item of items) {
+    const list = byClient.get(item.client) ?? [];
+    list.push(item);
+    byClient.set(item.client, list);
+  }
+  const clients = [...byClient.entries()]
+    .map(([client, list]) => {
+      const sessions = workSessions(list);
+      return {client, label: clientLabel(client), minutes: sumMinutes(sessions), itemCount: list.length, sessions};
+    })
+    .sort((a, b) => b.minutes - a.minutes || a.label.localeCompare(b.label));
+  return {day, totalMinutes: sumMinutes(workSessions(items)), itemCount: items.length, clients};
+}
+
+/** Rebuild the journalDays summary of each day; a day with no items left loses its summary. */
+export async function summarizeDays(db: admin.firestore.Firestore, days: string[]): Promise<JournalDay[]> {
+  const result: JournalDay[] = [];
+  for (const day of [...new Set(days)]) {
+    const snap = await db.collection("journal").where("day", "==", day).get();
+    const ref = db.collection("journalDays").doc(day);
+    if (snap.empty) {
+      await ref.delete();
+      continue;
+    }
+    const summary = summarizeDay(day, snap.docs.map((d) => d.data() as JournalItem));
+    await ref.set({...summary, updatedAt: admin.firestore.FieldValue.serverTimestamp()});
+    result.push(summary);
+  }
+  return result;
+}
+
+// ─── get_journal ───────────────────────────────────────────────
+
+const MAX_DAYS = 31;
+const MAX_ITEMS = 300;
+
+const hours = (minutes: number): number => Math.round(minutes / 6) / 10;
+
+/** "9:21 AM", as it reads in Norwell. */
+const etTime = (iso: string): string =>
+  new Date(iso).toLocaleTimeString("en-US", {timeZone: ET_ZONE, hour: "numeric", minute: "2-digit"});
+
+export interface GetJournalInput {
+  start_date?: string;
+  end_date?: string;
+  days_back?: number;
+  client?: string;
+}
+
+/** The journal for a range of days: estimated hours per client and day, and each item. */
+export async function getJournal(
+  db: admin.firestore.Firestore,
+  input: GetJournalInput,
+  now = new Date()
+): Promise<Record<string, unknown>> {
+  const today = etDateKey(now);
+  const isDay = (s?: string): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  if ((input.start_date && !isDay(input.start_date)) || (input.end_date && !isDay(input.end_date))) {
+    return {success: false, error: "Dates must be YYYY-MM-DD."};
+  }
+  // A start date on its own means that one day: "what did I do on Monday?"
+  const endDate = input.end_date ?? input.start_date ?? today;
+  const startDate = input.start_date ?? addDaysToKey(endDate, -Math.max(0, Math.floor(input.days_back ?? 0)));
+  if (startDate > endDate) return {success: false, error: "start_date is after end_date."};
+  if (startDate < addDaysToKey(endDate, -(MAX_DAYS - 1))) {
+    return {success: false, error: `Ask for ${MAX_DAYS} days or fewer at a time.`};
+  }
+  const client = input.client?.trim().toLowerCase() || null;
+
+  const [daySnap, itemSnap] = await Promise.all([
+    db.collection("journalDays").where("day", ">=", startDate).where("day", "<=", endDate).get(),
+    db.collection("journal").where("day", ">=", startDate).where("day", "<=", endDate).get(),
+  ]);
+
+  const days = daySnap.docs
+    .map((d) => d.data() as JournalDay)
+    .sort((a, b) => a.day.localeCompare(b.day))
+    .map((d) => {
+      const clients = d.clients.filter((c) => !client || c.client === client);
+      return {
+        day: d.day,
+        estimatedHours: client ? hours(clients.reduce((n, c) => n + c.minutes, 0)) : hours(d.totalMinutes),
+        clients: clients.map((c) => ({
+          client: c.client,
+          label: c.label,
+          estimatedHours: hours(c.minutes),
+          itemCount: c.itemCount,
+          sessions: c.sessions.map((s) =>
+            `${etTime(s.start)}–${etTime(s.end)} (${hours(s.minutes)} h, ${s.itemCount} item${s.itemCount === 1 ? "" : "s"})`),
+        })),
+      };
+    })
+    .filter((d) => d.clients.length > 0);
+
+  const totals = new Map<string, {label: string; minutes: number; itemCount: number}>();
+  for (const d of daySnap.docs.map((x) => x.data() as JournalDay)) {
+    for (const c of d.clients) {
+      if (client && c.client !== client) continue;
+      const t = totals.get(c.client) ?? {label: c.label, minutes: 0, itemCount: 0};
+      t.minutes += c.minutes;
+      t.itemCount += c.itemCount;
+      totals.set(c.client, t);
+    }
+  }
+
+  const items = itemSnap.docs
+    .map((d) => d.data() as JournalItem)
+    .filter((i) => !client || i.client === client)
+    .sort((a, b) => a.at.localeCompare(b.at));
+
+  return {
+    dateRange: {startDate, endDate},
+    note: "Hours are estimates: items less than 20 minutes apart count as one work session, " +
+      "from the first item to the last, and a session counts for at least 6 minutes. " +
+      "The journal is collected on Jack's Mac every 15 minutes from GitHub, Jira and Claude Code.",
+    clients: [...totals.entries()]
+      .map(([key, t]) => ({client: key, label: t.label, estimatedHours: hours(t.minutes), itemCount: t.itemCount}))
+      .sort((a, b) => b.estimatedHours - a.estimatedHours),
+    days,
+    itemCount: items.length,
+    items: items.slice(0, MAX_ITEMS).map((i) => ({
+      day: i.day,
+      time: i.endAt ? `${etTime(i.at)}–${etTime(i.endAt)}` : etTime(i.at),
+      client: clientLabel(i.client),
+      source: i.source,
+      action: i.action,
+      subject: i.subject,
+      detail: i.detail,
+      ticket: i.ticket,
+      repo: i.repo,
+      url: i.url,
+    })),
+    ...(items.length > MAX_ITEMS ? {itemsLeftOut: items.length - MAX_ITEMS} : {}),
+  };
+}
