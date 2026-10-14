@@ -33,6 +33,7 @@ export const DEFAULT_CLIENT = "general";
 
 /** Repos whose client is not their owner's. Keys are lower case "owner/name". */
 const REPO_CLIENTS: Record<string, string> = {
+  "notarangelo-technical-advisory/jax-assistant": "executive_assistant",
   "notarangelo-technical-advisory/solomon": "solomon",
   "notarangelo-technical-advisory/dora-tma": "dial",
   "notarangelo-technical-advisory/prophet-priest-king": "ppk",
@@ -230,11 +231,26 @@ const BATCH_LIMIT = 400;
 const chunks = <T>(list: T[], size: number): T[][] =>
   Array.from({length: Math.ceil(list.length / size)}, (_, i) => list.slice(i * size, i * size + size));
 
-const CLIENT_LABELS = new Map(DEFAULT_CATEGORIES.map((c) => [c.key, c.label]));
+const CLIENT_LABELS: ReadonlyMap<string, string> = new Map(DEFAULT_CATEGORIES.map((c) => [c.key, c.label]));
 
-/** "IHRDC" for "ihrdc"; the key itself for a client with no task category. */
-export function clientLabel(client: string): string {
-  return CLIENT_LABELS.get(client) ?? client;
+/**
+ * "IHRDC" for "ihrdc"; the key itself for a client with no task category.
+ * Without `labels`, only the built-in task categories are known.
+ */
+export function clientLabel(client: string, labels: ReadonlyMap<string, string> = CLIENT_LABELS): string {
+  return labels.get(client) ?? client;
+}
+
+/** Every client's name: the built-in task categories, then the ones Jack added (taskCategories). */
+export async function loadClientLabels(db: admin.firestore.Firestore): Promise<Map<string, string>> {
+  const labels = new Map(CLIENT_LABELS);
+  const snap = await db.collection("taskCategories").get();
+  for (const doc of snap.docs) {
+    const key = doc.get("key");
+    const label = doc.get("label");
+    if (typeof key === "string" && typeof label === "string" && !labels.has(key)) labels.set(key, label);
+  }
+  return labels;
 }
 
 /** The client of a GitHub repo ("owner/name"), a Jira site, or neither. */
@@ -536,7 +552,11 @@ export function workSessions(items: Array<{at: string; endAt?: string | null}>):
 const sumMinutes = (sessions: WorkSession[]): number => sessions.reduce((n, s) => n + s.minutes, 0);
 
 /** One day's summary from that day's items. */
-export function summarizeDay(day: string, items: Array<Pick<JournalItem, "client" | "at" | "endAt">>): JournalDay {
+export function summarizeDay(
+  day: string,
+  items: Array<Pick<JournalItem, "client" | "at" | "endAt">>,
+  labels: ReadonlyMap<string, string> = CLIENT_LABELS
+): JournalDay {
   const byClient = new Map<string, typeof items>();
   for (const item of items) {
     const list = byClient.get(item.client) ?? [];
@@ -546,7 +566,7 @@ export function summarizeDay(day: string, items: Array<Pick<JournalItem, "client
   const clients = [...byClient.entries()]
     .map(([client, list]) => {
       const sessions = workSessions(list);
-      return {client, label: clientLabel(client), minutes: sumMinutes(sessions), itemCount: list.length, sessions};
+      return {client, label: clientLabel(client, labels), minutes: sumMinutes(sessions), itemCount: list.length, sessions};
     })
     .sort((a, b) => b.minutes - a.minutes || a.label.localeCompare(b.label));
   return {day, totalMinutes: sumMinutes(workSessions(items)), itemCount: items.length, clients};
@@ -555,6 +575,7 @@ export function summarizeDay(day: string, items: Array<Pick<JournalItem, "client
 /** Rebuild the journalDays summary of each day; a day with no items left loses its summary. */
 export async function summarizeDays(db: admin.firestore.Firestore, days: string[]): Promise<JournalDay[]> {
   const result: JournalDay[] = [];
+  const labels = days.length ? await loadClientLabels(db) : CLIENT_LABELS;
   for (const day of [...new Set(days)]) {
     const snap = await db.collection("journal").where("day", "==", day).get();
     const ref = db.collection("journalDays").doc(day);
@@ -562,11 +583,63 @@ export async function summarizeDays(db: admin.firestore.Firestore, days: string[
       await ref.delete();
       continue;
     }
-    const summary = summarizeDay(day, snap.docs.map((d) => d.data() as JournalItem));
+    const summary = summarizeDay(day, snap.docs.map((d) => d.data() as JournalItem), labels);
     await ref.set({...summary, updatedAt: admin.firestore.FieldValue.serverTimestamp()});
     result.push(summary);
   }
   return result;
+}
+
+export interface ReclassifySummary {
+  dryRun: boolean;
+  /** GitHub and Claude Code items looked at. */
+  checked: number;
+  /** Items whose client changed, or would change in a dry run. */
+  changed: number;
+  /** How many items moved from each client to each other client. */
+  changes: Array<{from: string; to: string; count: number}>;
+  /** The days whose summaries were rebuilt, or would be. */
+  days: string[];
+}
+
+/**
+ * Apply the current repo rules (REPO_CLIENTS, OWNER_CLIENTS) to the GitHub and
+ * Claude Code items already in the journal, and rebuild the days that changed.
+ * Run it after changing those rules: the job reads GitHub's last 300 events
+ * only, so older items would otherwise keep their old client. Jira items,
+ * meetings and recordings keep their client, because their rules need what
+ * the job read at the time.
+ */
+export async function reclassifyJournal(
+  db: admin.firestore.Firestore,
+  options: {dryRun?: boolean} = {}
+): Promise<ReclassifySummary> {
+  const snap = await db.collection("journal").where("source", "in", ["github", "claude"]).get();
+  const summary: ReclassifySummary = {dryRun: !!options.dryRun, checked: snap.size, changed: 0, changes: [], days: []};
+  const writes: Array<{ref: admin.firestore.DocumentReference; client: string}> = [];
+  const days = new Set<string>();
+  for (const doc of snap.docs) {
+    const item = doc.data() as JournalItem;
+    const client = clientFor({repo: item.repo});
+    if (client === item.client) continue;
+    summary.changed++;
+    const change = summary.changes.find((c) => c.from === item.client && c.to === client);
+    if (change) change.count++;
+    else summary.changes.push({from: item.client, to: client, count: 1});
+    days.add(item.day);
+    writes.push({ref: doc.ref, client});
+  }
+  summary.days = [...days].sort();
+
+  if (!options.dryRun) {
+    for (const part of chunks(writes, BATCH_LIMIT)) {
+      const batch = db.batch();
+      for (const w of part) batch.update(w.ref, {client: w.client, updatedAt: admin.firestore.FieldValue.serverTimestamp()});
+      await batch.commit();
+    }
+    await summarizeDays(db, summary.days);
+  }
+  return summary;
 }
 
 // ─── get_journal ───────────────────────────────────────────────
@@ -607,9 +680,10 @@ export async function getJournal(
   }
   const client = input.client?.trim().toLowerCase() || null;
 
-  const [daySnap, itemSnap] = await Promise.all([
+  const [daySnap, itemSnap, labels] = await Promise.all([
     db.collection("journalDays").where("day", ">=", startDate).where("day", "<=", endDate).get(),
     db.collection("journal").where("day", ">=", startDate).where("day", "<=", endDate).get(),
+    loadClientLabels(db),
   ]);
 
   const days = daySnap.docs
@@ -663,7 +737,7 @@ export async function getJournal(
     items: items.slice(0, MAX_ITEMS).map((i) => ({
       day: i.day,
       time: i.endAt ? `${etTime(i.at)}–${etTime(i.endAt)}` : etTime(i.at),
-      client: clientLabel(i.client),
+      client: clientLabel(i.client, labels),
       source: i.source,
       action: i.action,
       subject: i.subject,

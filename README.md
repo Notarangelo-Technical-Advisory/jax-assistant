@@ -188,7 +188,9 @@ meetings on his Jax and IHRDC calendars, once they have ended; and meetings he
 recorded in Wispr Flow that can be tied to a client. The `/journal` page (book icon in the dashboard header) shows estimated hours
 per week, day and client, and each client's work sessions and items. It opens
 on the last 14 days; filters choose other dates and one client or all clients. MAISIE
-reads it with `get_journal`. See `projects/work-journal/README.md`.
+reads it with `get_journal`. After a change to which repo belongs to which
+client, `npm run journal:reclassify` (from `functions/`) moves the items already
+stored. See `projects/work-journal/README.md`.
 
 ```bash
 cp bridge/com.notarangelo.work-journal.plist ~/Library/LaunchAgents/

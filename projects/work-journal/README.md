@@ -29,14 +29,25 @@ Each item gets a client from where the work happened. The clients are MAISIE's t
 | Where | Client |
 | --- | --- |
 | Any repo in the IHRDC GitHub org, and the ihrdcdev Jira site | IHRDC |
+| `jax-assistant` (Maisie) | Executive Assistant |
 | `solomon` | Solomon |
 | `dora-tma` | DIAL |
 | `Prophet-Priest-King` | PPK |
 | `Grace-Pres`, `SNEP_SRT`, `bible-studies` | Church |
 | `embassy-book-series` | Embassy Series |
-| Everything else (`jax-assistant`, `nta-time-tracker`, `engineering-standards` and so on) | General |
+| Everything else (`nta-time-tracker`, `engineering-standards`, `fractional-tech-advisory` and so on) | General |
 
-The table is `REPO_CLIENTS`, `OWNER_CLIENTS` and `JIRA_SITE_CLIENTS` in `functions/src/tools/journal.ts`. A Claude Code session in a scratch folder counts for the repo of the session that made the folder.
+The table is `REPO_CLIENTS`, `OWNER_CLIENTS` and `JIRA_SITE_CLIENTS` in `functions/src/tools/journal.ts`. A Claude Code session in a scratch folder counts for the repo of the session that made the folder. A client can be any task category, including one Jack added, such as Executive Assistant (`executive_assistant`); the journal shows it by its name.
+
+After changing `REPO_CLIENTS` or `OWNER_CLIENTS`, move the GitHub and Claude Code items already in the journal from the Mac, once the change is on `main`:
+
+```bash
+cd functions
+npm run journal:reclassify -- --dry-run   # what would move
+npm run journal:reclassify                # move it and rebuild the days
+```
+
+Jira items, meetings and recordings keep their client, because their rules need what the job read at the time.
 
 ### Meetings
 
