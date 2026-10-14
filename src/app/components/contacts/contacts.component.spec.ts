@@ -245,6 +245,22 @@ describe('ContactsComponent links', () => {
     expect((await listDocuments('contactLinkDismissals')).map((d) => d['id'])).toEqual([link.id]);
   });
 
+  it('shows a call as a Call, with when it started and how long it lasted', async () => {
+    // As the Mac job writes it (functions/src/tools/contact-autolink.ts).
+    await TestBed.inject(ContactService).addLink({
+      contactId: page.selectedContact()!.id!, companyId: null, type: 'call', title: 'Outgoing call',
+      sourceId: 'call-1', url: null, date: '2020-03-06T14:05:00.000Z', detail: '12 min', note: null, origin: 'auto',
+    });
+    await waitFor(() => page.links().length === 1);
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('.link-row');
+    expect(row.querySelector('.link-type').textContent.trim()).toBe('Call');
+    expect(row.querySelector('.link-type').classList).toContain('link-call');
+    expect(row.querySelector('.link-meta').textContent).toContain('12 min');
+    expect(row.querySelector('.link-meta').textContent).toMatch(/\d:\d\d [AP]M/);
+  });
+
   it('removing a link added by hand records nothing', async () => {
     spyOn(window, 'confirm').and.returnValue(true);
     await addLink({ type: 'url', title: 'Site', url: 'https://ihrdc.com' });

@@ -139,7 +139,7 @@ Watch the queue with `cd bridge && npm run queue`.
 ## Automatic contact linking (Mac)
 
 `functions/src/mcp/autolink-contacts.ts` runs every 15 minutes via launchd and
-ties new emails, meetings and text messages to CRM contacts. See Phase 4 in
+ties new emails, meetings, text messages and calls to CRM contacts. See Phase 4 in
 `projects/crm/README.md`.
 
 ```bash
@@ -163,6 +163,15 @@ that database, so the job needs Full Disk Access once:
 
 Until then, the log reports that error every run, and emails and meetings are
 still linked.
+
+**Calls** come from the Mac's call history
+(`~/Library/Application Support/CallHistoryDB/CallHistory.storedata`),
+read-only. The iPhone shares its phone and FaceTime calls with the Mac through
+iCloud; the Phone app's Recents on the Mac shows whether it does. Each call is
+one link: when it started, which way it went (incoming, outgoing or missed),
+phone or FaceTime, and how long it lasted. The same Full Disk Access grant as
+Messages covers it. If the log says "Cannot open the call history", follow the
+steps above.
 
 Calendar writes from the cloud still flow through the older
 `pendingCalendarActions` queue, which `calendar-sync.ts` applies on its own

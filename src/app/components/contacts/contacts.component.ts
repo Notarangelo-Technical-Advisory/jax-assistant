@@ -360,7 +360,7 @@ export class ContactsComponent implements OnDestroy {
   }
 
   linkLabel(link: ContactLink): string {
-    return { url: 'Web', email: 'Email', meeting: 'Meeting', text: 'Text' }[link.type];
+    return { url: 'Web', email: 'Email', meeting: 'Meeting', text: 'Text', call: 'Call' }[link.type];
   }
 
   /** A YYYY-MM-DD date is a calendar day, so it must not be shifted by time zone. */

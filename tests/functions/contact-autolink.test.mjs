@@ -1,5 +1,5 @@
-// Tests for automatic contact linking (CRM Phase 4): which emails, meetings and
-// text messages are tied to which contacts. The Mac-side readers are covered in
+// Tests for automatic contact linking (CRM Phase 4): which emails, meetings,
+// text messages and calls are tied to which contacts. The Mac-side readers are covered in
 // tests/mcp/autolink.test.mjs.
 
 import { before, beforeEach, describe, it } from 'node:test';
@@ -9,7 +9,7 @@ import { all, read, reset, seed, setUp, tool } from './helpers.mjs';
 
 const fromFunctions = createRequire(new URL('../../functions/package.json', import.meta.url));
 const admin = fromFunctions('firebase-admin');
-const { autoLinkItems, autoLinkTexts, isAutomatedSender } = fromFunctions('./lib/tools/contact-autolink.js');
+const { autoLinkCalls, autoLinkItems, autoLinkTexts, isAutomatedSender } = fromFunctions('./lib/tools/contact-autolink.js');
 
 before(setUp);
 beforeEach(async () => {
@@ -278,5 +278,111 @@ describe('text messages', () => {
     assert.ok(links.some(l => l.type === 'text' && l.automatic === true && l.detail === '6 messages'));
     const refused = await tool('link_to_contact', { contact_id: 'brad', type: 'text', title: 'Hi', date: '2020-03-06' });
     assert.equal(refused.success, false);
+  });
+});
+
+describe('phone and FaceTime calls', () => {
+  // One call, as the reader on Jack's Mac gives it.
+  const call = (fields = {}) => ({
+    callId: 'C0FFEE-1', at: '2020-03-06T14:05:00.000Z', direction: 'incoming', kind: 'phone',
+    seconds: 754, handles: ['+16175550100'], ...fields,
+  });
+  const calls = (items, options = {}) => autoLinkCalls(admin.firestore(), items, options);
+
+  beforeEach(async () => {
+    await seed('contacts/brad', { firstName: 'Brad', lastName: 'Donohue', emails: ['brad@ihrdc.com'], phones: ['(617) 555-0100'], tags: [], companyId: null });
+  });
+
+  it('links a call to the contact with that phone number, with when it started and how long it lasted', async () => {
+    const s = await calls([call(), call({ callId: 'C0FFEE-2', handles: ['+44 20 7946 0000'] })]);
+
+    assert.deepEqual([s.linked, s.noContact], [1, 1]);
+    const [brad] = await linksOf('brad');
+    assert.equal(brad.type, 'call');
+    assert.equal(brad.date, '2020-03-06T14:05:00.000Z');
+    assert.equal(brad.title, 'Incoming call');
+    assert.equal(brad.detail, '13 min');
+    assert.equal(brad.sourceId, 'C0FFEE-1');
+    assert.equal(brad.origin, 'auto');
+    assert.equal((await all('contactLinks')).length, 1);
+  });
+
+  it('names missed, unanswered, short and FaceTime calls, and matches a FaceTime email address', async () => {
+    await calls([
+      call({ callId: 'a', at: '2020-03-06T09:00:00.000Z', direction: 'missed', seconds: 0 }),
+      call({ callId: 'b', at: '2020-03-06T09:01:00.000Z', direction: 'outgoing', seconds: 0 }),
+      call({ callId: 'c', at: '2020-03-06T09:02:00.000Z', direction: 'outgoing', seconds: 42 }),
+      call({ callId: 'd', at: '2020-03-06T09:03:00.000Z', kind: 'facetime-video', seconds: 1800, handles: ['Brad@IHRDC.com'] }),
+      call({ callId: 'e', at: '2020-03-06T09:04:00.000Z', direction: 'missed', kind: 'facetime-audio', seconds: 0 }),
+      // Answered, but the history recorded no length.
+      call({ callId: 'f', at: '2020-03-06T09:05:00.000Z', seconds: 0 }),
+    ]);
+
+    const brad = (await linksOf('brad')).sort((x, y) => x.date.localeCompare(y.date));
+    assert.deepEqual(brad.map(l => [l.title, l.detail]), [
+      ['Missed call', null],
+      ['Outgoing call', 'not answered'],
+      ['Outgoing call', 'under 1 min'],
+      ['Incoming FaceTime video call', '30 min'],
+      ['Missed FaceTime audio call', null],
+      ['Incoming call', null],
+    ]);
+  });
+
+  it('gives each call its own link, and a second run of the same calls writes nothing', async () => {
+    const first = await calls([call(), call({ callId: 'C0FFEE-2', at: '2020-03-06T16:00:00.000Z', direction: 'outgoing', seconds: 90 })]);
+    const again = await calls([call(), call({ callId: 'C0FFEE-2', at: '2020-03-06T16:00:00.000Z', direction: 'outgoing', seconds: 90 })]);
+
+    assert.equal(first.linked, 2);
+    assert.deepEqual([again.linked, again.alreadyLinked], [0, 2]);
+    assert.equal((await linksOf('brad')).length, 2);
+  });
+
+  it('stays removed when Jack removes a call', async () => {
+    await calls([call()]);
+    const [brad] = await linksOf('brad');
+    await tool('remove_contact_link', { link_id: brad.id });
+
+    const again = await calls([call()]);
+
+    assert.deepEqual([again.dismissed, again.linked], [1, 0]);
+    assert.equal((await linksOf('brad')).length, 0);
+  });
+
+  it('counts a call with no number, such as a group FaceTime call, as having no contact', async () => {
+    const s = await calls([call({ handles: [] })]);
+
+    assert.deepEqual([s.noContact, s.linked], [1, 0]);
+  });
+
+  it('writes nothing in a dry run', async () => {
+    const s = await calls([call({ direction: 'missed', seconds: 0 })], { dryRun: true });
+
+    assert.deepEqual([s.dryRun, s.linked], [true, 1]);
+    assert.deepEqual(s.examples, ['Brad Donohue: Missed call']);
+    assert.equal((await all('contactLinks')).length, 0);
+  });
+
+  it('shows call links in get_contact, and MAISIE cannot add one by hand', async () => {
+    await calls([call()]);
+
+    const { links } = await tool('get_contact', { contact_id: 'brad' });
+    assert.ok(links.some(l => l.type === 'call' && l.automatic === true && l.title === 'Incoming call' && l.detail === '13 min'));
+    const refused = await tool('link_to_contact', { contact_id: 'brad', type: 'call', title: 'Call', date: '2020-03-06' });
+    assert.equal(refused.success, false);
+  });
+
+  it('texts and calls in one run read the contacts once', async () => {
+    let reads = 0;
+    const db = admin.firestore();
+    const { loadContactsByHandle } = fromFunctions('./lib/tools/contact-autolink.js');
+    let shared;
+    const loadContacts = () => (shared ??= (reads++, loadContactsByHandle(db)));
+
+    await autoLinkTexts(db, [{ chatId: '7', day: '2020-03-06', firstAt: '2020-03-06T13:00:00.000Z', count: 1, firstLine: 'Hi', handles: ['6175550100'] }], { loadContacts });
+    await calls([call()], { loadContacts });
+
+    assert.equal(reads, 1);
+    assert.deepEqual((await linksOf('brad')).map(l => l.type).sort(), ['call', 'text']);
   });
 });

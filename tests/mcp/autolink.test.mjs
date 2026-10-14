@@ -1,7 +1,7 @@
 // Tests for the automatic contact linking job that runs on Jack's Mac
-// (functions/src/mcp/autolink-contacts.ts). Mail, Calendar and Messages cannot
-// run on Linux, so fixture files stand in for what their scripts and sqlite3
-// print; the job then runs exactly as launchd runs it, against the Firestore
+// (functions/src/mcp/autolink-contacts.ts). Mail, Calendar, Messages and the
+// call history cannot be read on Linux, so fixture files stand in for what
+// their scripts and sqlite3 print; the job then runs exactly as launchd runs it, against the Firestore
 // emulator, in Jack's time zone.
 
 import { before, beforeEach, describe, it } from 'node:test';
@@ -23,6 +23,7 @@ const dir = mkdtempSync(join(tmpdir(), 'maisie-autolink-'));
 const MAIL_FIXTURE = join(dir, 'mail.json');
 const MEETINGS_FIXTURE = join(dir, 'meetings.json');
 const MESSAGES_FIXTURE = join(dir, 'messages.json');
+const CALLS_FIXTURE = join(dir, 'calls.json');
 const write = (file, result) => writeFileSync(file, typeof result === 'string' ? result : JSON.stringify(result));
 
 // The exact shapes the JXA scripts in apple-mail.ts and apple-meetings.ts print.
@@ -59,6 +60,15 @@ const MESSAGES = [
   { seconds: appleSeconds('2020-03-06T15:00:00Z'), text: 'Who is this?', body: null, chatId: 8, handles: '+442079460000' },
 ];
 
+// Rows as sqlite3 -json prints them for the query in apple-calls.ts. callType 1
+// is a phone call and 8 a FaceTime video call; times count from 1 January 2001.
+const CALLS = [
+  { id: 'A1B2-out', seconds: appleSeconds('2020-03-06T14:00:00Z'), duration: 754.2, outgoing: 1, answered: 0, callType: 1, address: '+16175550100' },
+  { id: 'A1B2-missed', seconds: appleSeconds('2020-03-06T18:30:00Z'), duration: 0, outgoing: 0, answered: 0, callType: 1, address: '6175550100' },
+  { id: 'A1B2-facetime', seconds: appleSeconds('2020-03-07T15:00:00Z'), duration: 1800, outgoing: 0, answered: 1, callType: 8, address: 'amy@ihrdc.com' },
+  { id: 'A1B2-stranger', seconds: appleSeconds('2020-03-07T16:00:00Z'), duration: 0, outgoing: 0, answered: 0, callType: 1, address: '+18005550199' },
+];
+
 let db;
 
 before(() => {
@@ -72,8 +82,9 @@ beforeEach(async () => {
   await db.doc('contacts/amy').set({ firstName: 'Amy', lastName: 'Lee', emails: ['amy@ihrdc.com'], phones: [], tags: [], companyId: null });
   write(MAIL_FIXTURE, MAIL);
   write(MEETINGS_FIXTURE, MEETINGS);
-  // sqlite3 prints nothing when no message matches.
+  // sqlite3 prints nothing when no message or call matches.
   write(MESSAGES_FIXTURE, '');
+  write(CALLS_FIXTURE, '');
 });
 
 /** Runs the job as launchd does. Returns its output and exit code. */
@@ -86,7 +97,7 @@ function runJob(...args) {
       env: {
         ...process.env, FIRESTORE_EMULATOR_HOST: FIRESTORE_HOST, GCLOUD_PROJECT: PROJECT_ID,
         MAISIE_MAIL_FIXTURE: MAIL_FIXTURE, MAISIE_MEETINGS_FIXTURE: MEETINGS_FIXTURE,
-        MAISIE_MESSAGES_FIXTURE: MESSAGES_FIXTURE, TZ: 'America/New_York',
+        MAISIE_MESSAGES_FIXTURE: MESSAGES_FIXTURE, MAISIE_CALLS_FIXTURE: CALLS_FIXTURE, TZ: 'America/New_York',
       },
     });
     return { output, code: 0 };
@@ -124,6 +135,7 @@ describe('automatic linking job', () => {
     assert.match(output, /Emails since .*: 3 read, 2 links to write/);
     assert.match(output, /Automated sender: 1/);
     assert.match(output, /Meetings since .*: 1 read, 1 links to write/);
+    assert.match(output, /Calls since .*: 0 read, 0 links to write/);
     assert.deepEqual(await links(), []);
     assert.equal(await state(), undefined);
   });
@@ -185,5 +197,37 @@ describe('automatic linking job', () => {
     const s = await state();
     assert.equal(s.textsCheckedThrough, undefined, 'texts must start from the same place next time');
     assert.ok(s.mailCheckedThrough && s.meetingsCheckedThrough);
+  });
+
+  it('links each call to its contact, missed calls included, and records how far it read', async () => {
+    await db.doc('contacts/brad').update({ phones: ['617-555-0100'] });
+    write(CALLS_FIXTURE, CALLS);
+
+    const { output, code } = await runJob();
+
+    assert.equal(code, 0, output);
+    assert.match(output, /Calls since .*: 4 read, 3 links to write/);
+    const calls = (await links()).filter(l => l.type === 'call').map(l => [l.contactId, l.date, l.title, l.detail]).sort();
+    assert.deepEqual(calls, [
+      ['amy', '2020-03-07T15:00:00.000Z', 'Incoming FaceTime video call', '30 min'],
+      ['brad', '2020-03-06T14:00:00.000Z', 'Outgoing call', '13 min'],
+      ['brad', '2020-03-06T18:30:00.000Z', 'Missed call', null],
+    ]);
+    const s = await state();
+    assert.ok(s.callsCheckedThrough.toMillis() > Date.UTC(2026, 0, 1));
+    assert.deepEqual([s.lastCalls.linked, s.lastCalls.noContact], [3, 1]);
+  });
+
+  it('when the call history cannot be read, still links everything else, and retries calls next time', async () => {
+    write(CALLS_FIXTURE, 'Error: unable to open database "CallHistory.storedata": authorization denied');
+
+    const { output, code } = await runJob();
+
+    assert.equal(code, 1);
+    assert.match(output, /Calls: Call history returned unreadable output/);
+    assert.deepEqual((await links()).map(l => l.type).sort(), ['email', 'email', 'meeting']);
+    const s = await state();
+    assert.equal(s.callsCheckedThrough, undefined, 'calls must start from the same place next time');
+    assert.ok(s.mailCheckedThrough && s.meetingsCheckedThrough && s.textsCheckedThrough);
   });
 });
