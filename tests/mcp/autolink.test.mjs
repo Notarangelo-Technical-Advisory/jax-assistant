@@ -66,7 +66,7 @@ const CALLS = [
   { id: 'A1B2-out', seconds: appleSeconds('2020-03-06T14:00:00Z'), duration: 754.2, outgoing: 1, answered: 0, callType: 1, address: '+16175550100' },
   { id: 'A1B2-missed', seconds: appleSeconds('2020-03-06T18:30:00Z'), duration: 0, outgoing: 0, answered: 0, callType: 1, address: '6175550100' },
   { id: 'A1B2-facetime', seconds: appleSeconds('2020-03-07T15:00:00Z'), duration: 1800, outgoing: 0, answered: 1, callType: 8, address: 'amy@ihrdc.com' },
-  { id: 'A1B2-stranger', seconds: appleSeconds('2020-03-07T16:00:00Z'), duration: 0, outgoing: 0, answered: 0, callType: 1, address: '+18005550199' },
+  { id: 'A1B2-stranger', seconds: appleSeconds('2020-03-07T16:00:00Z'), duration: 65, outgoing: 0, answered: 1, callType: 1, address: '+18005550199' },
 ];
 
 let db;
@@ -199,23 +199,23 @@ describe('automatic linking job', () => {
     assert.ok(s.mailCheckedThrough && s.meetingsCheckedThrough);
   });
 
-  it('links each call to its contact, missed calls included, and records how far it read', async () => {
+  it('links each answered or outgoing call to its contact, never a missed call, and records how far it read', async () => {
     await db.doc('contacts/brad').update({ phones: ['617-555-0100'] });
     write(CALLS_FIXTURE, CALLS);
 
     const { output, code } = await runJob();
 
     assert.equal(code, 0, output);
-    assert.match(output, /Calls since .*: 4 read, 3 links to write/);
+    assert.match(output, /Calls since .*: 4 read, 2 links to write/);
+    assert.match(output, /Missed, not linked: 1/);
     const calls = (await links()).filter(l => l.type === 'call').map(l => [l.contactId, l.date, l.title, l.detail]).sort();
     assert.deepEqual(calls, [
       ['amy', '2020-03-07T15:00:00.000Z', 'Incoming FaceTime video call', '30 min'],
       ['brad', '2020-03-06T14:00:00.000Z', 'Outgoing call', '13 min'],
-      ['brad', '2020-03-06T18:30:00.000Z', 'Missed call', null],
     ]);
     const s = await state();
     assert.ok(s.callsCheckedThrough.toMillis() > Date.UTC(2026, 0, 1));
-    assert.deepEqual([s.lastCalls.linked, s.lastCalls.noContact], [3, 1]);
+    assert.deepEqual([s.lastCalls.linked, s.lastCalls.noContact, s.lastCalls.missed], [2, 1, 1]);
   });
 
   it('when the call history cannot be read, still links everything else, and retries calls next time', async () => {

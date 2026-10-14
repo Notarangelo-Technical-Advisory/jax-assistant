@@ -17,6 +17,7 @@
  *   per day. Each run re-reads whole days, from the start of the day before
  *   its overlap, so a day's message count is always complete.
  * - Calls: phone and FaceTime calls from the call history, one link per call.
+ *   Missed calls are never linked.
  *   Each run reads at least the last CALL_SYNC_DAYS, because the iPhone's calls
  *   can reach the Mac hours late, for example after the Mac has been asleep.
  * - Mail, Calendar, Messages and the call history are read separately. If one
@@ -34,7 +35,7 @@ import {readAppleMeetings} from "./apple-meetings";
 import {readAppleMessages} from "./apple-messages";
 import {readAppleCalls} from "./apple-calls";
 import {
-  AutoLinkSummary, ContactsByHandle, TextLinkSummary,
+  AutoLinkSummary, CallLinkSummary, ContactsByHandle, TextLinkSummary,
   autoLinkCalls, autoLinkItems, autoLinkTexts, loadContactsByHandle,
 } from "../tools/contact-autolink";
 
@@ -62,9 +63,10 @@ function reportTexts(label: string, s: TextLinkSummary): void {
   if (s.examples.length) console.log(`  For example: ${s.examples.join("; ")}`);
 }
 
-function reportCalls(label: string, s: AutoLinkSummary): void {
+function reportCalls(label: string, s: CallLinkSummary): void {
   console.log(`${label}: ${s.items} read, ${s.linked} links to write`);
-  console.log(`  Already linked: ${s.alreadyLinked}  Removed by Jack before: ${s.dismissed}  No contact: ${s.noContact}`);
+  console.log(`  Already linked: ${s.alreadyLinked}  Removed by Jack before: ${s.dismissed}  ` +
+    `No contact: ${s.noContact}  Missed, not linked: ${s.missed}`);
   if (s.examples.length) console.log(`  For example: ${s.examples.join("; ")}`);
 }
 

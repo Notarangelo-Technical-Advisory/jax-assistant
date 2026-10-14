@@ -403,11 +403,12 @@ export async function autoLinkTexts(
 // the Mac through iCloud. Each call becomes one link (Jack's choice, 2026-10-14):
 //
 // - The link's date is when the call started. Its title says which way it went
-//   and what kind of call it was, such as "Missed call" or "Outgoing FaceTime
+//   and what kind of call it was, such as "Incoming call" or "Outgoing FaceTime
 //   video call". Its detail is how long it lasted. A call has no words, so
 //   nothing else is stored.
-// - Missed calls are linked too, so MAISIE can see who called and was not
-//   answered.
+// - Missed calls are never linked: Jack does not want to see them (his choice,
+//   2026-10-14). They are only counted. An outgoing call nobody answered is
+//   still linked, as "not answered".
 // - A call does not change once it has ended, so its link is written once. A
 //   link Jack removed is not put back, as for email, meetings and texts.
 
@@ -424,41 +425,50 @@ export interface CallItem {
   handles: string[];
 }
 
-/** "Incoming call", "Missed call", "Outgoing FaceTime video call" and so on. */
-export function callTitle(call: Pick<CallItem, "direction" | "kind">): string {
-  const direction = {incoming: "Incoming", outgoing: "Outgoing", missed: "Missed"}[call.direction];
+/** A call that is linked: every call except a missed one. */
+type LinkedCall = CallItem & {direction: "incoming" | "outgoing"};
+
+/** "Incoming call", "Outgoing FaceTime video call" and so on. */
+export function callTitle(call: Pick<LinkedCall, "direction" | "kind">): string {
+  const direction = {incoming: "Incoming", outgoing: "Outgoing"}[call.direction];
   const kind = {"phone": "call", "facetime-video": "FaceTime video call", "facetime-audio": "FaceTime audio call"}[call.kind];
   return `${direction} ${kind}`;
 }
 
 /**
  * How long the call lasted, in whole minutes. An outgoing call that never
- * connected is "not answered". A missed call, and an answered call with no
- * length recorded, have no detail.
+ * connected is "not answered". An answered call with no length recorded has no
+ * detail.
  */
-export function callLength(call: Pick<CallItem, "direction" | "seconds">): string | null {
-  if (call.direction === "missed") return null;
+export function callLength(call: Pick<LinkedCall, "direction" | "seconds">): string | null {
   if (call.seconds <= 0) return call.direction === "outgoing" ? "not answered" : null;
   if (call.seconds < 60) return "under 1 min";
   return `${Math.round(call.seconds / 60)} min`;
+}
+
+export interface CallLinkSummary extends AutoLinkSummary {
+  /** Missed calls, which are never linked. */
+  missed: number;
 }
 
 export async function autoLinkCalls(
   db: admin.firestore.Firestore,
   items: CallItem[],
   options: HandleLinkOptions = {}
-): Promise<AutoLinkSummary> {
-  const summary: AutoLinkSummary = {
-    dryRun: !!options.dryRun, items: items.length, linked: 0, itemsLinked: 0,
+): Promise<CallLinkSummary> {
+  const summary: CallLinkSummary = {
+    dryRun: !!options.dryRun, items: items.length, linked: 0, itemsLinked: 0, missed: 0,
     alreadyLinked: 0, dismissed: 0, tooManyPeople: 0, automated: 0, noContact: 0, examples: [],
   };
 
-  if (items.length === 0) return summary;
+  const answered = items.filter((call): call is LinkedCall => call.direction !== "missed");
+  summary.missed = items.length - answered.length;
+  if (answered.length === 0) return summary;
 
   const contactByHandle = await (options.loadContacts ?? (() => loadContactsByHandle(db)))();
 
   const candidates: Array<{id: string; contactId: string; name: string; doc: Omit<LinkDoc, "contactId">}> = [];
-  for (const call of items) {
+  for (const call of answered) {
     const date = normDate(call.at);
     if (!call.callId.trim() || !date) continue;
     const contacts = new Map(call.handles.map(handleKey).filter(Boolean).flatMap((h) => {
