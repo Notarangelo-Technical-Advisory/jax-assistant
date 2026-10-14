@@ -8,6 +8,7 @@ $border: #334155;
 $github: #a78bfa;
 $jira: #38bdf8;
 $claude: #f59e0b;
+$meeting: #22c55e; // Same as a meeting link on the contacts page.
 
 :host {
   display: block;
@@ -194,6 +195,7 @@ a.subject { color: $accent; text-decoration: none; &:hover { text-decoration: un
   &[data-source='github'] { background: rgba($github, 0.15); color: $github; }
   &[data-source='jira'] { background: rgba($jira, 0.15); color: $jira; }
   &[data-source='claude'] { background: rgba($claude, 0.15); color: $claude; }
+  &[data-source='meeting'] { background: rgba($meeting, 0.15); color: $meeting; }
 }
 
 .client-tag, .ticket {

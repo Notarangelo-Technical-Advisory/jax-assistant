@@ -1,19 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Work journal: every 15 minutes, collects what Jack did on GitHub, in Jira
-  and in Claude Code into MAISIE's journal, with each day's estimated time per
-  client. The job is functions/src/mcp/collect-journal.ts; the rules are in
+  Work journal: every 15 minutes, collects what Jack did on GitHub, in Jira,
+  in Claude Code and in meetings on his Jax and IHRDC calendars into MAISIE's
+  journal, with each day's estimated time per client. The job is functions/src/mcp/collect-journal.ts; the rules are in
   functions/src/tools/journal.ts.
 
   Install:
     cp bridge/com.notarangelo.work-journal.plist ~/Library/LaunchAgents/
     launchctl load ~/Library/LaunchAgents/com.notarangelo.work-journal.plist
 
-  NEEDS: the gh CLI signed in as Jack (`gh auth status`), and a Jira API token
-  in the Keychain under the service maisie-jira (see jira-activity.ts). Until
-  the token is there, the log reports a Jira error each run and GitHub and
-  Claude Code are still collected. Run `cd functions && npm run journal:collect`
+  NEEDS: the gh CLI signed in as Jack (`gh auth status`), a Jira API token in
+  the Keychain under the service maisie-jira (see jira-activity.ts), and Full
+  Access to Calendars, which the contact linking job already uses. Until the
+  token is there, the log reports a Jira error each run and the other sources
+  are still collected. Run `cd functions && npm run journal:collect`
   once from a terminal to confirm.
 
   The first run looks back 30 days (a few minutes, mostly Jira); later runs

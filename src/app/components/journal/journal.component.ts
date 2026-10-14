@@ -41,7 +41,7 @@ export interface ItemGroup {
 
 type Selection = { day: string; client: string | null } | null;
 
-const SOURCE_LABELS: Record<JournalSource, string> = { github: 'GitHub', jira: 'Jira', claude: 'Claude Code' };
+const SOURCE_LABELS: Record<JournalSource, string> = { github: 'GitHub', jira: 'Jira', claude: 'Claude Code', meeting: 'Calendar' };
 
 @Component({
   selector: 'app-journal',

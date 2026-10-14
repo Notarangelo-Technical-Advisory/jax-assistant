@@ -1,7 +1,8 @@
 /**
- * Work journal: collects what Jack did on GitHub, in Jira and in Claude Code
- * into MAISIE's journal, with each day's estimated time per client. Runs on
- * Jack's Mac every 15 minutes, from bridge/com.notarangelo.work-journal.plist.
+ * Work journal: collects what Jack did on GitHub, in Jira, in Claude Code and
+ * in meetings on his Jax and IHRDC calendars into MAISIE's journal, with each
+ * day's estimated time per client. Runs on Jack's Mac every 15 minutes, from
+ * bridge/com.notarangelo.work-journal.plist.
  *
  * Usage (from functions/):
  *   npm run journal:collect -- --dry-run   # show what would be added, write nothing
@@ -11,20 +12,25 @@
  *   so its first run may reach back less far). Each later run starts an hour
  *   before the previous one finished; the fixed item ids make the overlap
  *   harmless.
- * - GitHub, Jira and Claude Code are read separately. If one fails, the others
- *   are still collected, and the failed one starts from the same place next time.
+ * - GitHub, Jira, Claude Code and the calendars are read separately. If one
+ *   fails, the others are still collected, and the failed one starts from the
+ *   same place next time.
+ * - A meeting is journaled once it has ended, so one still going on is read
+ *   again by a later run.
  *
- * The readers are github-activity.ts, jira-activity.ts and claude-sessions.ts
- * beside this file. The rules for clients and time are in src/tools/journal.ts.
+ * The readers are github-activity.ts, jira-activity.ts, claude-sessions.ts and
+ * apple-meetings.ts beside this file. The rules for clients and time, and for
+ * which meetings count, are in src/tools/journal.ts.
  */
 
 // First: sets the TLS environment before anything touches the network stack.
 import {db} from "./firebase";
 import * as admin from "firebase-admin";
-import {JournalItemInput, SaveSummary, clientLabel, saveJournalItems, summarizeDays} from "../tools/journal";
+import {JournalItemInput, SaveSummary, clientLabel, meetingItems, saveJournalItems, summarizeDays} from "../tools/journal";
 import {readGitHubActivity} from "./github-activity";
 import {readJiraActivity} from "./jira-activity";
 import {readClaudeSessions} from "./claude-sessions";
+import {readCalendarMeetings} from "./apple-meetings";
 
 const BACKFILL_DAYS = 30;
 const OVERLAP_MS = 60 * 60 * 1000;
@@ -44,7 +50,7 @@ function report(label: string, s: SaveSummary, extra = ""): void {
 interface Source {
   name: string;
   stateKey: string;
-  read: (since: Date) => Promise<{items: JournalItemInput[]; note: string}>;
+  read: (since: Date, now: Date) => Promise<{items: JournalItemInput[]; note: string}>;
 }
 
 const SOURCES: Source[] = [
@@ -73,6 +79,18 @@ const SOURCES: Source[] = [
       return {items: a.items, note: ` (session files: ${a.files}; spans with no prompt left out: ${a.skipped})`};
     },
   },
+  {
+    name: "Calendar",
+    stateKey: "meetings",
+    read: async (since, now) => {
+      const m = meetingItems(readCalendarMeetings(since, now), now);
+      return {
+        items: m.items,
+        note: ` (meetings on the calendars: ${m.read}; left out: ${m.noClient} with no client, ` +
+          `${m.allDay} all-day, ${m.free} marked Free, ${m.declined} declined, ${m.notEnded} not ended yet)`,
+      };
+    },
+  },
 ];
 
 async function main(): Promise<void> {
@@ -87,7 +105,7 @@ async function main(): Promise<void> {
   for (const source of SOURCES) {
     const since = startFrom(state[`${source.stateKey}CheckedThrough`], now);
     try {
-      const {items, note} = await source.read(since);
+      const {items, note} = await source.read(since, now);
       const saved = await saveJournalItems(db, items, {dryRun});
       report(`${source.name} since ${since.toLocaleString("en-US")}`, saved, note);
       saved.days.forEach((d) => days.add(d));

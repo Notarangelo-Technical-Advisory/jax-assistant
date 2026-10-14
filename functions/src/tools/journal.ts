@@ -8,14 +8,16 @@ import {DEFAULT_CATEGORIES} from "./definitions";
 // A record of what Jack did and when, and for which client, so he can account
 // for work done a few minutes at a time across a day. The readers live on
 // Jack's Mac (src/mcp/collect-journal.ts), because the gh login, the Jira token
-// in the Keychain and Claude Code's session files are only there. This file
-// decides the client, stores the items and estimates the time, so the rules are
-// tested against the emulator.
+// in the Keychain, Claude Code's session files and Apple Calendar are only
+// there. This file decides the client, stores the items and estimates the time,
+// so the rules are tested against the emulator.
 //
 // - Each item has a fixed id made from its source and the source's own id, so
 //   a second run finds it and writes nothing.
 // - The client comes from where the work happened: the GitHub repo or its
-//   owner, the Jira site, or the repo a Claude Code session ran in. Clients are
+//   owner, the Jira site, or the repo a Claude Code session ran in. A meeting's
+//   client comes from the people invited, its calendar or words in its title,
+//   and a meeting with no client is left out (see meetingClient). Clients are
 //   the task categories, so the journal and the task list use the same names.
 // - Time is an estimate. Items less than GAP_MINUTES apart form one work
 //   session, timed from its first item to its last, and a session is never
@@ -48,16 +50,41 @@ export const JIRA_SITE_CLIENTS: Record<string, string> = {
   "ihrdcdev.atlassian.net": "ihrdc",
 };
 
-export type JournalSource = "github" | "jira" | "claude";
+/** Calendars whose meetings all belong to one client, by the label in apple-meetings.ts. */
+const CALENDAR_CLIENTS: Record<string, string> = {
+  "IHRDC": "ihrdc",
+};
+
+/** Email domains whose people make a meeting that client's. Keys are lower case. */
+const DOMAIN_CLIENTS: Record<string, string> = {
+  "ihrdc.com": "ihrdc",
+  "coxeng.com": "cox",
+};
+
+/**
+ * Words in a meeting's title that give it a client, so that work and church
+ * meetings on the Jax calendar count and personal events there do not. Each is
+ * matched as whole words, ignoring case and punctuation.
+ */
+const MEETING_WORDS: Array<{words: string; client: string}> = [
+  {words: "Cox", client: "cox"},
+  {words: "Officer Meeting", client: "church"},
+  {words: "Grace Prayer Meeting", client: "church"},
+  {words: "Community Group", client: "church"},
+  {words: "Praying Avidly", client: "church"},
+  {words: "Worship", client: "church"},
+];
+
+export type JournalSource = "github" | "jira" | "claude" | "meeting";
 
 /** One piece of work, as a reader on the Mac finds it. */
 export interface JournalItemInput {
   source: JournalSource;
   /** The source's own id for this piece of work, unique within the source. */
   sourceId: string;
-  /** ISO timestamp: when the work happened, or when a Claude Code session began. */
+  /** ISO timestamp: when the work happened, or when a Claude Code session or a meeting began. */
   at: string;
-  /** Claude Code only: the ISO timestamp of the session's last activity. */
+  /** Claude Code and meetings: the ISO timestamp of the session's last activity, or the meeting's end. */
   endAt?: string | null;
   /** What Jack did: "Opened PR #674", "Moved CNG-7183 to Code Review". */
   action: string;
@@ -73,6 +100,38 @@ export interface JournalItemInput {
   ticket?: string | null;
   /** Jira only: the site, which decides the client. */
   site?: string | null;
+  /** Meetings only: the client meetingClient chose. Other sources get theirs from where the work happened. */
+  client?: string | null;
+}
+
+/** A meeting on the Jax or IHRDC calendar, as the reader on the Mac finds it. */
+export interface CalendarMeeting {
+  /** The calendar's id for the event. Every occurrence of a repeating meeting has the same one. */
+  uid: string;
+  title: string;
+  /** ISO timestamps. */
+  start: string;
+  end: string;
+  allDay: boolean;
+  /** Marked Free (not Busy), as a reminder usually is. */
+  free: boolean;
+  /** Jack was invited and declined. */
+  declined: boolean;
+  /** "Jax" or "IHRDC". */
+  calendar: string;
+  /** Email addresses of the other people invited, without Jack, rooms or resources. */
+  people: string[];
+}
+
+/** Meetings read, and why the ones not journaled were left out. */
+export interface MeetingItems {
+  items: JournalItemInput[];
+  read: number;
+  notEnded: number;
+  allDay: number;
+  free: number;
+  declined: number;
+  noClient: number;
 }
 
 /** An item as it is stored in the journal collection. */
@@ -158,6 +217,71 @@ export function clientFor(where: {repo?: string | null; site?: string | null}): 
   return DEFAULT_CLIENT;
 }
 
+/** Lower case words with single spaces between them, and one at each end, for matching whole words. */
+const wordsOf = (text: string): string => ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+
+/**
+ * The client of a meeting, or null when it has none and is left out of the
+ * journal. In order: someone invited from a client's email domain; a client's
+ * own calendar, when someone else is invited (a meeting with no one else
+ * invited there is a personal block, such as a doctor's appointment); a word
+ * in the title.
+ */
+export function meetingClient(meeting: Pick<CalendarMeeting, "title" | "calendar" | "people">): string | null {
+  for (const address of meeting.people) {
+    const client = DOMAIN_CLIENTS[address.split("@")[1]?.trim().toLowerCase() ?? ""];
+    if (client) return client;
+  }
+  const calendarClient = CALENDAR_CLIENTS[meeting.calendar];
+  if (calendarClient && meeting.people.length > 0) return calendarClient;
+  const title = wordsOf(meeting.title);
+  return MEETING_WORDS.find((w) => title.includes(wordsOf(w.words)))?.client ?? null;
+}
+
+/**
+ * The journal items for meetings that had ended by `now`. All-day events,
+ * events marked Free, meetings Jack declined and meetings with no client are
+ * left out. Each occurrence of a repeating meeting is its own item.
+ */
+export function meetingItems(meetings: CalendarMeeting[], now = new Date()): MeetingItems {
+  const result: MeetingItems = {items: [], read: meetings.length, notEnded: 0, allDay: 0, free: 0, declined: 0, noClient: 0};
+  for (const m of meetings) {
+    if (m.allDay) {
+      result.allDay++;
+      continue;
+    }
+    if (Date.parse(m.end) > now.getTime()) {
+      result.notEnded++;
+      continue;
+    }
+    if (m.free) {
+      result.free++;
+      continue;
+    }
+    if (m.declined) {
+      result.declined++;
+      continue;
+    }
+    const client = meetingClient(m);
+    if (!client) {
+      result.noClient++;
+      continue;
+    }
+    const others = m.people.length;
+    result.items.push({
+      source: "meeting",
+      sourceId: `${m.uid}:${new Date(m.start).toISOString()}`,
+      at: m.start,
+      endAt: m.end,
+      action: others ? `Meeting with ${others} ${others === 1 ? "other person" : "others"}` : "Meeting",
+      subject: m.title,
+      detail: `${m.calendar} calendar`,
+      client,
+    });
+  }
+  return result;
+}
+
 /**
  * The Jira key ("CNG-7183") in a branch name such as feature/CNG-7183, or null.
  * Only branch names: a title can hold look-alikes such as "UTF-8".
@@ -198,7 +322,7 @@ export function toJournalItem(input: JournalItemInput): JournalItem | null {
   return {
     source: input.source,
     sourceId,
-    client: clientFor({repo, site: input.site}),
+    client: input.client?.trim().toLowerCase() || clientFor({repo, site: input.site}),
     day: etDateKey(new Date(at)),
     at,
     endAt: endAt && endAt > at ? endAt : null,
@@ -279,7 +403,7 @@ export async function saveJournalItems(
 /**
  * Join items into work sessions: items less than GAP_MINUTES apart are one
  * session, from the first to the last, and no session is shorter than
- * MIN_SESSION_MINUTES. A Claude Code item covers its own start to end.
+ * MIN_SESSION_MINUTES. A Claude Code item or a meeting covers its own start to end.
  */
 export function workSessions(items: Array<{at: string; endAt?: string | null}>): WorkSession[] {
   const spans = items
@@ -428,7 +552,8 @@ export async function getJournal(
     dateRange: {startDate, endDate},
     note: "Hours are estimates: items less than 20 minutes apart count as one work session, " +
       "from the first item to the last, and a session counts for at least 6 minutes. " +
-      "The journal is collected on Jack's Mac every 15 minutes from GitHub, Jira and Claude Code.",
+      "The journal is collected on Jack's Mac every 15 minutes from GitHub, Jira, Claude Code and the " +
+      "meetings on his Jax and IHRDC calendars; a meeting counts for its scheduled length.",
     clients: [...totals.entries()]
       .map(([key, t]) => ({client: key, label: t.label, estimatedHours: hours(t.minutes), itemCount: t.itemCount}))
       .sort((a, b) => b.estimatedHours - a.estimatedHours),

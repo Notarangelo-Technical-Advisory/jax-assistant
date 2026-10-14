@@ -1,6 +1,7 @@
 /**
  * Read meetings and their attendees from the Jax and IHRDC calendars on Jack's
- * Mac, via EventKit, for automatic contact linking (CRM Phase 4).
+ * Mac, via EventKit, for automatic contact linking (CRM Phase 4) and for the
+ * work journal.
  *
  * Same approach as bridge/eventkit/read-events.ts, which feeds the calendar
  * mirror: JXA through osascript, JSON on stdout, and an explicit error instead
@@ -15,6 +16,7 @@
 import {execFileSync} from "child_process";
 import {readFileSync} from "fs";
 import {AutoLinkItem} from "../tools/contact-autolink";
+import {CalendarMeeting} from "../tools/journal";
 
 /** Jack chose work calendars only. `name` is EventKit's title; Exchange calls IHRDC's "Calendar". */
 export const MEETING_CALENDARS: Array<{name: string; label: string}> = [
@@ -45,6 +47,8 @@ var EK_FULL_ACCESS = 3;
 var EK_STATUS_CANCELED = 3;
 var EK_PARTICIPANT_ROOM = 2;
 var EK_PARTICIPANT_RESOURCE = 3;
+var EK_PARTICIPANT_DECLINED = 3;
+var EK_AVAILABILITY_FREE = 1;
 
 function str(v) {
   if (v === undefined || v === null) return '';
@@ -78,6 +82,13 @@ function address(p) {
   return /^mailto:/i.test(url) ? decodeURIComponent(url.slice(7)) : '';
 }
 
+/** True when Jack is invited and has declined. */
+function declined(e) {
+  return (ObjC.unwrap(e.attendees) || []).some(function (p) {
+    return p.isCurrentUser && num(p.participantStatus) === EK_PARTICIPANT_DECLINED;
+  });
+}
+
 function run() {
   var status = ensureAccess();
   if (status !== EK_FULL_ACCESS) return JSON.stringify({ ok: false, error: 'no_calendar_access', status: status });
@@ -106,6 +117,10 @@ function run() {
         uid: str(e.calendarItemExternalIdentifier),
         title: str(e.title),
         start: Number(e.startDate.timeIntervalSince1970),
+        end: Number(e.endDate.timeIntervalSince1970),
+        allDay: !!e.allDay,
+        free: num(e.availability) === EK_AVAILABILITY_FREE,
+        declined: declined(e),
         calendar: str(e.calendar.title),
         people: people.filter(function (a) { return a; })
       };
@@ -119,6 +134,11 @@ interface RawMeeting {
   uid: string;
   title: string;
   start: number;
+  /** Missing from output saved before the work journal read meetings. */
+  end?: number;
+  allDay?: boolean;
+  free?: boolean;
+  declined?: boolean;
   calendar: string;
   people: string[];
 }
@@ -127,8 +147,8 @@ type RawResult =
   | {ok: true; missing: string[]; events: RawMeeting[]}
   | {ok: false; error: string; status?: number; missing?: string[]};
 
-/** Turn the script's JSON output into items to link, or throw a clear error. */
-export function parseAppleMeetings(raw: string): AutoLinkItem[] {
+/** The script's JSON output as meetings, or a clear error. */
+export function parseCalendarMeetings(raw: string): CalendarMeeting[] {
   if (!raw.trim()) throw new AppleMeetingsError("Calendar returned no output.", "empty_output");
   let result: RawResult;
   try {
@@ -153,22 +173,34 @@ export function parseAppleMeetings(raw: string): AutoLinkItem[] {
   return result.events
     .filter((e) => e.uid && Number.isFinite(e.start))
     .map((e) => ({
-      type: "meeting" as const,
-      sourceId: e.uid,
+      uid: e.uid,
       title: e.title,
-      date: new Date(e.start * 1000).toISOString(),
-      detail: label(e.calendar),
-      addresses: e.people,
+      start: new Date(e.start * 1000).toISOString(),
+      end: new Date((Number.isFinite(e.end) ? e.end! : e.start) * 1000).toISOString(),
+      allDay: !!e.allDay,
+      free: !!e.free,
+      declined: !!e.declined,
+      calendar: label(e.calendar),
+      people: e.people,
     }));
 }
 
-/**
- * Meetings that start between `start` and `end`. When MAISIE_MEETINGS_FIXTURE
- * names a file, its contents stand in for the script's output (tests).
- */
-export function readAppleMeetings(start: Date, end: Date): AutoLinkItem[] {
+/** Turn the script's JSON output into items to link, or throw a clear error. */
+export function parseAppleMeetings(raw: string): AutoLinkItem[] {
+  return parseCalendarMeetings(raw).map((m) => ({
+    type: "meeting" as const,
+    sourceId: m.uid,
+    title: m.title,
+    date: m.start,
+    detail: m.calendar,
+    addresses: m.people,
+  }));
+}
+
+/** The script's raw output for meetings between `start` and `end`, or the MAISIE_MEETINGS_FIXTURE file (tests). */
+function readMeetingsOutput(start: Date, end: Date): string {
   const fixture = process.env.MAISIE_MEETINGS_FIXTURE;
-  if (fixture) return parseAppleMeetings(readFileSync(fixture, "utf-8"));
+  if (fixture) return readFileSync(fixture, "utf-8");
   let raw: string;
   try {
     raw = execFileSync("osascript", ["-l", "JavaScript", "-e", readMeetingsScript(start, end)], {
@@ -179,5 +211,15 @@ export function readAppleMeetings(start: Date, end: Date): AutoLinkItem[] {
   } catch (err) {
     throw new AppleMeetingsError(`osascript failed: ${err instanceof Error ? err.message : err}`, "osascript_failed");
   }
-  return parseAppleMeetings(raw);
+  return raw;
+}
+
+/** Meetings between `start` and `end`, for contact linking. */
+export function readAppleMeetings(start: Date, end: Date): AutoLinkItem[] {
+  return parseAppleMeetings(readMeetingsOutput(start, end));
+}
+
+/** Meetings between `start` and `end`, with their end, for the work journal. */
+export function readCalendarMeetings(start: Date, end: Date): CalendarMeeting[] {
+  return parseCalendarMeetings(readMeetingsOutput(start, end));
 }

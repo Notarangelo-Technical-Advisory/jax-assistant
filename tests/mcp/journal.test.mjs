@@ -1,8 +1,8 @@
 // Tests for the work journal job that runs on Jack's Mac
 // (functions/src/mcp/collect-journal.ts). Saved answers stand in for GitHub
-// (gh api) and Jira, and a folder of session files stands in for Claude Code's,
-// so nothing reaches the real services; the job then runs exactly as launchd
-// runs it, against the Firestore emulator, in Jack's time zone.
+// (gh api), Jira and Apple Calendar, and a folder of session files stands in
+// for Claude Code's, so nothing reaches the real services; the job then runs
+// exactly as launchd runs it, against the Firestore emulator, in Jack's time zone.
 
 import { before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,6 +22,7 @@ const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080';
 const dir = mkdtempSync(join(tmpdir(), 'maisie-journal-'));
 const GITHUB_FIXTURE = join(dir, 'github.json');
 const JIRA_FIXTURE = join(dir, 'jira.json');
+const MEETINGS_FIXTURE = join(dir, 'meetings.json');
 const SESSIONS = join(dir, 'projects');
 
 // A checkout of IHRDC/cmsonline for the Claude Code session to run in.
@@ -82,6 +83,30 @@ const JIRA = {
   '/rest/api/3/issue/CNG-7186/comment': { comments: [] },
 };
 
+// What the EventKit script in apple-meetings.ts prints. Times are seconds since 1970.
+const seconds = (minutesAgo) => Math.round((NOW - minutesAgo * 60_000) / 1000);
+const event = (fields) => ({
+  uid: 'uid-x', title: 'x', start: seconds(300), end: seconds(240), allDay: false, free: false, declined: false,
+  calendar: 'Calendar', people: [], ...fields,
+});
+const MEETINGS = {
+  ok: true,
+  missing: [],
+  events: [
+    event({ uid: 'uid-review', title: 'Product Review Meeting', people: ['brad@ihrdc.com', 'gabor@ihrdc.com'] }),
+    event({ uid: 'uid-cox', title: 'Cox discovery', calendar: 'Jax', start: seconds(200), end: seconds(140) }),
+    event({ uid: 'uid-officers', title: 'Officer Meeting', calendar: 'Jax', start: seconds(130), end: seconds(125), people: ['elder@example.com'] }),
+    // Left out: a personal block on the IHRDC calendar, a personal event, a reminder marked Free,
+    // a declined meeting, an all-day event, and a meeting still going on.
+    event({ uid: 'uid-doctor', title: 'Norma Dr Appt' }),
+    event({ uid: 'uid-driveway', title: 'Edge the driveway', calendar: 'Jax' }),
+    event({ uid: 'uid-reminder', title: 'Request demo for Friday', free: true }),
+    event({ uid: 'uid-declined', title: 'Bug tickets - Product management', declined: true, people: ['amy@ihrdc.com'] }),
+    event({ uid: 'uid-delivery', title: 'Walden Local delivery', calendar: 'Jax', allDay: true }),
+    event({ uid: 'uid-sync', title: 'Claude Code - Weekly Sync', start: seconds(10), end: seconds(-50), people: ['brad@ihrdc.com'] }),
+  ],
+};
+
 /** One line of a Claude Code session file. */
 const line = (minutesAgo, type, content, extra = {}) => JSON.stringify({
   type, timestamp: ago(minutesAgo), cwd: CHECKOUT, gitBranch: 'feature/CNG-7039', sessionId: 'sess-1', isSidechain: false,
@@ -111,6 +136,7 @@ beforeEach(async () => {
   await fetch(`http://${FIRESTORE_HOST}/emulator/v1/projects/${PROJECT_ID}/databases/(default)/documents`, { method: 'DELETE' });
   write(GITHUB_FIXTURE, GITHUB);
   write(JIRA_FIXTURE, JIRA);
+  write(MEETINGS_FIXTURE, MEETINGS);
   rmSync(SESSIONS, { recursive: true, force: true });
   mkdirSync(join(SESSIONS, '-cmsonline'), { recursive: true });
   write(join(SESSIONS, '-cmsonline', 'sess-1.jsonl'), SESSION);
@@ -126,6 +152,7 @@ function runJob(...args) {
       env: {
         ...process.env, FIRESTORE_EMULATOR_HOST: FIRESTORE_HOST, GCLOUD_PROJECT: PROJECT_ID,
         MAISIE_GITHUB_FIXTURE: GITHUB_FIXTURE, MAISIE_JIRA_FIXTURE: JIRA_FIXTURE, MAISIE_CLAUDE_PROJECTS_DIR: SESSIONS,
+        MAISIE_MEETINGS_FIXTURE: MEETINGS_FIXTURE,
         TZ: 'America/New_York',
       },
     });
@@ -181,6 +208,33 @@ describe('work journal job', () => {
     assert.doesNotMatch(JSON.stringify(claude), /Fix the saved grid layout"/);
   });
 
+  it('journals ended meetings on the Jax and IHRDC calendars under their client, and leaves out personal events', async () => {
+    const { output, code } = await runJob();
+    assert.equal(code, 0, output);
+
+    const meetings = (await bySource('meeting')).map(i => [i.client, i.subject, i.action, i.detail]);
+    assert.deepEqual(meetings, [
+      ['ihrdc', 'Product Review Meeting', 'Meeting with 2 others', 'IHRDC calendar'],
+      ['cox', 'Cox discovery', 'Meeting', 'Jax calendar'],
+      ['church', 'Officer Meeting', 'Meeting with 1 other person', 'Jax calendar'],
+    ]);
+    const [review] = await bySource('meeting');
+    assert.deepEqual([review.at, review.endAt], [seconds(300), seconds(240)].map(t => new Date(t * 1000).toISOString()));
+    assert.match(output, /Calendar since .*: 3 read, 3 new.*meetings on the calendars: 9; left out: 2 with no client, 1 all-day, 1 marked Free, 1 declined, 1 not ended yet\)/);
+    assert.match(output, /By client: IHRDC 1, Cox Engineering 1, Church 1/);
+  });
+
+  it('when the calendar cannot be read, still journals the other sources, and says why', async () => {
+    write(MEETINGS_FIXTURE, { ok: false, error: 'no_calendar_access', status: 2 });
+    const { output, code } = await runJob();
+
+    assert.equal(code, 1);
+    assert.match(output, /Calendar: Not allowed to read Calendars/);
+    assert.equal((await bySource('github')).length, 3);
+    assert.equal((await bySource('meeting')).length, 0);
+    assert.equal((await state()).meetingsCheckedThrough, undefined, 'the calendar starts from the same place next time');
+  });
+
   it("builds each day's summary and records how far each source was read", async () => {
     const { output, code } = await runJob();
     assert.equal(code, 0, output);
@@ -192,7 +246,7 @@ describe('work journal job', () => {
     assert.ok(days.every(d => d.day === etDay(d.clients[0].sessions[0].start)));
 
     const s = await state();
-    for (const source of ['github', 'jira', 'claude']) assert.ok(s[`${source}CheckedThrough`].toMillis() >= NOW - 60_000, source);
+    for (const source of ['github', 'jira', 'claude', 'meetings']) assert.ok(s[`${source}CheckedThrough`].toMillis() >= NOW - 60_000, source);
     assert.deepEqual(s.lastErrors, []);
   });
 
@@ -223,7 +277,7 @@ describe('work journal job', () => {
     assert.equal(await state(), undefined);
   });
 
-  it('when Jira fails, still journals GitHub and Claude Code, and says why Jira failed', async () => {
+  it('when Jira fails, still journals the other sources, and says why Jira failed', async () => {
     write(JIRA_FIXTURE, {});
     const { output, code } = await runJob();
 
@@ -231,8 +285,50 @@ describe('work journal job', () => {
     assert.match(output, /Jira: Jira answered 404 for \/rest\/api\/3\/myself/);
     assert.equal((await bySource('github')).length, 3);
     assert.equal((await bySource('claude')).length, 1);
+    assert.equal((await bySource('meeting')).length, 3);
     const s = await state();
     assert.equal(s.jiraCheckedThrough, undefined, 'Jira starts from the same place next time');
     assert.match(s.lastErrors[0], /^Jira:/);
+  });
+});
+
+describe('Jira sign-in', () => {
+  // src/mcp is run with tsx and never compiled, so tsx loads it here too.
+  const { require: tsxRequire } = createRequire(`${functionsDir}package.json`)('tsx/cjs/api');
+  const { httpJiraApi, JIRA_CLOUD_ID } = tsxRequire(`${functionsDir}src/mcp/jira-activity.ts`, import.meta.url);
+  const GATEWAY = `https://api.atlassian.com/ex/jira/${JIRA_CLOUD_ID}`;
+  const SITE = 'https://ihrdcdev.atlassian.net';
+
+  /** A stand-in for fetch that accepts the token at the addresses given, and records every address asked. */
+  function fakeJira(accepts) {
+    const asked = [];
+    const fetchJira = async (url, init) => {
+      asked.push(url);
+      assert.equal(init.headers.Authorization, `Basic ${Buffer.from('jack@ihrdc.com:secret').toString('base64')}`);
+      const ok = accepts.some(base => url.startsWith(base));
+      return new Response(ok ? JSON.stringify({ url }) : 'Unauthorized', { status: ok ? 200 : 401 });
+    };
+    return { asked, api: httpJiraApi('jack@ihrdc.com', 'secret', fetchJira) };
+  }
+
+  it('uses the gateway for a token with scopes, for every request', async () => {
+    const { asked, api } = fakeJira([GATEWAY]);
+    await api('/rest/api/3/myself');
+    await api('/rest/api/3/issue/CNG-1/comment');
+
+    assert.deepEqual(asked, [`${GATEWAY}/rest/api/3/myself`, `${GATEWAY}/rest/api/3/issue/CNG-1/comment`]);
+  });
+
+  it('falls back to the site for a token without scopes, and stays there', async () => {
+    const { asked, api } = fakeJira([SITE]);
+    await api('/rest/api/3/myself');
+    await api('/rest/api/3/issue/CNG-1/comment');
+
+    assert.deepEqual(asked, [`${GATEWAY}/rest/api/3/myself`, `${SITE}/rest/api/3/myself`, `${SITE}/rest/api/3/issue/CNG-1/comment`]);
+  });
+
+  it('says the token was refused, and what it needs, when neither address accepts it', async () => {
+    const { api } = fakeJira([]);
+    await assert.rejects(api('/rest/api/3/myself'), /refused the token .*HTTP 401.*read:jira-work and read:jira-user/);
   });
 });
