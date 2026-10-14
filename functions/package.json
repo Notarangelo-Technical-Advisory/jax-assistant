@@ -10,6 +10,7 @@
     "import:contacts": "tsx src/mcp/import-contacts.ts",
     "autolink:contacts": "tsx src/mcp/autolink-contacts.ts",
     "journal:collect": "tsx src/mcp/collect-journal.ts",
+    "journal:reclassify": "tsx src/mcp/reclassify-journal.ts",
     "typecheck:mcp": "tsc -p tsconfig.mcp.json"
   },
   "engines": {

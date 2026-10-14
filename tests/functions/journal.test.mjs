@@ -12,7 +12,7 @@ const fromFunctions = createRequire(new URL('../../functions/package.json', impo
 const admin = fromFunctions('firebase-admin');
 const {
   clientFor, ticketInBranch, workSessions, summarizeDay, saveJournalItems, summarizeDays, meetingClient, meetingItems,
-  recordingItems,
+  recordingItems, reclassifyJournal,
 } = fromFunctions('./lib/tools/journal.js');
 
 before(setUp);
@@ -42,13 +42,14 @@ describe('clients', () => {
     assert.equal(clientFor({ site: 'ihrdcdev.atlassian.net' }), 'ihrdc');
   });
 
-  it('gives each product and church repo its own client, and the rest of the business General', () => {
+  it('gives each product and church repo, and Maisie\'s own repo, its own client, and the rest of the business General', () => {
     assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/solomon' }), 'solomon');
     assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/dora-tma' }), 'dial');
     assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/Prophet-Priest-King' }), 'ppk');
     assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/Grace-Pres' }), 'church');
     assert.equal(clientFor({ repo: 'jacknota/embassy-book-series' }), 'embassy');
-    assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/jax-assistant' }), 'general');
+    assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/jax-assistant' }), 'executive_assistant');
+    assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/nta-time-tracker' }), 'general');
     assert.equal(clientFor({ repo: null }), 'general');
   });
 
@@ -307,7 +308,7 @@ describe('storing items', () => {
 
 describe('get_journal', () => {
   beforeEach(async () => {
-    await save([pr(), jira(), session(), pr({ sourceId: 'e3', at: '2026-10-13T19:00:00Z', repo: 'Notarangelo-Technical-Advisory/jax-assistant', action: 'Pushed to main', subject: 'Turn certificate checks back on' })]);
+    await save([pr(), jira(), session(), pr({ sourceId: 'e3', at: '2026-10-13T19:00:00Z', repo: 'Notarangelo-Technical-Advisory/engineering-standards', action: 'Pushed to main', subject: 'Turn certificate checks back on' })]);
     await summarizeDays(admin.firestore(), ['2026-10-13']);
   });
 
@@ -345,6 +346,16 @@ describe('get_journal', () => {
     assert.equal(r.days[0].estimatedHours, 0.1);
   });
 
+  it('names a client Jack added as a task category, such as Executive Assistant', async () => {
+    await admin.firestore().collection('taskCategories').add({ key: 'executive_assistant', label: 'Executive Assistant', order: 101 });
+    await save([pr({ sourceId: 'e9', at: '2026-10-13T20:00:00Z', repo: 'Notarangelo-Technical-Advisory/jax-assistant' })]);
+    await summarizeDays(admin.firestore(), ['2026-10-13']);
+    const r = await tool('get_journal', { start_date: '2026-10-13', client: 'executive_assistant' });
+
+    assert.deepEqual(r.clients.map(c => [c.client, c.label]), [['executive_assistant', 'Executive Assistant']]);
+    assert.deepEqual(r.items.map(i => i.client), ['Executive Assistant']);
+  });
+
   it('returns an empty journal for days with no work, and refuses a bad range', async () => {
     const empty = await tool('get_journal', { start_date: '2026-10-01', end_date: '2026-10-02' });
     assert.deepEqual([empty.itemCount, empty.days, empty.clients], [0, [], []]);
@@ -352,5 +363,37 @@ describe('get_journal', () => {
     assert.equal((await tool('get_journal', { start_date: '13/10/2026' })).success, false);
     assert.equal((await tool('get_journal', { start_date: '2026-10-14', end_date: '2026-10-13' })).success, false);
     assert.equal((await tool('get_journal', { start_date: '2026-08-01', end_date: '2026-10-13' })).success, false);
+  });
+});
+
+describe('moving stored items after a rule change', () => {
+  // A push to Maisie's repo, stored as General before the repo had its own client.
+  const push = pr({ sourceId: 'e9', repo: 'Notarangelo-Technical-Advisory/jax-assistant', action: 'Pushed to main', subject: 'Keep a work journal' });
+
+  beforeEach(async () => {
+    const db = admin.firestore();
+    await db.collection('taskCategories').add({ key: 'executive_assistant', label: 'Executive Assistant', order: 101 });
+    await save([push, jira(), ...meetingItems([meeting()], AFTER).items]);
+    for (const doc of (await db.collection('journal').where('source', '==', 'github').get()).docs) {
+      await doc.ref.update({ client: 'general' });
+    }
+    await summarizeDays(db, ['2026-10-13']);
+  });
+
+  it('a dry run says what would move, and writes nothing', async () => {
+    const s = await reclassifyJournal(admin.firestore(), { dryRun: true });
+
+    assert.deepEqual([s.checked, s.changed, s.changes, s.days], [1, 1, [{ from: 'general', to: 'executive_assistant', count: 1 }], ['2026-10-13']]);
+    assert.equal((await all('journal')).find(i => i.source === 'github').client, 'general');
+  });
+
+  it("moves Maisie's repo to Executive Assistant, rebuilds the day with its name, and leaves Jira and meetings alone", async () => {
+    await reclassifyJournal(admin.firestore());
+
+    const items = (await all('journal')).map(i => [i.source, i.client]).sort();
+    assert.deepEqual(items, [['github', 'executive_assistant'], ['jira', 'ihrdc'], ['meeting', 'ihrdc']]);
+    const day = await read('journalDays/2026-10-13');
+    assert.deepEqual(day.clients.map(c => c.label).sort(), ['Executive Assistant', 'IHRDC']);
+    assert.equal((await reclassifyJournal(admin.firestore())).changed, 0, 'a second run moves nothing');
   });
 });

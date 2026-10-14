@@ -157,10 +157,14 @@ beforeEach(async () => {
   write(join(SESSIONS, '-cmsonline', 'sess-1.jsonl'), SESSION);
 });
 
-/** Runs the job as launchd does. Returns its output and exit code. */
+/** Runs the job as launchd does, or another script with `script`. Returns its output and exit code. */
 function runJob(...args) {
+  return runScript('src/mcp/collect-journal.ts', ...args);
+}
+
+function runScript(script, ...args) {
   try {
-    const output = execFileSync(`${functionsDir}node_modules/.bin/tsx`, ['src/mcp/collect-journal.ts', ...args], {
+    const output = execFileSync(`${functionsDir}node_modules/.bin/tsx`, [script, ...args], {
       cwd: functionsDir,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -190,7 +194,7 @@ describe('work journal job', () => {
     assert.deepEqual(github, [
       ['ihrdc', 'Opened PR #674', 'Fix saved grid layout', 'feature/CNG-7039', 'CNG-7039'],
       ['ihrdc', 'Approved PR #12', 'Story agent: resolve the Sub-Task', null, 'CNG-7170'],
-      ['general', 'Pushed to main', 'Turn certificate checks back on', '2 commits', null],
+      ['executive_assistant', 'Pushed to main', 'Turn certificate checks back on', '2 commits', null],
     ]);
     assert.match(output, /GitHub since .*: 3 read, 3 new.*as jacknota; events left out: 1\)/);
   });
@@ -329,6 +333,29 @@ describe('work journal job', () => {
     const s = await state();
     assert.equal(s.jiraCheckedThrough, undefined, 'Jira starts from the same place next time');
     assert.match(s.lastErrors[0], /^Jira:/);
+  });
+});
+
+describe('journal:reclassify', () => {
+  it("can be run from a terminal: a dry run says what would move, then a run moves it and names the client", async () => {
+    await db.collection('taskCategories').add({ key: 'executive_assistant', label: 'Executive Assistant', order: 101 });
+    await runJob();
+    // As stored before Maisie's repo had its own client.
+    const [push] = (await db.collection('journal').where('repo', '==', 'Notarangelo-Technical-Advisory/jax-assistant').get()).docs;
+    await push.ref.update({ client: 'general' });
+
+    const dry = runScript('src/mcp/reclassify-journal.ts', '--dry-run');
+    assert.equal(dry.code, 0, dry.output);
+    assert.match(dry.output, /Dry run: nothing was written/);
+    assert.match(dry.output, /1 would move to another client\.\n  General → Executive Assistant: 1/);
+    assert.equal((await push.ref.get()).get('client'), 'general');
+
+    const run = runScript('src/mcp/reclassify-journal.ts');
+    assert.equal(run.code, 0, run.output);
+    assert.match(run.output, /1 moved to another client/);
+    assert.equal((await push.ref.get()).get('client'), 'executive_assistant');
+    const day = (await db.doc(`journalDays/${(await push.ref.get()).get('day')}`).get()).data();
+    assert.ok(day.clients.some(c => c.label === 'Executive Assistant'));
   });
 });
 

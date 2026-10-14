@@ -27,7 +27,7 @@
 import {db} from "./firebase";
 import * as admin from "firebase-admin";
 import {
-  JournalItemInput, SaveSummary, clientLabel, meetingItems, recordingItems, saveJournalItems, summarizeDays,
+  JournalItemInput, SaveSummary, clientLabel, loadClientLabels, meetingItems, recordingItems, saveJournalItems, summarizeDays,
 } from "../tools/journal";
 import {readGitHubActivity} from "./github-activity";
 import {readJiraActivity} from "./jira-activity";
@@ -44,9 +44,9 @@ function startFrom(checkedThrough: unknown, now: Date): Date {
   return new Date(last ? last - OVERLAP_MS : now.getTime() - BACKFILL_DAYS * 86_400_000);
 }
 
-function report(label: string, s: SaveSummary, extra = ""): void {
+function report(label: string, s: SaveSummary, extra: string, labels: ReadonlyMap<string, string>): void {
   console.log(`${label}: ${s.read} read, ${s.added} new, ${s.updated} changed, ${s.unchanged} already in the journal${extra}`);
-  const clients = Object.entries(s.byClient).map(([c, n]) => `${clientLabel(c)} ${n}`).join(", ");
+  const clients = Object.entries(s.byClient).map(([c, n]) => `${clientLabel(c, labels)} ${n}`).join(", ");
   if (clients) console.log(`  By client: ${clients}`);
 }
 
@@ -115,6 +115,7 @@ async function main(): Promise<void> {
   const dryRun = process.argv.includes("--dry-run");
   const now = new Date();
   const state = (await STATE.get()).data() ?? {};
+  const labels = await loadClientLabels(db);
   const update: Record<string, unknown> = {lastRunAt: admin.firestore.FieldValue.serverTimestamp()};
   const failures: string[] = [];
   const days = new Set<string>();
@@ -125,7 +126,7 @@ async function main(): Promise<void> {
     try {
       const {items, note} = await source.read(since, now);
       const saved = await saveJournalItems(db, items, {dryRun});
-      report(`${source.name} since ${since.toLocaleString("en-US")}`, saved, note);
+      report(`${source.name} since ${since.toLocaleString("en-US")}`, saved, note, labels);
       saved.days.forEach((d) => days.add(d));
       update[`${source.stateKey}CheckedThrough`] = admin.firestore.Timestamp.fromDate(now);
       update[`last_${source.stateKey}`] = {read: saved.read, added: saved.added, updated: saved.updated};
