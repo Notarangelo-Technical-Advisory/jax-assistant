@@ -12,6 +12,7 @@ const fromFunctions = createRequire(new URL('../../functions/package.json', impo
 const admin = fromFunctions('firebase-admin');
 const {
   clientFor, ticketInBranch, workSessions, summarizeDay, saveJournalItems, summarizeDays, meetingClient, meetingItems,
+  recordingItems,
 } = fromFunctions('./lib/tools/journal.js');
 
 before(setUp);
@@ -141,6 +142,82 @@ describe('meetings', () => {
     assert.deepEqual(day.clients.map(c => [c.label, c.minutes, c.itemCount]), [['IHRDC', 60, 2]]);
     const stored = (await all('journal')).find(i => i.source === 'meeting');
     assert.deepEqual([stored.client, stored.day, stored.url, stored.repo], ['ihrdc', '2026-10-13', null, null]);
+  });
+});
+
+// A Wispr Flow recording, 11:05–11:23 AM on 13 October, during the Product Review meeting.
+const recording = (fields = {}) => ({
+  id: 'rec-1', title: 'Phase Two Improvements Plan', start: '2026-10-13T15:05:00.000Z', end: '2026-10-13T15:23:00.000Z',
+  url: 'https://notes.wisprflow.ai/shared/abc', ...fields,
+});
+
+describe('recordings', () => {
+  it('gives a recording the client of the calendar meeting it overlaps, and links its notes', () => {
+    const { items } = recordingItems([recording()], [meeting()], AFTER);
+
+    assert.deepEqual(items, [{
+      source: 'recording', sourceId: 'rec-1', at: '2026-10-13T15:05:00.000Z', endAt: '2026-10-13T15:23:00.000Z',
+      action: 'Recorded meeting', subject: 'Phase Two Improvements Plan', detail: 'During Product Review Meeting',
+      url: 'https://notes.wisprflow.ai/shared/abc', ticket: null, client: 'ihrdc',
+    }]);
+  });
+
+  it('chooses the meeting it overlaps most', () => {
+    const officers = meeting({ uid: 'officers', calendar: 'Jax', title: 'Officer Meeting', people: [],
+      start: '2026-10-13T15:00:00.000Z', end: '2026-10-13T15:10:00.000Z' });
+    const sync = meeting({ uid: 'sync', title: 'Claude Code - Weekly Sync', start: '2026-10-13T15:10:00.000Z', end: '2026-10-13T16:00:00.000Z' });
+    const longer = recording({ start: '2026-10-13T15:05:00.000Z', end: '2026-10-13T15:30:00.000Z' });
+    const shorter = recording({ start: '2026-10-13T14:55:00.000Z', end: '2026-10-13T15:12:00.000Z' });
+
+    // In either order: 20 minutes of the Sync beats 5 of Officer Meeting, and 10 of Officer Meeting beats 2 of the Sync.
+    for (const meetings of [[sync, officers], [officers, sync]]) {
+      assert.deepEqual(recordingItems([longer], meetings, AFTER).items.map(i => i.detail), ['During Claude Code - Weekly Sync']);
+      assert.deepEqual(recordingItems([shorter], meetings, AFTER).items.map(i => i.detail), ['During Officer Meeting']);
+    }
+  });
+
+  it('does not take a client from a meeting the journal leaves out, such as a personal block or a reminder', () => {
+    const r = recordingItems([recording()], [
+      meeting({ title: 'Norma Dr Appt', people: [] }),
+      meeting({ title: 'Request demo for Friday', free: true }),
+      meeting({ title: 'Bug tickets - Product management', declined: true }),
+    ], AFTER);
+
+    assert.deepEqual([r.items.length, r.noClient], [0, 1]);
+  });
+
+  it('uses a word or an IHRDC Jira key in the title when it overlaps no meeting', () => {
+    const r = recordingItems([
+      recording({ id: 'cox', title: 'Cox Engineering: Discovery Roadmap Review' }),
+      recording({ id: 'cng', title: 'Approving CNG-6882 Map' }),
+      recording({ id: 'look-alike', title: 'UTF-8 encoding check' }),
+      recording({ id: 'no-key', title: 'Subtask Placement for Ticket 6834' }),
+    ], [], AFTER);
+
+    assert.deepEqual(r.items.map(i => [i.sourceId, i.client, i.detail, i.ticket]), [
+      ['cox', 'cox', 'Cox in the title', null],
+      ['cng', 'ihrdc', 'CNG-6882 in the title', 'CNG-6882'],
+    ]);
+    assert.equal(r.noClient, 2);
+  });
+
+  it('leaves out a recording that is still going on', () => {
+    const r = recordingItems([
+      recording({ id: 'live', end: null }),
+      recording({ id: 'later', end: '2026-10-14T12:30:00.000Z' }),
+    ], [meeting()], AFTER);
+
+    assert.deepEqual([r.read, r.items.length, r.notEnded], [2, 0, 2]);
+  });
+
+  it('adds the time recorded beyond the scheduled meeting, and counts the overlap once', async () => {
+    // Product Review is 10:30–11:30 AM; the recording runs on to 11:45 AM.
+    const late = recording({ end: '2026-10-13T15:45:00.000Z' });
+    await save([...meetingItems([meeting()], AFTER).items, ...recordingItems([late], [meeting()], AFTER).items]);
+    await summarizeDays(admin.firestore(), ['2026-10-13']);
+
+    const day = await read('journalDays/2026-10-13');
+    assert.deepEqual(day.clients.map(c => [c.label, c.minutes, c.itemCount]), [['IHRDC', 75, 2]]);
   });
 });
 

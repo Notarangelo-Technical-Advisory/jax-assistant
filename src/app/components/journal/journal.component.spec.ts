@@ -180,6 +180,24 @@ describe('JournalComponent', () => {
       expect(badge?.textContent?.trim()).toBe('Calendar');
     });
 
+    it('shows a Wispr Flow recording with its notes link, marked Wispr Flow', async () => {
+      await seedDocument('journal/recording', item({
+        source: 'recording', sourceId: 'rec-1', day: '2026-10-09',
+        at: '2026-10-09T15:05:00.000Z', endAt: '2026-10-09T15:23:00.000Z',
+        action: 'Recorded meeting', subject: 'Phase Two Improvements Plan', detail: 'During Product Review Meeting',
+        url: 'https://notes.wisprflow.ai/shared/abc',
+      }));
+      page.select('2026-10-09', null);
+      await waitFor(() => page.dayItems().length === 1);
+
+      const shown = text();
+      expect(shown).toContain('11:05 AM–11:23 AM');
+      expect(shown).toContain('During Product Review Meeting');
+      expect(text('.source[data-source="recording"]').trim()).toBe('Wispr Flow');
+      const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('a.subject');
+      expect(link?.href).toBe('https://notes.wisprflow.ai/shared/abc');
+    });
+
     it('opens on the last 14 days, with their total hours per client', () => {
       expect([page.rangeStart(), page.rangeEnd()]).toEqual(['2026-10-01', '2026-10-14']);
       expect(page.clientFilter()).toBeNull();

@@ -1,6 +1,6 @@
 // Tests for the work journal job that runs on Jack's Mac
 // (functions/src/mcp/collect-journal.ts). Saved answers stand in for GitHub
-// (gh api), Jira and Apple Calendar, and a folder of session files stands in
+// (gh api), Jira, Apple Calendar and Wispr Flow's database, and a folder of session files stands in
 // for Claude Code's, so nothing reaches the real services; the job then runs
 // exactly as launchd runs it, against the Firestore emulator, in Jack's time zone.
 
@@ -23,6 +23,7 @@ const dir = mkdtempSync(join(tmpdir(), 'maisie-journal-'));
 const GITHUB_FIXTURE = join(dir, 'github.json');
 const JIRA_FIXTURE = join(dir, 'jira.json');
 const MEETINGS_FIXTURE = join(dir, 'meetings.json');
+const WISPR_FIXTURE = join(dir, 'wispr.json');
 const SESSIONS = join(dir, 'projects');
 
 // A checkout of IHRDC/cmsonline for the Claude Code session to run in.
@@ -107,6 +108,19 @@ const MEETINGS = {
   ],
 };
 
+// What sqlite3 -json prints for the query in wispr-recordings.ts. Wispr Flow
+// keeps the start as text in UTC and the end in milliseconds.
+const sqliteTime = (minutesAgo) => new Date(NOW - minutesAgo * 60_000).toISOString().replace('T', ' ').replace('Z', ' +00:00');
+const WISPR = [
+  // During the Product Review meeting (5 to 4 hours ago).
+  { id: 'rec-review', title: 'Production Deployment and Webinar Scheduling', createdAt: sqliteTime(290), endedAt: NOW - 250 * 60_000, shareSlug: 'slug-review' },
+  // An IHRDC Jira key in the title, and no meeting at the time.
+  { id: 'rec-cng', title: 'Approving CNG-6882 Map', createdAt: sqliteTime(30), endedAt: NOW - 27 * 60_000, shareSlug: null },
+  // Left out: no meeting at the time and nothing in the title, and one still recording.
+  { id: 'rec-unknown', title: 'Legacy vs Next-Gen Comparison', createdAt: sqliteTime(100), endedAt: NOW - 80 * 60_000, shareSlug: 'slug-unknown' },
+  { id: 'rec-live', title: '', createdAt: sqliteTime(5), endedAt: null, shareSlug: null },
+];
+
 /** One line of a Claude Code session file. */
 const line = (minutesAgo, type, content, extra = {}) => JSON.stringify({
   type, timestamp: ago(minutesAgo), cwd: CHECKOUT, gitBranch: 'feature/CNG-7039', sessionId: 'sess-1', isSidechain: false,
@@ -137,6 +151,7 @@ beforeEach(async () => {
   write(GITHUB_FIXTURE, GITHUB);
   write(JIRA_FIXTURE, JIRA);
   write(MEETINGS_FIXTURE, MEETINGS);
+  write(WISPR_FIXTURE, WISPR);
   rmSync(SESSIONS, { recursive: true, force: true });
   mkdirSync(join(SESSIONS, '-cmsonline'), { recursive: true });
   write(join(SESSIONS, '-cmsonline', 'sess-1.jsonl'), SESSION);
@@ -152,7 +167,7 @@ function runJob(...args) {
       env: {
         ...process.env, FIRESTORE_EMULATOR_HOST: FIRESTORE_HOST, GCLOUD_PROJECT: PROJECT_ID,
         MAISIE_GITHUB_FIXTURE: GITHUB_FIXTURE, MAISIE_JIRA_FIXTURE: JIRA_FIXTURE, MAISIE_CLAUDE_PROJECTS_DIR: SESSIONS,
-        MAISIE_MEETINGS_FIXTURE: MEETINGS_FIXTURE,
+        MAISIE_MEETINGS_FIXTURE: MEETINGS_FIXTURE, MAISIE_WISPR_FIXTURE: WISPR_FIXTURE,
         TZ: 'America/New_York',
       },
     });
@@ -224,6 +239,31 @@ describe('work journal job', () => {
     assert.match(output, /By client: IHRDC 1, Cox Engineering 1, Church 1/);
   });
 
+  it('journals Wispr Flow recordings under the client of the meeting they overlap or of their title, and leaves out the rest', async () => {
+    const { output, code } = await runJob();
+    assert.equal(code, 0, output);
+
+    const recordings = (await bySource('recording')).map(i => [i.client, i.subject, i.detail, i.url, i.ticket]);
+    assert.deepEqual(recordings, [
+      ['ihrdc', 'Production Deployment and Webinar Scheduling', 'During Product Review Meeting', 'https://notes.wisprflow.ai/shared/slug-review', null],
+      ['ihrdc', 'Approving CNG-6882 Map', 'CNG-6882 in the title', null, 'CNG-6882'],
+    ]);
+    const [review] = await bySource('recording');
+    assert.deepEqual([review.at, review.endAt], [ago(290), ago(250)]);
+    assert.match(output, /Wispr Flow since .*: 2 read, 2 new.*recordings: 4; left out: 1 with no client, 1 not ended yet\)/);
+  });
+
+  it("when Wispr Flow's database cannot be read, still journals the other sources, and says why", async () => {
+    write(WISPR_FIXTURE, 'Error: unable to open database file');
+    const { output, code } = await runJob();
+
+    assert.equal(code, 1);
+    assert.match(output, /Wispr Flow: Wispr Flow returned unreadable output/);
+    assert.equal((await bySource('meeting')).length, 3);
+    assert.equal((await bySource('recording')).length, 0);
+    assert.equal((await state()).recordingsCheckedThrough, undefined, 'Wispr Flow starts from the same place next time');
+  });
+
   it('when the calendar cannot be read, still journals the other sources, and says why', async () => {
     write(MEETINGS_FIXTURE, { ok: false, error: 'no_calendar_access', status: 2 });
     const { output, code } = await runJob();
@@ -246,7 +286,7 @@ describe('work journal job', () => {
     assert.ok(days.every(d => d.day === etDay(d.clients[0].sessions[0].start)));
 
     const s = await state();
-    for (const source of ['github', 'jira', 'claude', 'meetings']) assert.ok(s[`${source}CheckedThrough`].toMillis() >= NOW - 60_000, source);
+    for (const source of ['github', 'jira', 'claude', 'meetings', 'recordings']) assert.ok(s[`${source}CheckedThrough`].toMillis() >= NOW - 60_000, source);
     assert.deepEqual(s.lastErrors, []);
   });
 

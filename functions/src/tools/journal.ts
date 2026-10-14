@@ -8,8 +8,8 @@ import {DEFAULT_CATEGORIES} from "./definitions";
 // A record of what Jack did and when, and for which client, so he can account
 // for work done a few minutes at a time across a day. The readers live on
 // Jack's Mac (src/mcp/collect-journal.ts), because the gh login, the Jira token
-// in the Keychain, Claude Code's session files and Apple Calendar are only
-// there. This file decides the client, stores the items and estimates the time,
+// in the Keychain, Claude Code's session files, Apple Calendar and Wispr Flow's
+// database are only there. This file decides the client, stores the items and estimates the time,
 // so the rules are tested against the emulator.
 //
 // - Each item has a fixed id made from its source and the source's own id, so
@@ -17,8 +17,10 @@ import {DEFAULT_CATEGORIES} from "./definitions";
 // - The client comes from where the work happened: the GitHub repo or its
 //   owner, the Jira site, or the repo a Claude Code session ran in. A meeting's
 //   client comes from the people invited, its calendar or words in its title,
-//   and a meeting with no client is left out (see meetingClient). Clients are
-//   the task categories, so the journal and the task list use the same names.
+//   and a meeting with no client is left out (see meetingClient). A recording's
+//   client comes from the meeting it overlaps or its title (see
+//   recordingItems). Clients are the task categories, so the journal and the
+//   task list use the same names.
 // - Time is an estimate. Items less than GAP_MINUTES apart form one work
 //   session, timed from its first item to its last, and a session is never
 //   shorter than MIN_SESSION_MINUTES.
@@ -75,16 +77,27 @@ const MEETING_WORDS: Array<{words: string; client: string}> = [
   {words: "Worship", client: "church"},
 ];
 
-export type JournalSource = "github" | "jira" | "claude" | "meeting";
+/**
+ * Projects in IHRDC's Jira that Jack works in. A key such as CNG-6882 in a
+ * recording's title gives that client. Other keys are ignored, because a title
+ * can hold look-alikes such as UTF-8.
+ */
+const JIRA_PROJECT_CLIENTS: Record<string, string> = {
+  "CNG": "ihrdc",
+  "THREEX": "ihrdc",
+  "ITSP": "ihrdc",
+};
+
+export type JournalSource = "github" | "jira" | "claude" | "meeting" | "recording";
 
 /** One piece of work, as a reader on the Mac finds it. */
 export interface JournalItemInput {
   source: JournalSource;
   /** The source's own id for this piece of work, unique within the source. */
   sourceId: string;
-  /** ISO timestamp: when the work happened, or when a Claude Code session or a meeting began. */
+  /** ISO timestamp: when the work happened, or when a Claude Code session, a meeting or a recording began. */
   at: string;
-  /** Claude Code and meetings: the ISO timestamp of the session's last activity, or the meeting's end. */
+  /** Claude Code, meetings and recordings: the ISO timestamp of the session's last activity, or the end. */
   endAt?: string | null;
   /** What Jack did: "Opened PR #674", "Moved CNG-7183 to Code Review". */
   action: string;
@@ -100,7 +113,7 @@ export interface JournalItemInput {
   ticket?: string | null;
   /** Jira only: the site, which decides the client. */
   site?: string | null;
-  /** Meetings only: the client meetingClient chose. Other sources get theirs from where the work happened. */
+  /** Meetings and recordings: the client their rules chose. Other sources get theirs from where the work happened. */
   client?: string | null;
 }
 
@@ -121,6 +134,26 @@ export interface CalendarMeeting {
   calendar: string;
   /** Email addresses of the other people invited, without Jack, rooms or resources. */
   people: string[];
+}
+
+/** A meeting Jack recorded in Wispr Flow, as the reader on the Mac finds it. */
+export interface Recording {
+  /** Wispr Flow's id for the recording. */
+  id: string;
+  title: string;
+  /** ISO timestamps. `end` is null while it is still being recorded. */
+  start: string;
+  end: string | null;
+  /** The recording's notes page in Wispr Flow, or null. */
+  url: string | null;
+}
+
+/** Recordings read, and why the ones not journaled were left out. */
+export interface RecordingItems {
+  items: JournalItemInput[];
+  read: number;
+  notEnded: number;
+  noClient: number;
 }
 
 /** Meetings read, and why the ones not journaled were left out. */
@@ -220,6 +253,15 @@ export function clientFor(where: {repo?: string | null; site?: string | null}): 
 /** Lower case words with single spaces between them, and one at each end, for matching whole words. */
 const wordsOf = (text: string): string => ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
 
+/** The first entry of MEETING_WORDS in a title, or undefined. */
+const titleWords = (title: string) => {
+  const words = wordsOf(title);
+  return MEETING_WORDS.find((w) => words.includes(wordsOf(w.words)));
+};
+
+/** A calendar meeting the journal can count: not all-day, not marked Free, not declined. */
+const countable = (m: CalendarMeeting): boolean => !m.allDay && !m.free && !m.declined;
+
 /**
  * The client of a meeting, or null when it has none and is left out of the
  * journal. In order: someone invited from a client's email domain; a client's
@@ -234,8 +276,7 @@ export function meetingClient(meeting: Pick<CalendarMeeting, "title" | "calendar
   }
   const calendarClient = CALENDAR_CLIENTS[meeting.calendar];
   if (calendarClient && meeting.people.length > 0) return calendarClient;
-  const title = wordsOf(meeting.title);
-  return MEETING_WORDS.find((w) => title.includes(wordsOf(w.words)))?.client ?? null;
+  return titleWords(meeting.title)?.client ?? null;
 }
 
 /**
@@ -277,6 +318,65 @@ export function meetingItems(meetings: CalendarMeeting[], now = new Date()): Mee
       subject: m.title,
       detail: `${m.calendar} calendar`,
       client,
+    });
+  }
+  return result;
+}
+
+/**
+ * The journal items for recordings that had ended by `now`. A recording gets
+ * its client from the first of these that applies, and is left out when none
+ * does:
+ *
+ * - the meeting in `meetings` it overlaps most, among those the journal counts;
+ * - a word from MEETING_WORDS in its title;
+ * - a Jira key from one of JIRA_PROJECT_CLIENTS in its title.
+ *
+ * A recording is an item of its own, beside the calendar meeting: time
+ * recorded before or after the scheduled meeting is added, the overlap is
+ * counted once, and a call that was never on the calendar still counts.
+ */
+export function recordingItems(recordings: Recording[], meetings: CalendarMeeting[], now = new Date()): RecordingItems {
+  const result: RecordingItems = {items: [], read: recordings.length, notEnded: 0, noClient: 0};
+  for (const r of recordings) {
+    const start = Date.parse(r.start);
+    const end = r.end ? Date.parse(r.end) : NaN;
+    if (!Number.isFinite(end) || end > now.getTime()) {
+      result.notEnded++;
+      continue;
+    }
+
+    let during: {client: string; title: string; overlap: number} | null = null;
+    for (const m of meetings) {
+      if (!countable(m)) continue;
+      const overlap = Math.min(end, Date.parse(m.end)) - Math.max(start, Date.parse(m.start));
+      if (!(overlap > 0) || (during && overlap <= during.overlap)) continue;
+      const client = meetingClient(m);
+      if (client) during = {client, title: m.title, overlap};
+    }
+    const word = titleWords(r.title);
+    const ticket = [...r.title.matchAll(/(?:^|[^A-Za-z0-9])([A-Z][A-Z0-9]{1,9})-(\d+)(?![A-Za-z0-9])/g)]
+      .map((x) => ({key: `${x[1]}-${x[2]}`, client: JIRA_PROJECT_CLIENTS[x[1]]}))
+      .find((x) => x.client);
+
+    const chosen = during ? {client: during.client, detail: `During ${during.title}`} :
+      word ? {client: word.client, detail: `${word.words} in the title`} :
+        ticket ? {client: ticket.client, detail: `${ticket.key} in the title`} : null;
+    if (!chosen) {
+      result.noClient++;
+      continue;
+    }
+    result.items.push({
+      source: "recording",
+      sourceId: r.id,
+      at: r.start,
+      endAt: r.end,
+      action: "Recorded meeting",
+      subject: r.title.trim() || "Untitled recording",
+      detail: chosen.detail,
+      url: r.url,
+      ticket: ticket?.key ?? null,
+      client: chosen.client,
     });
   }
   return result;
@@ -403,7 +503,7 @@ export async function saveJournalItems(
 /**
  * Join items into work sessions: items less than GAP_MINUTES apart are one
  * session, from the first to the last, and no session is shorter than
- * MIN_SESSION_MINUTES. A Claude Code item or a meeting covers its own start to end.
+ * MIN_SESSION_MINUTES. A Claude Code item, a meeting or a recording covers its own start to end.
  */
 export function workSessions(items: Array<{at: string; endAt?: string | null}>): WorkSession[] {
   const spans = items
@@ -552,8 +652,9 @@ export async function getJournal(
     dateRange: {startDate, endDate},
     note: "Hours are estimates: items less than 20 minutes apart count as one work session, " +
       "from the first item to the last, and a session counts for at least 6 minutes. " +
-      "The journal is collected on Jack's Mac every 15 minutes from GitHub, Jira, Claude Code and the " +
-      "meetings on his Jax and IHRDC calendars; a meeting counts for its scheduled length.",
+      "The journal is collected on Jack's Mac every 15 minutes from GitHub, Jira, Claude Code, the " +
+      "meetings on his Jax and IHRDC calendars and the meetings he recorded in Wispr Flow; a meeting " +
+      "counts for its scheduled length, and a recording for the time it was recording.",
     clients: [...totals.entries()]
       .map(([key, t]) => ({client: key, label: t.label, estimatedHours: hours(t.minutes), itemCount: t.itemCount}))
       .sort((a, b) => b.estimatedHours - a.estimatedHours),

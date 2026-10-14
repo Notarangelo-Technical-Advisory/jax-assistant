@@ -183,8 +183,9 @@ can migrate later without adding another queue.
 `functions/src/mcp/collect-journal.ts` runs every 15 minutes via launchd and
 records what Jack did, when, and for which client: pull requests, reviews,
 comments and pushes on GitHub; issues he created, moved, edited or commented on
-in IHRDC's Jira; when he worked in Claude Code, in which repo and branch; and
-meetings on his Jax and IHRDC calendars, once they have ended. The `/journal` page (book icon in the dashboard header) shows estimated hours
+in IHRDC's Jira; when he worked in Claude Code, in which repo and branch;
+meetings on his Jax and IHRDC calendars, once they have ended; and meetings he
+recorded in Wispr Flow that can be tied to a client. The `/journal` page (book icon in the dashboard header) shows estimated hours
 per week, day and client, and each client's work sessions and items. It opens
 on the last 14 days; filters choose other dates and one client or all clients. MAISIE
 reads it with `get_journal`. See `projects/work-journal/README.md`.
@@ -251,7 +252,7 @@ Nothing touches live data: each suite runs under its own `demo-` project.
 | `npm run test:site` | The browser tab and phone home-screen icons exist at the sizes `src/index.html` declares, the dashboard header logo exists and draws without a web font, the header logo and phone-only call button are named for screen readers, the call button sits just left of the speaker button, the main area fills the page until Maisie is called, and on a phone the contacts page shows a contact in place of the list | `tests/site/` |
 | `npm run test:rules` | Firestore security rules, using the same queries the web app makes | `tests/rules/` |
 | `npm run test:functions` | MAISIE's tools through `executeTool()`, the entry point shared by the chat function and the MCP server, how the Headlines tab gathers stories, and the work journal's clients and time estimates | `tests/functions/` |
-| `npm run test:mcp` | The `maisie` MCP server started as VS Code starts it, driven by the official MCP client, the automatic contact linking job run with Mail and Calendar output from fixture files, and the work journal job run with saved GitHub, Jira and Calendar answers and sample Claude Code session files, and how the Jira reader signs in with either kind of token | `tests/mcp/` |
+| `npm run test:mcp` | The `maisie` MCP server started as VS Code starts it, driven by the official MCP client, the automatic contact linking job run with Mail and Calendar output from fixture files, and the work journal job run with saved GitHub, Jira, Calendar and Wispr Flow answers and sample Claude Code session files, and how the Jira reader signs in with either kind of token | `tests/mcp/` |
 | `npm run test:bridge` | The AppleScript the desktop bridge runs to create and move Apple Calendar events: a 1 PM event lands at 1 PM on a 12-hour-clock Mac, and a bad or zero-length time is refused. The tests that run AppleScript are skipped outside macOS, and none of them touch the real calendar | `bridge/tests/` |
 | `npm run test:all` | All six, in that order | |
 
