@@ -307,26 +307,35 @@ describe('phone and FaceTime calls', () => {
     assert.equal((await all('contactLinks')).length, 1);
   });
 
-  it('names missed, unanswered, short and FaceTime calls, and matches a FaceTime email address', async () => {
+  it('names unanswered, short and FaceTime calls, and matches a FaceTime email address', async () => {
     await calls([
-      call({ callId: 'a', at: '2020-03-06T09:00:00.000Z', direction: 'missed', seconds: 0 }),
       call({ callId: 'b', at: '2020-03-06T09:01:00.000Z', direction: 'outgoing', seconds: 0 }),
       call({ callId: 'c', at: '2020-03-06T09:02:00.000Z', direction: 'outgoing', seconds: 42 }),
       call({ callId: 'd', at: '2020-03-06T09:03:00.000Z', kind: 'facetime-video', seconds: 1800, handles: ['Brad@IHRDC.com'] }),
-      call({ callId: 'e', at: '2020-03-06T09:04:00.000Z', direction: 'missed', kind: 'facetime-audio', seconds: 0 }),
+      call({ callId: 'e', at: '2020-03-06T09:04:00.000Z', direction: 'outgoing', kind: 'facetime-audio', seconds: 300 }),
       // Answered, but the history recorded no length.
       call({ callId: 'f', at: '2020-03-06T09:05:00.000Z', seconds: 0 }),
     ]);
 
     const brad = (await linksOf('brad')).sort((x, y) => x.date.localeCompare(y.date));
     assert.deepEqual(brad.map(l => [l.title, l.detail]), [
-      ['Missed call', null],
       ['Outgoing call', 'not answered'],
       ['Outgoing call', 'under 1 min'],
       ['Incoming FaceTime video call', '30 min'],
-      ['Missed FaceTime audio call', null],
+      ['Outgoing FaceTime audio call', '5 min'],
       ['Incoming call', null],
     ]);
+  });
+
+  it('never links a missed call, phone or FaceTime, and only counts it', async () => {
+    const s = await calls([
+      call({ callId: 'a', direction: 'missed', seconds: 0 }),
+      call({ callId: 'e', direction: 'missed', kind: 'facetime-audio', seconds: 0, handles: ['brad@ihrdc.com'] }),
+      call({ callId: 'g' }),
+    ]);
+
+    assert.deepEqual([s.items, s.missed, s.linked, s.noContact], [3, 2, 1, 0]);
+    assert.deepEqual((await linksOf('brad')).map(l => l.title), ['Incoming call']);
   });
 
   it('gives each call its own link, and a second run of the same calls writes nothing', async () => {
@@ -356,10 +365,10 @@ describe('phone and FaceTime calls', () => {
   });
 
   it('writes nothing in a dry run', async () => {
-    const s = await calls([call({ direction: 'missed', seconds: 0 })], { dryRun: true });
+    const s = await calls([call({ direction: 'outgoing', seconds: 0 })], { dryRun: true });
 
     assert.deepEqual([s.dryRun, s.linked], [true, 1]);
-    assert.deepEqual(s.examples, ['Brad Donohue: Missed call']);
+    assert.deepEqual(s.examples, ['Brad Donohue: Outgoing call, not answered']);
     assert.equal((await all('contactLinks')).length, 0);
   });
 

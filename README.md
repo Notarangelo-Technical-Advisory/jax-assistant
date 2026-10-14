@@ -168,8 +168,8 @@ still linked.
 (`~/Library/Application Support/CallHistoryDB/CallHistory.storedata`),
 read-only. The iPhone shares its phone and FaceTime calls with the Mac through
 iCloud; the Phone app's Recents on the Mac shows whether it does. Each call is
-one link: when it started, which way it went (incoming, outgoing or missed),
-phone or FaceTime, and how long it lasted. The same Full Disk Access grant as
+one link: when it started, whether it was incoming or outgoing, phone or
+FaceTime, and how long it lasted. Missed calls are never linked. The same Full Disk Access grant as
 Messages covers it. If the log says "Cannot open the call history", follow the
 steps above.
 
