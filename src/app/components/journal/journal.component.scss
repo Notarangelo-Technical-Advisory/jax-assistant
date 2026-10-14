@@ -1,6 +1,8 @@
 // Same palette as the dashboard and the contacts page.
 $bg-dark: #0f172a;
 $bg-card: #1e293b;
+$bg-input: #0f172a;
+$danger: #f87171;
 $text-primary: #f8fafc;
 $text-secondary: #94a3b8;
 $accent: #3b82f6;
@@ -42,6 +44,51 @@ $meeting: #22c55e; // Same as a meeting link on the contacts page.
 
 .intro { margin: 0.75rem 0 0; color: $text-secondary; font-size: 0.85rem; }
 
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: $text-secondary;
+  font-size: 0.8rem;
+
+  input, select {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid $border;
+    border-radius: 6px;
+    background: $bg-input;
+    color: $text-primary;
+    font: inherit;
+    font-size: 0.9rem;
+    color-scheme: dark;
+  }
+  select { min-width: 11rem; }
+}
+
+.presets { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.preset {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid $border;
+  border-radius: 999px;
+  background: none;
+  color: $text-secondary;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  &:hover { color: $text-primary; }
+  &.active { border-color: rgba($accent, 0.6); background: rgba($accent, 0.15); color: $text-primary; }
+}
+
+.filter-error { margin: 0; color: $danger; font-size: 0.9rem; }
+
 .layout {
   display: grid;
   grid-template-columns: 360px 1fr;
@@ -68,7 +115,7 @@ $meeting: #22c55e; // Same as a meeting link on the contacts page.
 
 .hours { color: $text-primary; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.week {
+.week, .range-total {
   background: $bg-card;
   border: 1px solid $border;
   border-radius: 10px;
@@ -119,7 +166,7 @@ $meeting: #22c55e; // Same as a meeting link on the contacts page.
   .count { color: $text-secondary; font-size: 0.75rem; }
 }
 
-.btn-more, .btn-back-list {
+.btn-back-list {
   padding: 0.3rem 0;
   background: none;
   border: none;

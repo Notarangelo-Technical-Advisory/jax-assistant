@@ -8,9 +8,9 @@ MAISIE keeps a journal of what Jack did, when he did it, and for which client. J
 
 | Part | What it does | Status |
 | --- | --- | --- |
-| Collection job | Reads GitHub, Jira, Claude Code and the calendars every 15 minutes on Jack's Mac | Built 2026-10-13 and installed. Jira waits for the API token |
+| Collection job | Reads GitHub, Jira, Claude Code and the calendars every 15 minutes on Jack's Mac | Built 2026-10-13 and installed. Jira collected from 2026-10-14 |
 | Meetings | Ended meetings on the Jax and IHRDC calendars, under their client | Built 2026-10-14 |
-| `/journal` page | Summary by week, day and client, with a click through to each item | Built 2026-10-13 |
+| `/journal` page | Summary by week, day and client, with a click through to each item. Filters for a date range and one client or all clients | Built 2026-10-13. Filters added 2026-10-14 |
 | `get_journal` tool | MAISIE answers "What did I do for IHRDC yesterday?" in chat and VS Code | Built 2026-10-13 |
 
 ## What is collected
