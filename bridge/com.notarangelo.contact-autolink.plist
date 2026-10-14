@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Automatic contact linking (CRM Phase 4): every 15 minutes, ties new emails
-  and meetings to the contacts taking part in them. The job is
+  Automatic contact linking (CRM Phase 4): every 15 minutes, ties new emails,
+  meetings, text messages and calls to the contacts taking part in them. The job is
   functions/src/mcp/autolink-contacts.ts; the rules are in
   functions/src/tools/contact-autolink.ts.
 
@@ -11,7 +11,8 @@
     launchctl load ~/Library/LaunchAgents/com.notarangelo.contact-autolink.plist
 
   PERMISSIONS: it reads Mail through Automation and Calendars through EventKit,
-  the same grants the desktop bridge and calendar sync already use. If the log
+  the same grants the desktop bridge and calendar sync already use. Messages
+  and the call history need Full Disk Access for node (see the root README). If the log
   shows "osascript failed" or "Not allowed to read Calendars", grant them under
   System Settings > Privacy & Security, then run
   `cd functions && npm run autolink:contacts` once from a terminal to confirm.

@@ -270,20 +270,12 @@ export function firstLineOf(text: string): string {
   return line.length > TEXT_LINE_LIMIT ? `${line.slice(0, TEXT_LINE_LIMIT - 1).trimEnd()}…` : line;
 }
 
-export async function autoLinkTexts(
-  db: admin.firestore.Firestore,
-  items: TextDayItem[],
-  options: {dryRun?: boolean} = {}
-): Promise<TextLinkSummary> {
-  const summary: TextLinkSummary = {
-    dryRun: !!options.dryRun, items: items.length, linked: 0, itemsLinked: 0, updated: 0,
-    alreadyLinked: 0, dismissed: 0, tooManyPeople: 0, automated: 0, noContact: 0, examples: [],
-  };
+/** Each contact's phone numbers and email addresses, in the form handleKey gives. */
+export type ContactsByHandle = Map<string, {id: string; name: string}>;
 
-  if (items.length === 0) return summary;
-
-  // Phone numbers are stored as typed, so every contact is read and matched here.
-  const contactByHandle = new Map<string, {id: string; name: string}>();
+/** Phone numbers are stored as typed, so every contact is read and matched here. */
+export async function loadContactsByHandle(db: admin.firestore.Firestore): Promise<ContactsByHandle> {
+  const contactByHandle: ContactsByHandle = new Map();
   for (const d of (await db.collection("contacts").get()).docs) {
     const data = d.data();
     const keys = [
@@ -294,6 +286,28 @@ export async function autoLinkTexts(
       if (k && !contactByHandle.has(k)) contactByHandle.set(k, {id: d.id, name: contactName(data)});
     }
   }
+  return contactByHandle;
+}
+
+export interface HandleLinkOptions {
+  dryRun?: boolean;
+  /** Reads the contacts. The job passes one shared read, so texts and calls read them once. */
+  loadContacts?: () => Promise<ContactsByHandle>;
+}
+
+export async function autoLinkTexts(
+  db: admin.firestore.Firestore,
+  items: TextDayItem[],
+  options: HandleLinkOptions = {}
+): Promise<TextLinkSummary> {
+  const summary: TextLinkSummary = {
+    dryRun: !!options.dryRun, items: items.length, linked: 0, itemsLinked: 0, updated: 0,
+    alreadyLinked: 0, dismissed: 0, tooManyPeople: 0, automated: 0, noContact: 0, examples: [],
+  };
+
+  if (items.length === 0) return summary;
+
+  const contactByHandle = await (options.loadContacts ?? (() => loadContactsByHandle(db)))();
 
   // One entry per contact per day, adding up every conversation they were in.
   const days = new Map<string, {contactId: string; name: string; day: string; count: number; firstAt: string; firstLine: string; lineAt: string}>();
@@ -376,6 +390,137 @@ export async function autoLinkTexts(
   for (const part of chunks(writes, BATCH_LIMIT)) {
     const batch = db.batch();
     for (const {c, data} of part) batch.set(db.collection("contactLinks").doc(c.id), data, {merge: true});
+    await batch.commit();
+  }
+  return summary;
+}
+
+// ─── Phone and FaceTime calls ──────────────────────────────────
+//
+// Ties calls to contacts, matched by phone number or by the email address
+// someone uses for FaceTime, as texts are. The reader on Jack's Mac
+// (src/mcp/apple-calls.ts) reads the call history that the iPhone shares with
+// the Mac through iCloud. Each call becomes one link (Jack's choice, 2026-10-14):
+//
+// - The link's date is when the call started. Its title says which way it went
+//   and what kind of call it was, such as "Missed call" or "Outgoing FaceTime
+//   video call". Its detail is how long it lasted. A call has no words, so
+//   nothing else is stored.
+// - Missed calls are linked too, so MAISIE can see who called and was not
+//   answered.
+// - A call does not change once it has ended, so its link is written once. A
+//   link Jack removed is not put back, as for email, meetings and texts.
+
+export interface CallItem {
+  /** The call's id in the call history. */
+  callId: string;
+  /** ISO timestamp of when the call started. */
+  at: string;
+  direction: "incoming" | "outgoing" | "missed";
+  kind: "phone" | "facetime-video" | "facetime-audio";
+  /** How long the call lasted; 0 when it did not connect. */
+  seconds: number;
+  /** The other person's phone number or FaceTime email address. */
+  handles: string[];
+}
+
+/** "Incoming call", "Missed call", "Outgoing FaceTime video call" and so on. */
+export function callTitle(call: Pick<CallItem, "direction" | "kind">): string {
+  const direction = {incoming: "Incoming", outgoing: "Outgoing", missed: "Missed"}[call.direction];
+  const kind = {"phone": "call", "facetime-video": "FaceTime video call", "facetime-audio": "FaceTime audio call"}[call.kind];
+  return `${direction} ${kind}`;
+}
+
+/**
+ * How long the call lasted, in whole minutes. An outgoing call that never
+ * connected is "not answered". A missed call, and an answered call with no
+ * length recorded, have no detail.
+ */
+export function callLength(call: Pick<CallItem, "direction" | "seconds">): string | null {
+  if (call.direction === "missed") return null;
+  if (call.seconds <= 0) return call.direction === "outgoing" ? "not answered" : null;
+  if (call.seconds < 60) return "under 1 min";
+  return `${Math.round(call.seconds / 60)} min`;
+}
+
+export async function autoLinkCalls(
+  db: admin.firestore.Firestore,
+  items: CallItem[],
+  options: HandleLinkOptions = {}
+): Promise<AutoLinkSummary> {
+  const summary: AutoLinkSummary = {
+    dryRun: !!options.dryRun, items: items.length, linked: 0, itemsLinked: 0,
+    alreadyLinked: 0, dismissed: 0, tooManyPeople: 0, automated: 0, noContact: 0, examples: [],
+  };
+
+  if (items.length === 0) return summary;
+
+  const contactByHandle = await (options.loadContacts ?? (() => loadContactsByHandle(db)))();
+
+  const candidates: Array<{id: string; contactId: string; name: string; doc: Omit<LinkDoc, "contactId">}> = [];
+  for (const call of items) {
+    const date = normDate(call.at);
+    if (!call.callId.trim() || !date) continue;
+    const contacts = new Map(call.handles.map(handleKey).filter(Boolean).flatMap((h) => {
+      const c = contactByHandle.get(h);
+      return c ? [[c.id, c.name] as const] : [];
+    }));
+    if (contacts.size === 0) {
+      summary.noContact++;
+      continue;
+    }
+    const doc: Omit<LinkDoc, "contactId"> = {
+      companyId: null,
+      type: "call",
+      title: callTitle(call),
+      sourceId: call.callId.trim(),
+      url: null,
+      date,
+      detail: callLength(call),
+      note: null,
+      origin: "auto",
+    };
+    for (const [contactId, name] of contacts) {
+      candidates.push({id: autoLinkId(contactId, linkKey(doc)), contactId, name, doc});
+    }
+  }
+
+  const existing = new Set<string>();
+  const dismissed = new Set<string>();
+  for (const part of chunks(candidates.map((c) => c.id), 100)) {
+    const links = await db.getAll(...part.map((id) => db.collection("contactLinks").doc(id)));
+    links.filter((s) => s.exists).forEach((s) => existing.add(s.id));
+    const gone = await db.getAll(...part.map((id) => db.collection("contactLinkDismissals").doc(id)));
+    gone.filter((s) => s.exists).forEach((s) => dismissed.add(s.id));
+  }
+
+  const toWrite = candidates.filter((c) => {
+    if (dismissed.has(c.id)) {
+      summary.dismissed++;
+      return false;
+    }
+    if (existing.has(c.id)) {
+      summary.alreadyLinked++;
+      return false;
+    }
+    return true;
+  });
+
+  summary.linked = toWrite.length;
+  summary.itemsLinked = new Set(toWrite.map((c) => c.doc.sourceId)).size;
+  summary.examples = toWrite.slice(0, 10).map((c) =>
+    `${c.name}: ${c.doc.title}${c.doc.detail ? `, ${c.doc.detail}` : ""}`);
+  if (options.dryRun) return summary;
+
+  for (const part of chunks(toWrite, BATCH_LIMIT)) {
+    const batch = db.batch();
+    for (const c of part) {
+      batch.set(db.collection("contactLinks").doc(c.id), {
+        ...c.doc,
+        contactId: c.contactId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
     await batch.commit();
   }
   return summary;

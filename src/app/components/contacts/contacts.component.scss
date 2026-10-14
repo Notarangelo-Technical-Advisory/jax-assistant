@@ -8,6 +8,7 @@ $accent: #3b82f6;
 $accent-hover: #2563eb;
 $danger: #f87171;
 $border: #334155;
+$link-call: #f59e0b;
 
 :host {
   display: block;
@@ -231,6 +232,7 @@ dl {
   &.link-email { background: rgba(#a78bfa, 0.15); color: #a78bfa; }
   &.link-meeting { background: rgba(#22c55e, 0.15); color: #22c55e; }
   &.link-text { background: rgba(#38bdf8, 0.15); color: #38bdf8; }
+  &.link-call { background: rgba($link-call, 0.15); color: $link-call; }
 }
 
 .link-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }

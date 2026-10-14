@@ -165,7 +165,7 @@
           }
         </section>
 
-        <!-- Links: emails, meetings, texts and web pages -->
+        <!-- Links: emails, meetings, texts, calls and web pages -->
         <section class="card">
           <h3>Links</h3>
           @for (l of sortedLinks(); track l.id) {
@@ -190,7 +190,7 @@
               <button class="btn-link" (click)="deleteLink(l)">Remove</button>
             </div>
           } @empty {
-            <p class="empty">No links yet. Emails, meetings on the Jax and IHRDC calendars, and text messages are linked automatically when they include this person's email address or phone number. You can also ask Maisie to link one, or add a page or meeting below.</p>
+            <p class="empty">No links yet. Emails, meetings on the Jax and IHRDC calendars, text messages and calls are linked automatically when they include this person's email address or phone number. You can also ask Maisie to link one, or add a page or meeting below.</p>
           }
           <div class="link-new">
             <select [(ngModel)]="linkForm.type">

@@ -1,8 +1,8 @@
 # CRM and Address Book
 
-MAISIE keeps Jack's contacts, companies, notes and links to emails, meetings and web pages. Jack can use them on the web page, in the MAISIE chat, and from VS Code or any other MCP client through the `maisie` MCP server.
+MAISIE keeps Jack's contacts, companies, notes and links to emails, meetings, text messages, calls and web pages. Jack can use them on the web page, in the MAISIE chat, and from VS Code or any other MCP client through the `maisie` MCP server.
 
-*Last updated: 2026-10-06*
+*Last updated: 2026-10-14*
 
 ## Status
 
@@ -59,15 +59,16 @@ Full reasoning for each decision is in `decisions/log.md` (entries dated 2026-10
 
 ## Phase 4: automatic linking (live)
 
-- **What it does:** every 15 minutes, ties new emails, meetings and text messages to the contacts taking part in them, matched by email address (and, for texts, phone number). Links show on the contact's page as "linked automatically", and MAISIE sees them in `get_contact`.
+- **What it does:** every 15 minutes, ties new emails, meetings, text messages and calls to the contacts taking part in them, matched by email address (and, for texts and calls, phone number). Links show on the contact's page as "linked automatically", and MAISIE sees them in `get_contact`.
 - **Emails:** received and sent, from the Inbox and Sent mailbox of every Mail account. Sender, To and Cc are matched.
 - **Meetings:** the Jax and IHRDC calendars only (Jack's choice), once a meeting has started, so one cancelled beforehand is never linked. Attendees and the organizer are matched; rooms are not.
+- **Calls (added 2026-10-14, Jack's request):** phone and FaceTime calls from the Mac's call history (`~/Library/Application Support/CallHistoryDB/CallHistory.storedata`, read-only with `sqlite3`), which iCloud fills with the iPhone's calls. Matched by phone number (last 10 digits) or FaceTime email address. Jack chose one link per call, with missed calls included. Each link stores when the call started, a title such as "Missed call" or "Outgoing FaceTime video call", and the length in minutes ("under 1 min", "not answered" for an outgoing call that did not connect). Each run reads at least the last 2 days, because the iPhone's calls can reach the Mac hours late. A group FaceTime call is matched on the one person the history records. Call links are made only automatically; MAISIE cannot add one by hand. The dry run on 2026-10-14 found 87 calls in 30 days: 48 links to write, and 39 calls from numbers that are not contacts.
 - **History:** the first run looks back 30 days. Each later run starts an hour before the previous one finished.
 - **Never matched:** Jack's own addresses, read from his Mail accounts, so his own contact card does not collect everything.
 - **Skipped:** emails and meetings with more than 15 other people, such as all-hands meetings and mailings, and emails from automated senders such as `no-reply@`, `notifications@` and `alerts@` (added 2026-10-06 after Thoropass alerts were linked to Brad Donohue).
 - **No repeats:** an item already linked to that contact, by hand or by an earlier run, is not linked again.
 - **Removing a link:** on the web page or through MAISIE, removing an automatic link records it in `contactLinkDismissals`, so it does not come back.
-- **If Mail, Calendar or Messages fails:** the others are still linked, and the failed one starts from the same place on the next run. Errors are in `/tmp/contact-autolink.log` and in `metadata/contactAutoLink`.
+- **If Mail, Calendar, Messages or the call history fails:** the others are still linked, and the failed one starts from the same place on the next run. Errors are in `/tmp/contact-autolink.log` and in `metadata/contactAutoLink`.
 - **How to run it by hand:** `cd functions && npm run autolink:contacts -- --dry-run`, then without `--dry-run`.
 - **First run (2026-10-06, 30 days):** launchd job loaded after a dry run. Meetings: 66 read, 57 links for 23 of them, 4 skipped as too large. Emails: 697 read, 313 links for 134 of them, 4 skipped as too large; 545 had no contact (mostly newsletters and notifications). 370 links in all, in about 95 seconds.
 
