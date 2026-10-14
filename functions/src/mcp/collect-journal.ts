@@ -79,7 +79,7 @@ const SOURCES: Source[] = [
     stateKey: "claude",
     read: async (since) => {
       const a = readClaudeSessions(since);
-      return {items: a.items, note: ` (session files: ${a.files}; spans with no prompt left out: ${a.skipped})`};
+      return {items: a.items, note: ` (session files: ${a.files}; spans with no prompt in their stretch of work left out: ${a.skipped})`};
     },
   },
   {

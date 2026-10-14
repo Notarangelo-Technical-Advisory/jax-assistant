@@ -53,6 +53,25 @@ describe('clients', () => {
     assert.equal(clientFor({ repo: null }), 'general');
   });
 
+  it('puts work outside any repo under IHRDC when it names an IHRDC Jira key, Jira, Aishwarya or the QA test agent', async () => {
+    const outside = (sourceId, subject) => session({ sourceId, subject, repo: null });
+    await save([
+      outside('a', 'CNG-7189 QA testing agent'),
+      outside('b', 'QA test agent plan'),
+      outside('c', "QA testing agent for Aishwarya's manual testing"),
+      outside('d', 'Shared Jira token for agents'),
+      outside('e', 'Cng-6947 and cng-6948 service account'),
+      outside('f', 'UTF-8 cleanup in the budget sheet'),
+      outside('g', 'Plan the week'),
+      session({ sourceId: 'h', subject: 'Jira token for the work journal', repo: 'Notarangelo-Technical-Advisory/jax-assistant' }),
+    ]);
+
+    const clients = Object.fromEntries((await all('journal')).map(i => [i.sourceId, i.client]));
+    assert.deepEqual(clients, {
+      a: 'ihrdc', b: 'ihrdc', c: 'ihrdc', d: 'ihrdc', e: 'ihrdc', f: 'general', g: 'general', h: 'executive_assistant',
+    });
+  });
+
   it('finds the Jira ticket in a branch name, but not a look-alike', () => {
     assert.equal(ticketInBranch('feature/CNG-7183'), 'CNG-7183');
     assert.equal(ticketInBranch('CNG-42-fix-grid'), 'CNG-42');
@@ -308,7 +327,7 @@ describe('storing items', () => {
 
 describe('get_journal', () => {
   beforeEach(async () => {
-    await save([pr(), jira(), session(), pr({ sourceId: 'e3', at: '2026-10-13T19:00:00Z', repo: 'Notarangelo-Technical-Advisory/engineering-standards', action: 'Pushed to main', subject: 'Turn certificate checks back on' })]);
+    await save([pr(), jira(), session(), pr({ sourceId: 'e3', at: '2026-10-13T19:00:00Z', repo: 'Notarangelo-Technical-Advisory/engineering-standards', action: 'Pushed to main', subject: 'Turn certificate checks back on', ticket: null })]);
     await summarizeDays(admin.firestore(), ['2026-10-13']);
   });
 
@@ -385,6 +404,20 @@ describe('moving stored items after a rule change', () => {
 
     assert.deepEqual([s.checked, s.changed, s.changes, s.days], [1, 1, [{ from: 'general', to: 'executive_assistant', count: 1 }], ['2026-10-13']]);
     assert.equal((await all('journal')).find(i => i.source === 'github').client, 'general');
+  });
+
+  it('moves work outside any repo that names IHRDC to IHRDC', async () => {
+    await save([session({ sourceId: 's9', repo: null, subject: 'QA test agent plan' })]);
+    const [stored] = (await admin.firestore().collection('journal').where('source', '==', 'claude').get()).docs;
+    await stored.ref.update({ client: 'general' });
+
+    const s = await reclassifyJournal(admin.firestore());
+
+    assert.deepEqual(s.changes.sort((x, y) => x.to.localeCompare(y.to)), [
+      { from: 'general', to: 'executive_assistant', count: 1 },
+      { from: 'general', to: 'ihrdc', count: 1 },
+    ]);
+    assert.equal((await stored.ref.get()).get('client'), 'ihrdc');
   });
 
   it("moves Maisie's repo to Executive Assistant, rebuilds the day with its name, and leaves Jira and meetings alone", async () => {

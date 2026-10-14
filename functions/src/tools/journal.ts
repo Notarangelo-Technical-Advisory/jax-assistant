@@ -80,14 +80,26 @@ const MEETING_WORDS: Array<{words: string; client: string}> = [
 
 /**
  * Projects in IHRDC's Jira that Jack works in. A key such as CNG-6882 in a
- * recording's title gives that client. Other keys are ignored, because a title
- * can hold look-alikes such as UTF-8.
+ * recording's title, or in work that would otherwise be General, gives that
+ * client. Other keys are ignored, because a title can hold look-alikes such as UTF-8.
  */
 const JIRA_PROJECT_CLIENTS: Record<string, string> = {
   "CNG": "ihrdc",
   "THREEX": "ihrdc",
   "ITSP": "ihrdc",
 };
+
+/**
+ * Words that give work its client when where it happened gives none, such as
+ * a Claude Code session started outside any repo. Matched as whole words,
+ * ignoring case and punctuation, in the title, the action and the detail.
+ */
+const TEXT_CLIENTS: Array<{words: string; client: string}> = [
+  {words: "Jira", client: "ihrdc"},
+  {words: "Aishwarya", client: "ihrdc"},
+  {words: "QA test agent", client: "ihrdc"},
+  {words: "QA testing agent", client: "ihrdc"},
+];
 
 export type JournalSource = "github" | "jira" | "claude" | "meeting" | "recording";
 
@@ -253,6 +265,40 @@ export async function loadClientLabels(db: admin.firestore.Firestore): Promise<M
   return labels;
 }
 
+/** The first key in `text` from a project in JIRA_PROJECT_CLIENTS, such as CNG-6882, with its client. */
+export function jiraKeyIn(text: string): {key: string; client: string} | null {
+  for (const m of text.matchAll(/(?:^|[^A-Za-z0-9])([A-Za-z][A-Za-z0-9]{1,9})-(\d+)(?![A-Za-z0-9])/g)) {
+    const project = m[1].toUpperCase();
+    if (JIRA_PROJECT_CLIENTS[project]) return {key: `${project}-${m[2]}`, client: JIRA_PROJECT_CLIENTS[project]};
+  }
+  return null;
+}
+
+/**
+ * The client an item's own words give it: a Jira key from JIRA_PROJECT_CLIENTS,
+ * then a word from TEXT_CLIENTS. Null when they give none.
+ */
+export function clientFromText(...texts: Array<string | null | undefined>): string | null {
+  const text = texts.filter(Boolean).join(" ");
+  const key = jiraKeyIn(text);
+  if (key) return key.client;
+  const words = wordsOf(text);
+  return TEXT_CLIENTS.find((t) => words.includes(wordsOf(t.words)))?.client ?? null;
+}
+
+/**
+ * The client of a GitHub, Jira or Claude Code item: from where the work
+ * happened, and when that gives only General, from the item's own words.
+ */
+export function itemClient(item: {
+  repo?: string | null; site?: string | null; subject?: string | null; action?: string | null;
+  detail?: string | null; ticket?: string | null;
+}): string {
+  const client = clientFor(item);
+  if (client !== DEFAULT_CLIENT) return client;
+  return clientFromText(item.ticket, item.subject, item.action, item.detail) ?? client;
+}
+
 /** The client of a GitHub repo ("owner/name"), a Jira site, or neither. */
 export function clientFor(where: {repo?: string | null; site?: string | null}): string {
   const site = where.site?.trim().toLowerCase();
@@ -371,9 +417,7 @@ export function recordingItems(recordings: Recording[], meetings: CalendarMeetin
       if (client) during = {client, title: m.title, overlap};
     }
     const word = titleWords(r.title);
-    const ticket = [...r.title.matchAll(/(?:^|[^A-Za-z0-9])([A-Z][A-Z0-9]{1,9})-(\d+)(?![A-Za-z0-9])/g)]
-      .map((x) => ({key: `${x[1]}-${x[2]}`, client: JIRA_PROJECT_CLIENTS[x[1]]}))
-      .find((x) => x.client);
+    const ticket = jiraKeyIn(r.title);
 
     const chosen = during ? {client: during.client, detail: `During ${during.title}`} :
       word ? {client: word.client, detail: `${word.words} in the title`} :
@@ -438,7 +482,8 @@ export function toJournalItem(input: JournalItemInput): JournalItem | null {
   return {
     source: input.source,
     sourceId,
-    client: input.client?.trim().toLowerCase() || clientFor({repo, site: input.site}),
+    client: input.client?.trim().toLowerCase() ||
+      itemClient({repo, site: input.site, subject, action: input.action, detail: input.detail, ticket: input.ticket}),
     day: etDateKey(new Date(at)),
     at,
     endAt: endAt && endAt > at ? endAt : null,
@@ -603,10 +648,11 @@ export interface ReclassifySummary {
 }
 
 /**
- * Apply the current repo rules (REPO_CLIENTS, OWNER_CLIENTS) to the GitHub and
- * Claude Code items already in the journal, and rebuild the days that changed.
- * Run it after changing those rules: the job reads GitHub's last 300 events
- * only, so older items would otherwise keep their old client. Jira items,
+ * Apply the current rules for where work happened and for its words
+ * (REPO_CLIENTS, OWNER_CLIENTS, JIRA_PROJECT_CLIENTS, TEXT_CLIENTS) to the
+ * GitHub and Claude Code items already in the journal, and rebuild the days
+ * that changed. Run it after changing those rules: the job reads GitHub's last
+ * 300 events only, so older items would otherwise keep their old client. Jira items,
  * meetings and recordings keep their client, because their rules need what
  * the job read at the time.
  */
@@ -620,7 +666,7 @@ export async function reclassifyJournal(
   const days = new Set<string>();
   for (const doc of snap.docs) {
     const item = doc.data() as JournalItem;
-    const client = clientFor({repo: item.repo});
+    const client = itemClient(item);
     if (client === item.client) continue;
     summary.changed++;
     const change = summary.changes.find((c) => c.from === item.client && c.to === client);

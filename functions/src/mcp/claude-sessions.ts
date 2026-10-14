@@ -6,11 +6,14 @@
  * the short title Claude Code gives each session (the one in its session list)
  * are passed on. Prompts and replies are not.
  *
- * A session is split into work spans wherever it was idle for more than
- * GAP_MINUTES or moved to another repo or branch, so a session left open
- * overnight does not count as a night's work. A span counts only when Jack
- * typed at least one prompt in it: a background task finishing, or a long tool
- * run picking up again after a pause, is the session working, not Jack.
+ * A session is split into stretches of work wherever it was idle for more
+ * than GAP_MINUTES, so a session left open overnight does not count as a
+ * night's work, and each stretch into spans wherever it moved to another
+ * folder or branch, so each span has one repo and branch. A span counts only
+ * when its stretch has at least one prompt from Jack: a background task
+ * finishing, or a long tool run picking up again after a pause, is the session
+ * working, not Jack. Work that moves to another folder or branch after his
+ * prompt, with no pause, is still his.
  */
 
 import {execFileSync} from "child_process";
@@ -35,7 +38,7 @@ interface Activity {
 export interface ClaudeSessions {
   files: number;
   items: JournalItemInput[];
-  /** Spans left out: no prompt from Jack, or from an automated (SDK) run. */
+  /** Spans left out: no prompt from Jack in their stretch of work, or from an automated (SDK) run. */
   skipped: number;
 }
 
@@ -119,6 +122,23 @@ export function parseSession(raw: string): {sessionId: string; title: string; ac
   return {sessionId, title: customTitle || title, activity, automated};
 }
 
+/**
+ * For each span from workSpans, whether the stretch of work it belongs to (the
+ * spans with no more than GAP_MINUTES idle between them) has a prompt from Jack.
+ */
+export function promptedSpans(spans: Activity[][]): boolean[] {
+  const stretches: number[] = [];
+  const prompted = new Set<number>();
+  let stretch = -1;
+  spans.forEach((span, i) => {
+    const before = spans[i - 1];
+    if (!before || span[0].at - before[before.length - 1].at > GAP_MINUTES * 60_000) stretch++;
+    stretches.push(stretch);
+    if (span.some((a) => a.prompt)) prompted.add(stretch);
+  });
+  return stretches.map((s) => prompted.has(s));
+}
+
 /** Split a session's activity into spans of continuous work in one folder and branch. */
 export function workSpans(activity: Activity[]): Activity[][] {
   const spans: Activity[][] = [];
@@ -149,12 +169,14 @@ export function readClaudeSessions(since: Date, root = process.env.MAISIE_CLAUDE
       result.files++;
       const session = parseSession(readFileSync(path, "utf-8"));
       const sessionId = session.sessionId || basename(file, ".jsonl");
-      for (const span of workSpans(session.activity)) {
+      const spans = workSpans(session.activity);
+      const prompted = promptedSpans(spans);
+      for (const [i, span] of spans.entries()) {
         const first = span[0];
         const last = span[span.length - 1];
         if (last.at < since.getTime()) continue;
         const prompts = span.filter((a) => a.prompt).length;
-        if (!prompts || session.automated) {
+        if (!prompted[i] || session.automated) {
           result.skipped++;
           continue;
         }
@@ -167,7 +189,7 @@ export function readClaudeSessions(since: Date, root = process.env.MAISIE_CLAUDE
           endAt: new Date(last.at).toISOString(),
           action: `Claude Code in ${where}`,
           subject: session.title || (first.branch ? `${where} on ${first.branch}` : where),
-          detail: [first.branch, `${prompts} prompt${prompts === 1 ? "" : "s"}`].filter(Boolean).join(" · "),
+          detail: [first.branch, prompts ? `${prompts} prompt${prompts === 1 ? "" : "s"}` : null].filter(Boolean).join(" · "),
           repo,
           ticket: ticketInBranch(first.branch),
         });
