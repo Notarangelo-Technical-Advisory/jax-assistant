@@ -21,6 +21,7 @@ import {
   SaveContactInput,
 } from "./contacts";
 import {getJournal, GetJournalInput} from "./journal";
+import {loadMemories, saveMemory, forgetMemory} from "./memories";
 
 export interface CustomerInfo {
   name: string;
@@ -400,6 +401,16 @@ export async function executeTool(
   case "get_journal":
     return getJournal(db, rawInput as GetJournalInput);
 
+  // ─── Memory ──────────────────────────────────────────────────
+  case "save_memory":
+    return saveMemory(db, rawInput as {topic?: string; instruction?: string});
+
+  case "get_memories":
+    return {memories: await loadMemories(db)};
+
+  case "forget_memory":
+    return forgetMemory(db, rawInput as {topic?: string});
+
   // ─── Contacts / CRM ──────────────────────────────────────────
   case "find_contacts":
     return findContacts(db, rawInput as {query?: string; tag?: string; limit?: number});
@@ -608,6 +619,9 @@ export const toolLabel = (name: string, input: Record<string, unknown>): string 
   case "get_time_entries": return "Loading time log...";
   case "get_invoice_status": return "Checking invoice status...";
   case "get_journal": return "Reading your work journal...";
+  case "save_memory": return `Remembering "${input["topic"]}"...`;
+  case "get_memories": return "Checking what I remember...";
+  case "forget_memory": return `Forgetting "${input["topic"]}"...`;
   case "find_contacts": return input["query"] ? `Looking up "${input["query"]}"...` : "Loading contacts...";
   case "get_contact": return "Opening the contact...";
   case "get_company": return "Opening the company...";

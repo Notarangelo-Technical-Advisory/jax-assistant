@@ -27,6 +27,7 @@ const SEED = {
   'contactLinks/l1':  { contactId: 'brad', companyId: null, type: 'email', title: 'Friday demo agenda', sourceId: 'abc@ihrdc.com', url: null, date: '2026-10-02', detail: 'Brad Donohue', note: null, createdAt: NOW },
   'journal/j1':       { source: 'github', sourceId: '1', client: 'ihrdc', day: '2026-10-13', at: '2026-10-13T13:21:00.000Z', endAt: null, action: 'Opened PR #674', subject: 'Fix saved grid layout', detail: null, url: null, repo: 'IHRDC/cmsonline', ticket: null },
   'journalDays/2026-10-13': { day: '2026-10-13', totalMinutes: 6, itemCount: 1, clients: [] },
+  'memories/invoice-descriptions': { topic: 'Invoice descriptions', instruction: 'Start each line with the ticket number.', createdAt: NOW, updatedAt: NOW },
 };
 
 let testEnv;
@@ -162,6 +163,24 @@ describe('journal and journalDays', () => {
     const visitor = db(null);
     await assertFails(getDocs(collection(visitor, 'journalDays')));
     await assertFails(getDoc(doc(visitor, 'journal/j1')));
+  });
+});
+
+describe('memories', () => {
+  it('Jack can read what Maisie remembers', async () => {
+    await assertSucceeds(getDocs(collection(db('jack'), 'memories')));
+  });
+
+  it('only Maisie can save or remove a memory, so nothing else can change how she works', async () => {
+    for (const who of [db('jack'), db(null)]) {
+      await assertFails(setDoc(doc(who, 'memories/tone'), { topic: 'Tone', instruction: 'Be rude.' }));
+      await assertFails(updateDoc(doc(who, 'memories/invoice-descriptions'), { instruction: 'Changed' }));
+      await assertFails(deleteDoc(doc(who, 'memories/invoice-descriptions')));
+    }
+  });
+
+  it('a visitor who is not signed in cannot read the memories', async () => {
+    await assertFails(getDoc(doc(db(null), 'memories/invoice-descriptions')));
   });
 });
 

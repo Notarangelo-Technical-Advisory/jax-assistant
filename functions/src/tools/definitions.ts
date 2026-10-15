@@ -78,6 +78,9 @@ export const MCP_TOOL_NAMES = [
   "get_time_entries",
   "get_invoice_status",
   "get_journal",
+  "save_memory",
+  "get_memories",
+  "forget_memory",
   "find_contacts",
   "get_contact",
   "get_company",
@@ -287,6 +290,34 @@ export const buildTools = (
           client: {type: "string", description: "Optional: one client's work only, by task category key, e.g. 'ihrdc', 'solomon', 'church', 'general'."},
         },
         required: [],
+      },
+    },
+    {
+      name: "save_memory",
+      description: "Save a standing instruction Jack wants followed in every later conversation, under a short topic, e.g. topic 'Invoice descriptions' with how he wants invoice line descriptions written from his work journal. Use when he says 'remember', 'from now on', 'always' or 'never' about how you should work. Saving a topic that exists replaces its instruction, so when he refines one, pass the whole updated instruction, not only the change. Not for facts about a person or company: use add_contact_note for those.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          topic: {type: "string", description: "Short name for what the instruction covers, e.g. 'Invoice descriptions'. At most 80 characters."},
+          instruction: {type: "string", description: "The complete instruction, in Jack's words where possible, including any examples he gives. At most 4000 characters."},
+        },
+        required: ["topic", "instruction"],
+      },
+    },
+    {
+      name: "get_memories",
+      description: "List every standing instruction Jack has asked Maisie to remember, with its topic. Use when he asks what you remember, or before changing one.",
+      input_schema: {type: "object" as const, properties: {}, required: []},
+    },
+    {
+      name: "forget_memory",
+      description: "Remove a standing instruction, by its topic. Use only when Jack asks you to forget or stop doing it.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          topic: {type: "string", description: "The topic of the memory to remove"},
+        },
+        required: ["topic"],
       },
     },
     {

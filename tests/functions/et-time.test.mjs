@@ -18,7 +18,7 @@ const WINTER_SATURDAY_NIGHT = new Date('2026-12-06T00:30:00Z');
 const emptyContext = {
   totalUnbilled: 0, unbilledAmount: 0, lastInvoice: null, todayBriefing: null,
   alerts: [], tasks: [], recentCompletedTasks: [], sessionHistory: [],
-  categories: [], calendarEvents: [], customerMap: new Map(),
+  categories: [], calendarEvents: [], customerMap: new Map(), memories: [],
 };
 
 describe('Eastern Time day', () => {

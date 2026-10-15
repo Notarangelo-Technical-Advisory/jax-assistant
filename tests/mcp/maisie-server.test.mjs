@@ -131,6 +131,27 @@ describe('maisie MCP server', () => {
   });
 });
 
+describe('memories in VS Code', () => {
+  it('saves an instruction, returns it with the context, and forgets it', async () => {
+    const saved = await call('save_memory', { topic: 'Invoice descriptions', instruction: 'Start with the Jira key.' });
+    assert.equal(saved.success, true);
+
+    const context = await call('get_maisie_context');
+    assert.deepEqual(context.standingInstructions, [{ topic: 'Invoice descriptions', instruction: 'Start with the Jira key.' }]);
+
+    assert.equal((await call('forget_memory', { topic: 'Invoice descriptions' })).success, true);
+    assert.deepEqual((await call('get_memories')).memories, []);
+  });
+
+  it('puts the memories in the maisie prompt, so a VS Code session follows them too', async () => {
+    await call('save_memory', { topic: 'Invoice descriptions', instruction: 'Start with the Jira key.' });
+
+    const prompt = await client.getPrompt({ name: 'maisie' });
+
+    assert.match(prompt.messages[0].content.text, /### Invoice descriptions\nStart with the Jira key\./);
+  });
+});
+
 describe('import_apple_contacts', () => {
   // The exact shape the JXA script in functions/src/mcp/apple-contacts.ts prints.
   const ADDRESS_BOOK = {
