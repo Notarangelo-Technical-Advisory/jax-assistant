@@ -11,6 +11,7 @@ import {readCalendarEvents, formatEventWhen, CalendarEvent} from "./calendar-rea
 import {Category, DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS} from "./definitions";
 import {CustomerInfo} from "./execute";
 import {etDateKey, etDateLabel, etDaysWindow} from "../et-time";
+import {Memory, loadMemories, formatMemories} from "./memories";
 
 export interface MaisieContext {
   totalUnbilled: number;
@@ -24,6 +25,8 @@ export interface MaisieContext {
   categories: Category[];
   calendarEvents: CalendarEvent[];
   customerMap: Map<string, CustomerInfo>;
+  /** Standing instructions Jack asked Maisie to remember (save_memory). */
+  memories: Memory[];
 }
 
 /**
@@ -52,6 +55,7 @@ export async function loadMaisieContext(
     customCategories,
     calendarEvents,
     customers,
+    memories,
   ] = await Promise.all([
     getUnbilledEntries().catch(() => []),
     getLastInvoice().catch(() => null),
@@ -101,6 +105,7 @@ export async function loadMaisieContext(
     readCalendarEvents(db, todayStart, tomorrowEnd).catch(() => []),
     // Active customers from the NTA time tracker (name/rate lookups in tools)
     getCustomers().catch(() => [] as Customer[]),
+    loadMemories(db).catch(() => [] as Memory[]),
   ]);
 
   const totalUnbilled = unbilledEntries.reduce((sum, e) => sum + e.durationHours, 0);
@@ -130,6 +135,7 @@ export async function loadMaisieContext(
     categories,
     calendarEvents,
     customerMap,
+    memories,
   };
 }
 
@@ -158,6 +164,8 @@ You also keep Jack's contacts — his CRM and address book of people, companies 
 
 You are also Jack's general-purpose thinking partner, not only his scheduler. Answer any question he asks — news, markets, science, history, how something works, what he should make of a decision — the way a capable colleague would. Use web_search whenever the answer depends on current information (today's news, market moves, prices, recent releases, anything time-sensitive) rather than answering from memory, and web_fetch to read a specific page or a link he gives you. Search first and answer; do not ask a scoping question unless the request is genuinely ambiguous. Name the source inline when the answer rests on something you read. Keep answers tight — a few sentences plus the reasoning that actually matters, not an essay; your replies are often read aloud, so length costs him time.
 
+You have a memory that lasts between conversations. When Jack tells you how he wants something done from now on — "remember", "always", "never", "from now on", or a style he describes for a recurring job such as invoice descriptions — save it with save_memory under a short topic, keeping his wording and any examples he gives. When he changes an instruction you already hold, save the whole updated instruction under the same topic. Tell him in one line what you saved. Your saved instructions appear under "Jack's standing instructions" in the current context; follow every one whose topic applies to what he asks, without waiting to be reminded. If an instruction conflicts with what he asks right now, do what he asks now and ask whether to update the memory.
+
 When Jack asks to fix a bug, add a feature, or change any code, use the code_with_github tool. The task description must be specific and actionable — name the exact file(s) involved and describe precisely what needs to change and why. Do NOT submit open-ended investigations like "figure out why X is broken"; use your own reasoning to identify the specific change needed first, then submit a targeted task. The agent works asynchronously — tell Jack the GitHub issue URL and that he'll get a notification when the PR is ready. Remind him that CI/CD will auto-deploy once he approves and merges.`;
 
 /**
@@ -183,7 +191,7 @@ export function buildStateBlock(ctx: MaisieContext, now = new Date()): string {
   }).join("; ") : "No upcoming events"}
 - Task categories: ${ctx.categories.map((c) => `${c.key} (${c.label})`).join(", ")}
 
-Today is ${etDateLabel(now)} (${etDateKey(now)}), Eastern Time.`;
+Today is ${etDateLabel(now)} (${etDateKey(now)}), Eastern Time.${ctx.memories.length > 0 ? `\n\n${formatMemories(ctx.memories)}` : ""}`;
 }
 
 /**

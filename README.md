@@ -16,7 +16,7 @@ runtime does not install.
 
 | Server | Path | Tools |
 | --- | --- | --- |
-| `maisie` | `functions/src/mcp/server.ts` | `add_task`, `complete_task`, `reopen_task`, `update_task`, `create_task_category`, `delete_task_category`, `get_unbilled_detail`, `get_time_entries`, `get_invoice_status`, `get_journal`, `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `link_to_contact`, `remove_contact_link`, `get_maisie_context`, `import_apple_contacts` (VS Code only) — plus a `maisie` prompt that loads her persona and current state |
+| `maisie` | `functions/src/mcp/server.ts` | `add_task`, `complete_task`, `reopen_task`, `update_task`, `create_task_category`, `delete_task_category`, `get_unbilled_detail`, `get_time_entries`, `get_invoice_status`, `get_journal`, `save_memory`, `get_memories`, `forget_memory`, `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `link_to_contact`, `remove_contact_link`, `get_maisie_context`, `import_apple_contacts` (VS Code only) — plus a `maisie` prompt that loads her persona and current state |
 | `desktop` | `bridge/mcp/desktop-server.ts` | `calendar_read`, `calendar_create`, `calendar_move`, `mail_search`, `mail_read`, `mail_draft`, `mail_send` |
 
 Tool implementations are shared, not duplicated: `functions/src/tools/`
@@ -177,6 +177,21 @@ Calendar writes from the cloud still flow through the older
 `pendingCalendarActions` queue, which `calendar-sync.ts` applies on its own
 schedule. `desktop-bridge.ts` understands `calendar.*` actions too, so that path
 can migrate later without adding another queue.
+
+## Memory
+
+Jack can give MAISIE a standing instruction once and she follows it in every
+later conversation, in the web chat and in VS Code. For example: "Maisie,
+remember how I want invoice descriptions written: ..." She saves it with
+`save_memory` under a short topic in the `memories` collection. Saving the same
+topic again replaces the instruction. `get_memories` lists them and
+`forget_memory` removes one.
+
+Every memory is added to the state block of each chat request and to the
+`maisie` MCP prompt and `get_maisie_context`, so she does not have to look them
+up. To keep each request small, she holds at most 50 topics of at most 4,000
+characters each. Only MAISIE writes memories (Admin SDK); the web app can read
+them.
 
 ## Work journal (Mac)
 

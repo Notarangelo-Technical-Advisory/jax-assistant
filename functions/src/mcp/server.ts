@@ -51,7 +51,7 @@ async function ensureContext(): Promise<void> {
 
 const CONTEXT_TOOL = {
   name: "get_maisie_context",
-  description: "Get Jack's current state in one call: latest briefing, open alerts, active tasks with IDs, recently completed tasks, unbilled total, and the next two days of calendar. Call this first when you need situational awareness rather than a specific lookup.",
+  description: "Get Jack's current state in one call: latest briefing, open alerts, active tasks with IDs, recently completed tasks, unbilled total, the next two days of calendar, and the standing instructions he asked Maisie to remember (follow them). Call this first when you need situational awareness rather than a specific lookup.",
   inputSchema: {type: "object" as const, properties: {}, required: []},
 };
 
@@ -111,6 +111,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               location: e.location ?? null,
             })),
             categories: ctx.categories,
+            standingInstructions: ctx.memories,
           }, null, 2),
         }],
       };

@@ -137,6 +137,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // memories — standing instructions Jack gives Maisie (save_memory). Jack can
+    // read them; only Maisie writes them (Admin SDK), through the chat or VS Code.
+    match /memories/{memoryId} {
+      allow read:   if isAuthenticated();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;
