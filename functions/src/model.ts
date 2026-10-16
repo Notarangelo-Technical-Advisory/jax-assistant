@@ -3,7 +3,8 @@
  * is a one-line change.
  *
  * MODEL does the work where a wrong answer changes data or costs Jack time to
- * fix: the chat (about 35 tools) and the LinkedIn drafts. LIGHT_MODEL does the
+ * fix: the chat (about 35 tools), the LinkedIn drafts and the invoice
+ * descriptions drafted on the journal page. LIGHT_MODEL does the
  * short, tool-free jobs: the briefing narrative, the headlines choice and both
  * SMS calls. See decisions/log.md, 2026-10-12.
  */

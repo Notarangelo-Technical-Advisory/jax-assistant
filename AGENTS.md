@@ -24,7 +24,7 @@ git ship
 
 An exception to [`docs/standards/ai-features.md`](docs/standards/ai-features.md), which says to use the current Sonnet. `functions/src/model.ts` defines two models:
 
-- `MODEL` (Claude Sonnet 5.5) runs the chat and the LinkedIn drafts. The chat chooses among about 35 tools and changes tasks, calendar events, contacts and mail drafts, so a wrong choice costs Jack time to fix.
+- `MODEL` (Claude Sonnet 5.5) runs the chat, the LinkedIn drafts and the invoice descriptions drafted on the journal page, which go on a client's invoice. The chat chooses among about 35 tools and changes tasks, calendar events, contacts and mail drafts, so a wrong choice costs Jack time to fix.
 - `LIGHT_MODEL` (Claude Haiku 5.5) runs the briefing narrative, the headlines choice and both SMS calls. These are short jobs with no tool loop. It is faster and costs one twentieth as much per token.
 - Set `output_config.effort` explicitly on every `LIGHT_MODEL` call. Haiku 5.5 thinks by default and its default effort is `medium`.
 - `PRICE_PER_MTOK` in `functions/src/headlines.ts` must match `LIGHT_MODEL`.

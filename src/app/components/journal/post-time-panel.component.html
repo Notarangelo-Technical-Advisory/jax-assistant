@@ -1,0 +1,90 @@
+<section class="post-time" aria-label="Post to time tracker">
+  <h3 class="panel-head">Post to time tracker</h3>
+
+  @switch (state()) {
+    @case ('loading') {
+      <p class="note">Checking the time tracker for this day...</p>
+    }
+    @case ('error') {
+      <p class="error">{{ loadError() }}</p>
+      <button type="button" class="btn" (click)="retry()">Try again</button>
+    }
+    @case ('ready') {
+      @if (entries().length) {
+        <div class="logged">
+          <h4>Already in the tracker for this day</h4>
+          <ul>
+            @for (e of entries(); track e.entryId) {
+              <li>
+                <span class="when">{{ clock(e.start) }}–{{ clock(e.end) }}</span>
+                <span class="hours">{{ e.hours }} h</span>
+                <span>{{ e.customer }}</span>
+                <span class="desc">{{ e.description || '(no description)' }}</span>
+                @if (e.status !== 'unbilled') {<span class="tag">{{ e.status }}</span>}
+              </li>
+            }
+          </ul>
+        </div>
+      }
+
+      <div class="choose">
+        <label class="field">
+          <span>Customer</span>
+          <select name="customer" [ngModel]="customerId()" (ngModelChange)="setCustomer($event)">
+            <option value="">Choose...</option>
+            @for (c of customers(); track c.id) {
+              <option [value]="c.id">{{ c.name }}</option>
+            }
+          </select>
+        </label>
+        <label class="field">
+          <span>Project</span>
+          <select name="project" [ngModel]="projectId()" (ngModelChange)="projectId.set($event)" [disabled]="!customerId()">
+            <option value="">Choose...</option>
+            @for (p of projects(); track p.id) {
+              <option [value]="p.id">{{ p.name }}</option>
+            }
+          </select>
+        </label>
+      </div>
+
+      <ul class="rows">
+        @for (row of rows(); track row.sessionStart; let i = $index) {
+          <li class="row" [class.excluded]="!row.include">
+            <label class="tick">
+              <input type="checkbox" [name]="'include' + i" [(ngModel)]="row.include" />
+              <span class="sr-only">Post this session</span>
+            </label>
+            <div class="times">
+              <input type="time" step="60" [name]="'start' + i" [(ngModel)]="row.start" aria-label="Start" />
+              <span>–</span>
+              <input type="time" step="60" [name]="'end' + i" [(ngModel)]="row.end" aria-label="End" />
+              <span class="hours">{{ entryHours(row.start, row.end) }} h</span>
+            </div>
+            <textarea [name]="'description' + i" rows="2" [(ngModel)]="row.description" placeholder="Description for the invoice"></textarea>
+            @if (row.logged; as e) {
+              <p class="tag">Already logged {{ clock(e.start) }}–{{ clock(e.end) }}</p>
+            }
+          </li>
+        } @empty {
+          <li class="note">No work sessions to post for this client.</li>
+        }
+      </ul>
+
+      <div class="actions">
+        <button type="button" class="btn" (click)="draft()" [disabled]="busy() !== null || included().length === 0">
+          {{ busy() === 'draft' ? 'Drafting...' : 'Draft descriptions' }}
+        </button>
+        <button type="button" class="btn primary" (click)="post()" [disabled]="busy() !== null || postBlocker() !== null">
+          {{ busy() === 'post' ? 'Posting...' : 'Post ' + included().length + (included().length === 1 ? ' entry' : ' entries') + ' · ' + totalHours() + ' h' }}
+        </button>
+      </div>
+      @if (postBlocker(); as why) {
+        @if (rows().length) {<p class="note">{{ why }}</p>}
+      }
+      @if (message(); as m) {
+        <p [class]="m.kind === 'ok' ? 'ok' : 'error'" role="status">{{ m.text }}</p>
+      }
+    }
+  }
+</section>

@@ -22,6 +22,7 @@ import {
 } from "./contacts";
 import {getJournal, GetJournalInput} from "./journal";
 import {loadMemories, saveMemory, forgetMemory} from "./memories";
+import {addTimeEntries, deleteTimeEntry, TimeEntryInput} from "./time-entries";
 
 export interface CustomerInfo {
   name: string;
@@ -317,7 +318,7 @@ export async function executeTool(
 
     const grouped: Record<string, {
       customerName: string;
-      projects: Record<string, {hours: number; entries: Array<{date: string; hours: number; description: string; status: string}>}>;
+      projects: Record<string, {hours: number; entries: Array<{entryId: string; date: string; start: string; end: string; hours: number; description: string; status: string; postedByMaisie: boolean}>}>;
       totalHours: number;
     }> = {};
 
@@ -336,10 +337,14 @@ export async function executeTool(
       }
       cust.projects[entry.projectId].hours += entry.durationHours;
       cust.projects[entry.projectId].entries.push({
+        entryId: entry.id,
         date: entry.date,
+        start: entry.startTime,
+        end: entry.endTime,
         hours: entry.durationHours,
         description: entry.description || "(no description)",
         status: entry.status,
+        postedByMaisie: entry.source === "maisie",
       });
       cust.totalHours += entry.durationHours;
     }
@@ -400,6 +405,12 @@ export async function executeTool(
   // ─── Work journal ────────────────────────────────────────────
   case "get_journal":
     return getJournal(db, rawInput as GetJournalInput);
+
+  case "add_time_entries":
+    return addTimeEntries(rawInput as {entries?: TimeEntryInput[]; dry_run?: boolean});
+
+  case "delete_time_entry":
+    return deleteTimeEntry(rawInput as {entry_id?: string});
 
   // ─── Memory ──────────────────────────────────────────────────
   case "save_memory":
@@ -619,6 +630,8 @@ export const toolLabel = (name: string, input: Record<string, unknown>): string 
   case "get_time_entries": return "Loading time log...";
   case "get_invoice_status": return "Checking invoice status...";
   case "get_journal": return "Reading your work journal...";
+  case "add_time_entries": return input["dry_run"] === false ? "Posting time entries..." : "Checking the time entries...";
+  case "delete_time_entry": return "Deleting the time entry...";
   case "save_memory": return `Remembering "${input["topic"]}"...`;
   case "get_memories": return "Checking what I remember...";
   case "forget_memory": return `Forgetting "${input["topic"]}"...`;

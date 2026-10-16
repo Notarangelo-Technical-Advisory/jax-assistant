@@ -131,6 +131,24 @@ describe('maisie MCP server', () => {
   });
 });
 
+describe('time entries in VS Code', () => {
+  it('previews time for the tracker from VS Code without posting it', async () => {
+    const fta = (admin.apps.find(a => a.name === 'fta-test') ?? admin.initializeApp({ projectId: 'fta-invoice-tracking' }, 'fta-test')).firestore();
+    await fetch(`http://${FIRESTORE_HOST}/emulator/v1/projects/fta-invoice-tracking/databases/(default)/documents`, { method: 'DELETE' });
+    await fta.doc('customers/c-ihrdc').set({ customerId: 'CUST-001', companyName: 'IHRDC', isActive: true });
+    await fta.doc('projects/p-ai').set({ projectId: 'PROJ-001', customerId: 'c-ihrdc', projectName: 'AI Enablement', status: 'active' });
+
+    const preview = await call('add_time_entries', { entries: [
+      { date: '2026-10-13', customer: 'IHRDC', start_time: '09:00', end_time: '10:00', description: 'Friday demo' },
+    ] });
+
+    assert.equal(preview.isError, false);
+    assert.deepEqual([preview.dryRun, preview.totalHours, preview.entries[0].project], [true, 1, 'AI Enablement']);
+    assert.equal((await fta.collection('timeEntries').get()).size, 0);
+    assert.ok((await client.listTools()).tools.some(t => t.name === 'delete_time_entry'));
+  });
+});
+
 describe('memories in VS Code', () => {
   it('saves an instruction, returns it with the context, and forgets it', async () => {
     const saved = await call('save_memory', { topic: 'Invoice descriptions', instruction: 'Start with the Jira key.' });

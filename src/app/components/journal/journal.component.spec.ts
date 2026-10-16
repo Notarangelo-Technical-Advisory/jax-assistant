@@ -1,9 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { FIRESTORE } from '../../firebase';
+import { provideHttpClient, withXhr } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { JOURNAL_NOW, JournalComponent, addDays, hours, presetRange, weekStart } from './journal.component';
 import {
-  EmulatorApp, clearEmulators, createEmulatorApp, seedDocument, signInAsJack, waitFor
+  EmulatorApp, clearEmulators, createEmulatorApp, provideEmulator, seedDocument, signInAsJack, waitFor
 } from '../../../testing/emulator-testing';
 
 // The journal page against the Firestore emulator, signed in as Jack, with the
@@ -75,7 +76,9 @@ describe('JournalComponent', () => {
       imports: [JournalComponent],
       providers: [
         provideRouter([]),
-        { provide: FIRESTORE, useValue: emulator.firestore },
+        ...provideEmulator(emulator),
+        // A client's day shows the "Post time" panel, which calls the timeEntries function.
+        provideHttpClient(withXhr()), provideHttpClientTesting(),
         { provide: JOURNAL_NOW, useValue: () => NOW },
       ],
     }).compileComponents();

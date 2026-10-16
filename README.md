@@ -16,7 +16,7 @@ runtime does not install.
 
 | Server | Path | Tools |
 | --- | --- | --- |
-| `maisie` | `functions/src/mcp/server.ts` | `add_task`, `complete_task`, `reopen_task`, `update_task`, `create_task_category`, `delete_task_category`, `get_unbilled_detail`, `get_time_entries`, `get_invoice_status`, `get_journal`, `save_memory`, `get_memories`, `forget_memory`, `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `link_to_contact`, `remove_contact_link`, `get_maisie_context`, `import_apple_contacts` (VS Code only) — plus a `maisie` prompt that loads her persona and current state |
+| `maisie` | `functions/src/mcp/server.ts` | `add_task`, `complete_task`, `reopen_task`, `update_task`, `create_task_category`, `delete_task_category`, `get_unbilled_detail`, `get_time_entries`, `get_invoice_status`, `add_time_entries`, `delete_time_entry`, `get_journal`, `save_memory`, `get_memories`, `forget_memory`, `find_contacts`, `get_contact`, `get_company`, `save_contact`, `save_company`, `add_contact_note`, `link_to_contact`, `remove_contact_link`, `get_maisie_context`, `import_apple_contacts` (VS Code only) — plus a `maisie` prompt that loads her persona and current state |
 | `desktop` | `bridge/mcp/desktop-server.ts` | `calendar_read`, `calendar_create`, `calendar_move`, `mail_search`, `mail_read`, `mail_draft`, `mail_send` |
 
 Tool implementations are shared, not duplicated: `functions/src/tools/`
@@ -192,6 +192,37 @@ Every memory is added to the state block of each chat request and to the
 up. To keep each request small, she holds at most 50 topics of at most 4,000
 characters each. Only MAISIE writes memories (Admin SDK); the web app can read
 them.
+
+## Posting time to the time tracker
+
+Time from the work journal is posted to the NTA time tracker (Firestore
+project `fta-invoice-tracking`) in two ways. Both use the same checks.
+
+- **Journal page (the main way).** Choose a client's day. The "Post to time
+  tracker" panel lists each work session as an entry with its exact start and
+  end, shows what is already in the tracker that day, and unticks any session
+  whose time is already logged. "Draft descriptions" asks MAISIE to write each
+  line in Jack's saved style for invoice descriptions; Jack edits the times and
+  text, then presses Post. The page calls the `timeEntries` Cloud Function
+  (`functions/src/time-entries-action.ts`), with the actions `day`, `draft`
+  and `post`. Drafts use `MODEL` with structured output.
+- **Chat.** Jack says, for example, "post yesterday's IHRDC time". MAISIE
+  proposes the entries, shows him the list, and posts only after he says yes.
+
+- `add_time_entries` (used by both) checks every entry first and posts all of them or none. A
+  future date, an unknown or inactive customer or project, or an overlap with an entry already in the tracker
+  refuses the whole request. It previews (`dry_run`) unless told otherwise.
+- Times are to the minute, because Jack bills to the minute. Hours are end
+  minus start to two decimals, as the tracker works them out.
+- Entries are written in the shape the tracker's own form writes, as
+  `unbilled`, plus `source: "maisie"`.
+- `delete_time_entry` removes only an unbilled entry that MAISIE posted.
+
+The service account that runs the Cloud Functions, and the one in
+`bridge/service-account.json` for VS Code, need the role **Cloud Datastore
+User** (`roles/datastore.user`) in the `fta-invoice-tracking` project. With
+read access only, MAISIE says the tracker refused the write and names this
+role.
 
 ## Work journal (Mac)
 

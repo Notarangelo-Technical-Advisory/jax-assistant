@@ -113,6 +113,10 @@
           from {{ client ? client.itemCount : selectedDay()?.itemCount ?? 0 }} items
         </p>
 
+        @if (client) {
+          <app-post-time-panel [day]="sel.day" [client]="client" [items]="dayItems()" />
+        }
+
         @for (group of groups(); track group.key) {
           <section class="group">
             @if (group.start && group.end) {

@@ -6,6 +6,7 @@ import { Subscription } from 'rxjs';
 import { JournalService } from '../../services/journal.service';
 import { TaskCategoryService } from '../../services/task-category.service';
 import { JournalDay, JournalItem, JournalSource } from '../../models/journal.model';
+import { PostTimePanelComponent } from './post-time-panel.component';
 
 const ET_ZONE = 'America/New_York';
 /** The page opens on the last 14 days, today included. */
@@ -99,7 +100,7 @@ const SOURCE_LABELS: Record<JournalSource, string> = {
 @Component({
   selector: 'app-journal',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, PostTimePanelComponent],
   templateUrl: './journal.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './journal.component.scss',

@@ -1,0 +1,106 @@
+// Same palette as the journal page.
+$bg-card: #1e293b;
+$bg-input: #0f172a;
+$danger: #f87171;
+$success: #22c55e;
+$text-primary: #f8fafc;
+$text-secondary: #94a3b8;
+$accent: #3b82f6;
+$border: #334155;
+
+:host { display: block; }
+
+.post-time {
+  margin: 0 0 1.25rem;
+  padding: 1rem;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $bg-card;
+}
+
+.panel-head { margin: 0 0 0.75rem; font-size: 1rem; }
+
+.note { margin: 0.5rem 0 0; color: $text-secondary; font-size: 0.85rem; }
+.error { margin: 0.5rem 0 0; color: $danger; font-size: 0.85rem; }
+.ok { margin: 0.5rem 0 0; color: $success; font-size: 0.85rem; }
+
+.logged {
+  margin-bottom: 0.75rem;
+  h4 { margin: 0 0 0.25rem; color: $text-secondary; font-size: 0.8rem; font-weight: 600; }
+  ul { margin: 0; padding: 0; list-style: none; }
+  li { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.2rem 0; font-size: 0.85rem; }
+  .when { min-width: 9rem; }
+  .desc { color: $text-secondary; }
+}
+
+.choose { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem; }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: $text-secondary;
+  font-size: 0.8rem;
+}
+
+select, input[type='time'], textarea {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid $border;
+  border-radius: 6px;
+  background: $bg-input;
+  color: $text-primary;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.rows { margin: 0; padding: 0; list-style: none; }
+
+.row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 0.6rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid $border;
+
+  textarea { grid-column: 2; width: 100%; box-sizing: border-box; resize: vertical; }
+  .tag { grid-column: 2; }
+  &.excluded { opacity: 0.6; }
+}
+
+.tick { padding-top: 0.4rem; }
+
+.times {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.hours { color: $text-secondary; font-variant-numeric: tabular-nums; }
+
+.tag { margin: 0; color: $text-secondary; font-size: 0.8rem; font-style: italic; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+
+.btn {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid $border;
+  border-radius: 6px;
+  background: transparent;
+  color: $text-primary;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+
+  &.primary { border-color: $accent; background: $accent; }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
