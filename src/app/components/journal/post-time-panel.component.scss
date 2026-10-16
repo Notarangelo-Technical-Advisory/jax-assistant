@@ -18,7 +18,25 @@ $border: #334155;
   background: $bg-card;
 }
 
-.panel-head { margin: 0 0 0.75rem; font-size: 1rem; }
+.panel-head { margin: 0; font-size: 1rem; }
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: $text-primary;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.caret { width: 1rem; color: $text-secondary; }
+
+.panel-head + * { margin-top: 0.75rem; }
 
 .note { margin: 0.5rem 0 0; color: $text-secondary; font-size: 0.85rem; }
 .error { margin: 0.5rem 0 0; color: $danger; font-size: 0.85rem; }

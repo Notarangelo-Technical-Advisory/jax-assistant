@@ -48,7 +48,8 @@ const overlaps = (a: { start: string; end: string }, b: { start: string; end: st
  * session becomes an entry with its exact times, which Jack can change. Maisie
  * drafts the descriptions in his saved style; nothing is posted until he
  * presses Post. Sessions that overlap time already in the tracker start
- * unticked, so the same minutes are not billed twice.
+ * unticked, so the same minutes are not billed twice. It starts closed;
+ * clicking its heading opens and closes it.
  */
 @Component({
   selector: 'app-post-time-panel',
@@ -68,6 +69,8 @@ export class PostTimePanelComponent {
   /** Guards against a slow answer for a day Jack has already left. */
   private loadCount = 0;
 
+  /** Closed until Jack opens it, so reading a day makes no call to the tracker. */
+  expanded = signal(false);
   state = signal<'loading' | 'ready' | 'error'>('loading');
   loadError = signal('');
   entries = signal<TrackerEntry[]>([]);
@@ -84,6 +87,7 @@ export class PostTimePanelComponent {
     effect(() => {
       const day = this.day();
       const client = this.client();
+      if (!this.expanded()) return;
       untracked(() => this.load(day, client));
     });
   }
@@ -133,6 +137,10 @@ export class PostTimePanelComponent {
       this.loadError.set(err instanceof Error ? err.message : String(err));
       this.state.set('error');
     }
+  }
+
+  toggle(): void {
+    this.expanded.set(!this.expanded());
   }
 
   retry(): void {

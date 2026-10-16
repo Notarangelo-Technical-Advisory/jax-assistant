@@ -1,6 +1,12 @@
 <section class="post-time" aria-label="Post to time tracker">
-  <h3 class="panel-head">Post to time tracker</h3>
+  <h3 class="panel-head">
+    <button type="button" class="toggle" (click)="toggle()" [attr.aria-expanded]="expanded()">
+      <span class="caret" aria-hidden="true">{{ expanded() ? '▾' : '▸' }}</span>
+      Post to time tracker
+    </button>
+  </h3>
 
+  @if (expanded()) {
   @switch (state()) {
     @case ('loading') {
       <p class="note">Checking the time tracker for this day...</p>
@@ -86,5 +92,6 @@
         <p [class]="m.kind === 'ok' ? 'ok' : 'error'" role="status">{{ m.text }}</p>
       }
     }
+  }
   }
 </section>
