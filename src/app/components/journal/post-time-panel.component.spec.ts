@@ -65,6 +65,11 @@ describe('PostTimePanelComponent', () => {
     return sent;
   }
 
+  const clickHeading = (): void => {
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.toggle')!.click();
+    fixture.detectChanges();
+  };
+
   async function open(entries: TrackerDay['entries'] = []): Promise<void> {
     fixture = TestBed.createComponent(PostTimePanelComponent);
     fixture.componentRef.setInput('day', DAY);
@@ -72,6 +77,7 @@ describe('PostTimePanelComponent', () => {
     fixture.componentRef.setInput('items', ITEMS);
     panel = fixture.componentInstance;
     fixture.detectChanges();
+    clickHeading();
     const sent = await answer('day', trackerDay(entries));
     expect(sent.day).toBe(DAY);
     await waitFor(() => panel.state() === 'ready');
@@ -94,6 +100,30 @@ describe('PostTimePanelComponent', () => {
     fixture?.destroy();
     http.verify();
     await emulator.dispose();
+  });
+
+  it('starts closed and asks the tracker nothing until Jack opens it', async () => {
+    fixture = TestBed.createComponent(PostTimePanelComponent);
+    fixture.componentRef.setInput('day', DAY);
+    fixture.componentRef.setInput('client', IHRDC);
+    fixture.componentRef.setInput('items', ITEMS);
+    panel = fixture.componentInstance;
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    http.expectNone(URL);
+    expect(text()).toContain('Post to time tracker');
+    expect(text()).not.toContain('Draft descriptions');
+  });
+
+  it('closes again when Jack clicks its heading', async () => {
+    await open();
+    expect(text()).toContain('Draft descriptions');
+
+    clickHeading();
+
+    expect(text()).not.toContain('Draft descriptions');
+    expect(text()).toContain('Post to time tracker');
   });
 
   it("offers each work session with its exact times, and picks the client's customer and only project", async () => {
@@ -226,6 +256,7 @@ describe('PostTimePanelComponent', () => {
     fixture.componentRef.setInput('items', ITEMS);
     panel = fixture.componentInstance;
     fixture.detectChanges();
+    clickHeading();
     (await nextRequest(http, URL)).error(new ProgressEvent('error'));
     (await nextRequest(http, URL)).error(new ProgressEvent('error'));
     await waitFor(() => panel.state() === 'error');

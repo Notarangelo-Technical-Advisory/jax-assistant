@@ -198,8 +198,8 @@ them.
 Time from the work journal is posted to the NTA time tracker (Firestore
 project `fta-invoice-tracking`) in two ways. Both use the same checks.
 
-- **Journal page (the main way).** Choose a client's day. The "Post to time
-  tracker" panel lists each work session as an entry with its exact start and
+- **Journal page (the main way).** Choose a client's day and click "Post to
+  time tracker" to open the panel (click again to close it). It lists each work session as an entry with its exact start and
   end, shows what is already in the tracker that day, and unticks any session
   whose time is already logged. "Draft descriptions" asks MAISIE to write each
   line in Jack's saved style for invoice descriptions; Jack edits the times and
