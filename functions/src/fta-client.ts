@@ -31,6 +31,8 @@ export interface TimeEntry {
   description?: string;
   invoiceId?: string;
   status: "unbilled" | "billed" | "paid";
+  /** "maisie" when Maisie posted it from the chat (add_time_entries). */
+  source?: string;
   createdAt: FirebaseFirestore.Timestamp;
   updatedAt: FirebaseFirestore.Timestamp;
 }
@@ -148,4 +150,26 @@ export async function getTimeEntriesForRange(
 
   const snapshot = await query.orderBy("date", "desc").get();
   return snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()} as TimeEntry));
+}
+
+export interface Project {
+  id: string;
+  projectId: string;
+  customerId: string;
+  projectName: string;
+  status: "active" | "completed" | "on-hold";
+}
+
+/** Active projects, for one customer when customerId is given. */
+export async function getActiveProjects(customerId?: string): Promise<Project[]> {
+  let query: FirebaseFirestore.Query = getFtaFirestore()
+    .collection("projects")
+    .where("status", "==", "active");
+
+  if (customerId) {
+    query = query.where("customerId", "==", customerId);
+  }
+
+  const snapshot = await query.get();
+  return snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()} as Project));
 }
