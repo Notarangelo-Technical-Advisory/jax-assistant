@@ -12,7 +12,7 @@ const fromFunctions = createRequire(new URL('../../functions/package.json', impo
 const admin = fromFunctions('firebase-admin');
 const {
   clientFor, ticketInBranch, workSessions, summarizeDay, saveJournalItems, summarizeDays, meetingClient, meetingItems,
-  recordingItems, reclassifyJournal,
+  recordingItems, reclassifyJournal, emailItems,
 } = fromFunctions('./lib/tools/journal.js');
 
 before(setUp);
@@ -42,15 +42,23 @@ describe('clients', () => {
     assert.equal(clientFor({ site: 'ihrdcdev.atlassian.net' }), 'ihrdc');
   });
 
-  it('gives each product and church repo, and Maisie\'s own repo, its own client, and the rest of the business General', () => {
+  it('gives each product and church repo, and Maisie\'s own repo, its own client, and the rest of the business NTA Business', () => {
     assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/solomon' }), 'solomon');
     assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/dora-tma' }), 'dial');
     assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/Prophet-Priest-King' }), 'ppk');
     assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/Grace-Pres' }), 'church');
     assert.equal(clientFor({ repo: 'jacknota/embassy-book-series' }), 'embassy');
     assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/jax-assistant' }), 'executive_assistant');
-    assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/nta-time-tracker' }), 'general');
+    assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/nta-time-tracker' }), 'nta');
+    assert.equal(clientFor({ repo: 'notarangelo-technical-advisory/engineering-standards' }), 'nta');
+    assert.equal(clientFor({ repo: 'Notarangelo-Technical-Advisory/fractional-tech-advisory' }), 'nta');
+    assert.equal(clientFor({ repo: 'jacknota/JaxPersonal' }), 'general');
     assert.equal(clientFor({ repo: null }), 'general');
+  });
+
+  it('names NTA Business in the day summary', () => {
+    const day = summarizeDay('2026-10-13', [{ client: 'nta', at: '2026-10-13T13:00:00Z', endAt: null }]);
+    assert.equal(day.clients[0].label, 'NTA Business');
   });
 
   it('puts work outside any repo under IHRDC when it names an IHRDC Jira key, Jira, Aishwarya or the QA test agent', async () => {
@@ -241,6 +249,71 @@ describe('recordings', () => {
   });
 });
 
+describe('sent emails', () => {
+  const email = (fields = {}) => ({
+    id: '<m1@ihrdc.com>', subject: 'Phase two plan', sentAt: '2026-10-13T14:05:00.000Z', recipients: ['brad@ihrdc.com'], ...fields,
+  });
+  const OWN = ['jnotarangelo@ihrdc.com', 'jack@notarangelo.com'];
+
+  it('puts an email to someone at ihrdc.com or coxeng.com under that client, and keeps only the subject', () => {
+    const r = emailItems([
+      email(),
+      email({ id: 'cox', subject: 'Roadmap', recipients: ['someone@gmail.com', 'Joe@CoxEng.com'] }),
+    ], OWN);
+
+    assert.deepEqual(r.items.map(i => [i.sourceId, i.client, i.action, i.subject, i.detail, i.at, i.endAt]), [
+      ['<m1@ihrdc.com>', 'ihrdc', 'Sent email to 1 person', 'Phase two plan', 'To ihrdc.com', '2026-10-13T14:05:00.000Z', undefined],
+      ['cox', 'cox', 'Sent email to 2 people', 'Roadmap', 'To coxeng.com', '2026-10-13T14:05:00.000Z', undefined],
+    ]);
+    assert.doesNotMatch(JSON.stringify(r.items), /brad@|someone@|Joe@/i, 'no addresses are stored');
+  });
+
+  it("does not count Jack's own IHRDC address as an IHRDC recipient", () => {
+    const r = emailItems([email({ subject: 'Note to self', recipients: ['JNotarangelo@ihrdc.com', 'friend@gmail.com'] })], OWN);
+    assert.deepEqual([r.items.length, r.noClient], [0, 1]);
+  });
+
+  it('uses an IHRDC Jira key or a client word in the subject when no recipient gives a client', () => {
+    const r = emailItems([
+      email({ id: 'cng', subject: 'Re: CNG-7039 grid layout', recipients: ['vendor@example.com'] }),
+      email({ id: 'cox', subject: 'Cox discovery notes', recipients: [] }),
+      email({ id: 'church', subject: 'Officer Meeting agenda', recipients: ['elder@gmail.com'] }),
+      email({ id: 'jira', subject: 'Jira token', recipients: ['me@gmail.com'] }),
+    ], OWN);
+
+    assert.deepEqual(r.items.map(i => [i.sourceId, i.client, i.detail, i.ticket, i.action]), [
+      ['cng', 'ihrdc', 'CNG-7039 in the subject', 'CNG-7039', 'Sent email to 1 person'],
+      ['cox', 'cox', 'Cox in the subject', null, 'Sent email'],
+      ['church', 'church', 'Officer Meeting in the subject', null, 'Sent email to 1 person'],
+      ['jira', 'ihrdc', 'Jira in the subject', null, 'Sent email to 1 person'],
+    ]);
+  });
+
+  it('leaves out personal email, and a look-alike key such as UTF-8', () => {
+    const r = emailItems([
+      email({ id: 'p1', subject: 'Dinner Saturday?', recipients: ['friend@gmail.com'] }),
+      email({ id: 'p2', subject: 'UTF-8 in the budget sheet', recipients: ['friend@gmail.com'] }),
+      email({ id: 'p3', subject: 'Coxswain practice', recipients: [] }),
+    ], OWN);
+    assert.deepEqual([r.read, r.items.length, r.noClient], [3, 0, 3]);
+  });
+
+  it("counts a lone email as 6 minutes, and joins emails close to other work into that work's session", async () => {
+    // A pull request at 9:21 AM, an email at 9:35 AM (joins it) and one at 11:00 AM (on its own).
+    await save([
+      pr(),
+      ...emailItems([
+        email({ id: 'near', sentAt: '2026-10-13T13:35:00.000Z' }),
+        email({ id: 'far', sentAt: '2026-10-13T15:00:00.000Z' }),
+      ], OWN).items,
+    ]);
+    await summarizeDays(admin.firestore(), ['2026-10-13']);
+
+    const day = await read('journalDays/2026-10-13');
+    assert.deepEqual(day.clients.map(c => [c.label, c.minutes, c.itemCount, c.sessions.length]), [['IHRDC', 20, 3, 2]]);
+  });
+});
+
 describe('estimated time', () => {
   it('counts items less than 20 minutes apart as one session, from the first to the last', () => {
     const sessions = workSessions([{ at: '2026-10-13T13:21:00Z' }, { at: '2026-10-13T13:38:00Z' }, { at: '2026-10-13T13:50:00Z' }]);
@@ -346,21 +419,21 @@ describe('get_journal', () => {
     const r = await tool('get_journal', { start_date: '2026-10-13' });
 
     assert.deepEqual(r.dateRange, { startDate: '2026-10-13', endDate: '2026-10-13' });
-    assert.deepEqual(r.clients.map(c => [c.label, c.estimatedHours, c.itemCount]), [['IHRDC', 0.8, 3], ['General', 0.1, 1]]);
+    assert.deepEqual(r.clients.map(c => [c.label, c.estimatedHours, c.itemCount]), [['IHRDC', 0.8, 3], ['NTA Business', 0.1, 1]]);
     assert.deepEqual(r.days[0].clients[0].sessions, ['9:21 AM–9:38 AM (0.3 h, 2 items)', '12:32 PM–1:02 PM (0.5 h, 1 item)']);
     assert.deepEqual(r.items.map(i => [i.time, i.client, i.action]), [
       ['9:21 AM', 'IHRDC', 'Opened PR #674'],
       ['9:38 AM', 'IHRDC', 'Moved CNG-7039 to Code Review'],
       ['12:32 PM–1:02 PM', 'IHRDC', 'Claude Code in cmsonline'],
-      ['3:00 PM', 'General', 'Pushed to main'],
+      ['3:00 PM', 'NTA Business', 'Pushed to main'],
     ]);
     assert.match(r.note, /estimates/);
   });
 
   it("can show one client's work only", async () => {
-    const r = await tool('get_journal', { start_date: '2026-10-13', client: 'general' });
+    const r = await tool('get_journal', { start_date: '2026-10-13', client: 'nta' });
 
-    assert.deepEqual(r.clients.map(c => c.label), ['General']);
+    assert.deepEqual(r.clients.map(c => c.label), ['NTA Business']);
     assert.deepEqual(r.items.map(i => i.subject), ['Turn certificate checks back on']);
     assert.equal(r.days[0].estimatedHours, 0.1);
   });
@@ -418,6 +491,28 @@ describe('moving stored items after a rule change', () => {
       { from: 'general', to: 'ihrdc', count: 1 },
     ]);
     assert.equal((await stored.ref.get()).get('client'), 'ihrdc');
+  });
+
+  it('moves the business repos, such as nta-time-tracker, from General to NTA Business, and leaves sent email alone', async () => {
+    const db = admin.firestore();
+    await save([
+      pr({ sourceId: 'e10', repo: 'Notarangelo-Technical-Advisory/nta-time-tracker', action: 'Pushed to main', subject: 'Invoice totals', ticket: null }),
+      ...emailItems([{ id: 'mail-1', subject: 'Status', sentAt: '2026-10-13T14:00:00.000Z', recipients: ['brad@ihrdc.com'] }]).items,
+    ]);
+    for (const doc of (await db.collection('journal').get()).docs) {
+      if (['e10', 'mail-1'].includes(doc.get('sourceId'))) await doc.ref.update({ client: 'general' });
+    }
+
+    const s = await reclassifyJournal(db);
+
+    assert.deepEqual(s.changes.sort((x, y) => x.to.localeCompare(y.to)), [
+      { from: 'general', to: 'executive_assistant', count: 1 },
+      { from: 'general', to: 'nta', count: 1 },
+    ]);
+    const clients = Object.fromEntries((await all('journal')).map(i => [i.sourceId, i.client]));
+    assert.equal(clients.e10, 'nta');
+    assert.equal(clients['mail-1'], 'general', "an email's client needs its recipients, which are not stored");
+    assert.ok((await read('journalDays/2026-10-13')).clients.some(c => c.label === 'NTA Business'));
   });
 
   it("moves Maisie's repo to Executive Assistant, rebuilds the day with its name, and leaves Jira and meetings alone", async () => {

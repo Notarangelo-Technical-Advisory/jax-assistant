@@ -1557,7 +1557,7 @@ Available actions:
 - unknown: {"action":"unknown","clarification":"string"}
 
 Rules:
-- Default category is "general". Other categories: ihrdc, solomon, dial, ppk, church, embassy, cox (Cox Engineering).
+- Default category is "general". Other categories: ihrdc, solomon, dial, ppk, church, embassy, cox (Cox Engineering), nta (NTA Business: Jack's own consulting business).
 - For complete_task, match the taskId from the active task list by fuzzy-matching the title. If ambiguous, use action "unknown".
 - For due dates, convert relative terms to absolute YYYY-MM-DD using today's date.
 - If the message is a list request ("tasks", "what's on my list", "show tasks"), use list_tasks.
