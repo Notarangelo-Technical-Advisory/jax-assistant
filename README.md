@@ -195,13 +195,21 @@ them.
 
 ## Posting time to the time tracker
 
-MAISIE can post time entries to the NTA time tracker (Firestore project
-`fta-invoice-tracking`), usually after she summarizes the work journal. Jack
-says, for example, "post yesterday's IHRDC time". She proposes one entry per
-work session, with the description written to his saved memory for invoice
-descriptions, and shows him the list. She posts only after he says yes.
+Time from the work journal is posted to the NTA time tracker (Firestore
+project `fta-invoice-tracking`) in two ways. Both use the same checks.
 
-- `add_time_entries` checks every entry first and posts all of them or none. A
+- **Journal page (the main way).** Choose a client's day. The "Post to time
+  tracker" panel lists each work session as an entry with its exact start and
+  end, shows what is already in the tracker that day, and unticks any session
+  whose time is already logged. "Draft descriptions" asks MAISIE to write each
+  line in Jack's saved style for invoice descriptions; Jack edits the times and
+  text, then presses Post. The page calls the `timeEntries` Cloud Function
+  (`functions/src/time-entries-action.ts`), with the actions `day`, `draft`
+  and `post`. Drafts use `MODEL` with structured output.
+- **Chat.** Jack says, for example, "post yesterday's IHRDC time". MAISIE
+  proposes the entries, shows him the list, and posts only after he says yes.
+
+- `add_time_entries` (used by both) checks every entry first and posts all of them or none. A
   future date, an unknown or inactive customer or project, or an overlap with an entry already in the tracker
   refuses the whole request. It previews (`dry_run`) unless told otherwise.
 - Times are to the minute, because Jack bills to the minute. Hours are end

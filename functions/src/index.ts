@@ -12,6 +12,7 @@ import {readCalendarEvents, formatEventTime} from "./tools/calendar-read";
 import {generateHeadlines} from "./headlines";
 import {getMarketSnapshot} from "./markets";
 import {LIGHT_MODEL, MODEL} from "./model";
+import {runTimeEntriesAction} from "./time-entries-action";
 import {refreshWeek, draftIfIdea, approvePost, markPosted, writeDraft, saveDraftText, describeWeek, textJack} from "./linkedin";
 // Every "what day is it" question here is "what day is it in Norwell" — see et-time.ts.
 import {ET_ZONE, etDateKey, etDayStart, etNextDayStart, etDayParts} from "./et-time";
@@ -436,6 +437,27 @@ export const getUnbilledSummary = onRequest(
         : null,
       entries: entryItems,
     });
+  }
+);
+
+// ─── Journal page: post time to the NTA time tracker ───────────
+export const timeEntries = onRequest(
+  {cors: true, region: "us-central1", timeoutSeconds: 120},
+  async (req, res) => {
+    try {
+      await verifyAuth(req);
+    } catch {
+      res.status(401).json({error: "Unauthorized"});
+      return;
+    }
+    if (req.method !== "POST") {
+      res.status(405).json({error: "Use POST"});
+      return;
+    }
+    const {status, body} = await runTimeEntriesAction(
+      db, req.body, () => new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY})
+    );
+    res.status(status).json(body);
   }
 );
 

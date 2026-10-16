@@ -264,3 +264,45 @@ function describeWriteError(err: unknown): string {
   }
   return message;
 }
+
+/**
+ * What the journal page needs to post one day: the entries already in the
+ * tracker for that day, and the active customers with their active projects.
+ */
+export async function getTrackerDay(day: string): Promise<Record<string, unknown>> {
+  if (!DATE.test(day)) return {success: false, error: "The day must be YYYY-MM-DD."};
+  const [customers, projects, snap] = await Promise.all([
+    getCustomers(),
+    getActiveProjects(),
+    getFtaFirestore().collection("timeEntries").where("date", "==", day).get(),
+  ]);
+  const customerName = new Map(customers.map((c) => [c.id, c.companyName]));
+  const projectName = new Map(projects.map((p) => [p.id, p.projectName]));
+  const entries = snap.docs
+    .map((doc) => ({
+      entryId: doc.id,
+      start: doc.get("startTime") as string,
+      end: doc.get("endTime") as string,
+      hours: doc.get("durationHours") as number,
+      customer: customerName.get(doc.get("customerId")) ?? (doc.get("customerId") as string),
+      project: projectName.get(doc.get("projectId")) ?? (doc.get("projectId") as string),
+      description: (doc.get("description") as string | undefined) ?? "",
+      status: doc.get("status") as string,
+      postedByMaisie: doc.get("source") === "maisie",
+    }))
+    .sort((a, b) => a.start.localeCompare(b.start));
+  return {
+    success: true,
+    day,
+    entries,
+    customers: customers
+      .map((c) => ({
+        id: c.id,
+        name: c.companyName,
+        projects: projects.filter((p) => p.customerId === c.id)
+          .map((p) => ({id: p.id, name: p.projectName}))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
