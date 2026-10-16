@@ -102,6 +102,10 @@ const TEXT_CLIENTS: Array<{words: string; client: string}> = [
   {words: "Aishwarya", client: "ihrdc"},
   {words: "QA test agent", client: "ihrdc"},
   {words: "QA testing agent", client: "ihrdc"},
+  {words: "Bug fixer agent", client: "ihrdc"},
+  {words: "Bible study", client: "church"},
+  {words: "Bible studies", client: "church"},
+  {words: "Ecclesiastes", client: "church"},
 ];
 
 export type JournalSource = "github" | "jira" | "claude" | "meeting" | "recording" | "email";
@@ -710,6 +714,8 @@ export interface ReclassifySummary {
   checked: number;
   /** Items whose client changed, or would change in a dry run. */
   changed: number;
+  /** Claude Code items that were given a repo they had none of, or would be in a dry run. */
+  reposFilled: number;
   /** How many items moved from each client to each other client. */
   changes: Array<{from: string; to: string; count: number}>;
   /** The days whose summaries were rebuilt, or would be. */
@@ -727,29 +733,40 @@ export interface ReclassifySummary {
  */
 export async function reclassifyJournal(
   db: admin.firestore.Firestore,
-  options: {dryRun?: boolean} = {}
+  options: {dryRun?: boolean; claudeRepos?: ReadonlyMap<string, {repo: string; action: string}>} = {}
 ): Promise<ReclassifySummary> {
   const snap = await db.collection("journal").where("source", "in", ["github", "claude"]).get();
-  const summary: ReclassifySummary = {dryRun: !!options.dryRun, checked: snap.size, changed: 0, changes: [], days: []};
-  const writes: Array<{ref: admin.firestore.DocumentReference; client: string}> = [];
+  const summary: ReclassifySummary = {dryRun: !!options.dryRun, checked: snap.size, changed: 0, reposFilled: 0, changes: [], days: []};
+  const writes: Array<{ref: admin.firestore.DocumentReference; fields: Partial<JournalItem>}> = [];
   const days = new Set<string>();
   for (const doc of snap.docs) {
-    const item = doc.data() as JournalItem;
+    const stored = doc.data() as JournalItem;
+    const found = stored.source === "claude" ? options.claudeRepos?.get(doc.id) : undefined;
+    const item = found && found.repo !== stored.repo ? {...stored, repo: found.repo, action: found.action} : stored;
     const client = itemClient(item);
-    if (client === item.client) continue;
-    summary.changed++;
-    const change = summary.changes.find((c) => c.from === item.client && c.to === client);
-    if (change) change.count++;
-    else summary.changes.push({from: item.client, to: client, count: 1});
-    days.add(item.day);
-    writes.push({ref: doc.ref, client});
+    if (client === stored.client && item === stored) continue;
+    const fields: Partial<JournalItem> = {};
+    if (item !== stored) {
+      summary.reposFilled++;
+      fields.repo = item.repo;
+      fields.action = item.action;
+    }
+    if (client !== stored.client) {
+      summary.changed++;
+      const change = summary.changes.find((c) => c.from === stored.client && c.to === client);
+      if (change) change.count++;
+      else summary.changes.push({from: stored.client, to: client, count: 1});
+      fields.client = client;
+    }
+    days.add(stored.day);
+    writes.push({ref: doc.ref, fields});
   }
   summary.days = [...days].sort();
 
   if (!options.dryRun) {
     for (const part of chunks(writes, BATCH_LIMIT)) {
       const batch = db.batch();
-      for (const w of part) batch.update(w.ref, {client: w.client, updatedAt: admin.firestore.FieldValue.serverTimestamp()});
+      for (const w of part) batch.update(w.ref, {...w.fields, updatedAt: admin.firestore.FieldValue.serverTimestamp()});
       await batch.commit();
     }
     await summarizeDays(db, summary.days);

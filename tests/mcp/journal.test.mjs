@@ -154,6 +154,27 @@ const SESSION = [
 
 const write = (file, value) => writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value));
 
+// Claude Code sessions that worked in a folder with no repo: NOWHERE, standing in
+// for the folder above the repos or Claude Code's memory folder.
+const NOWHERE = join(dir, 'nowhere');
+mkdirSync(NOWHERE);
+function writeNoRepoSessions() {
+  const prompt = [{ type: 'text', text: 'Look at the plan' }];
+  const reply = [{ type: 'text', text: 'Looking.' }];
+  const at = (id, minutesAgo, type, content, cwd) => line(minutesAgo, type, content, { sessionId: id, cwd, gitBranch: 'develop' });
+  // Filed under the folder of the cmsonline checkout, as Claude Code names it.
+  const home = join(SESSIONS, CHECKOUT.replace(/[^A-Za-z0-9]/g, '-'));
+  mkdirSync(home, { recursive: true });
+  write(join(home, 'sess-home.jsonl'), [at('sess-home', 50, 'user', prompt, NOWHERE), at('sess-home', 45, 'assistant', reply, NOWHERE)].join('\n'));
+  // Filed under a folder that is no repo, so only its own work says where it belongs.
+  mkdirSync(join(SESSIONS, '-no-home'), { recursive: true });
+  write(join(SESSIONS, '-no-home', 'sess-away.jsonl'), [
+    at('sess-away', 40, 'user', prompt, CHECKOUT), at('sess-away', 38, 'assistant', reply, CHECKOUT), at('sess-away', 36, 'assistant', reply, CHECKOUT),
+    at('sess-away', 34, 'assistant', reply, NOWHERE),
+  ].join('\n'));
+  write(join(SESSIONS, '-no-home', 'sess-lost.jsonl'), [at('sess-lost', 25, 'user', prompt, NOWHERE), at('sess-lost', 22, 'assistant', reply, NOWHERE)].join('\n'));
+}
+
 let db;
 
 before(() => {
@@ -340,6 +361,21 @@ describe('work journal job', () => {
     ]);
   });
 
+  it("gives work in a folder that is in no repo the repo its session was started in, or the repo most of its work was in, so it is not left as General", async () => {
+    writeNoRepoSessions();
+    const { output, code } = await runJob();
+    assert.equal(code, 0, output);
+
+    const spans = async (id) => (await bySource('claude')).filter(i => i.sourceId.startsWith(id)).map(i => [i.repo, i.client, i.action]);
+    assert.deepEqual(await spans('sess-home'), [['IHRDC/cmsonline', 'ihrdc', 'Claude Code in cmsonline']],
+      'started in cmsonline, then worked in the memory folder');
+    assert.deepEqual(await spans('sess-away'), [
+      ['IHRDC/cmsonline', 'ihrdc', 'Claude Code in cmsonline'],
+      ['IHRDC/cmsonline', 'ihrdc', 'Claude Code in cmsonline'],
+    ], 'started above the repos, with most of its work in cmsonline');
+    assert.deepEqual(await spans('sess-lost'), [[null, 'general', 'Claude Code in nowhere']], 'no repo anywhere: nothing to go by');
+  });
+
   it("builds each day's summary and records how far each source was read", async () => {
     const { output, code } = await runJob();
     assert.equal(code, 0, output);
@@ -398,6 +434,25 @@ describe('work journal job', () => {
 });
 
 describe('journal:reclassify', () => {
+  it("gives Claude Code work stored with no repo the repo of the session it came from, by reading the session files again", async () => {
+    writeNoRepoSessions();
+    await runJob();
+    // As stored before this rule: no repo, so General.
+    const [stored] = (await db.collection('journal').where('repo', '==', 'IHRDC/cmsonline').get()).docs.filter(d => d.get('sourceId').startsWith('sess-home'));
+    await stored.ref.update({ repo: null, action: 'Claude Code in nowhere', client: 'general' });
+
+    const dry = runScript('src/mcp/reclassify-journal.ts', '--dry-run');
+    assert.equal(dry.code, 0, dry.output);
+    assert.match(dry.output, /1 Claude Code items would get the repo their session was started in/);
+    assert.match(dry.output, /General → IHRDC: 1/);
+    assert.equal((await stored.ref.get()).get('client'), 'general');
+
+    const run = runScript('src/mcp/reclassify-journal.ts');
+    assert.equal(run.code, 0, run.output);
+    const fixed = (await stored.ref.get()).data();
+    assert.deepEqual([fixed.repo, fixed.action, fixed.client], ['IHRDC/cmsonline', 'Claude Code in cmsonline', 'ihrdc']);
+  });
+
   it("can be run from a terminal: a dry run says what would move, then a run moves it and names the client", async () => {
     await db.collection('taskCategories').add({ key: 'executive_assistant', label: 'Executive Assistant', order: 101 });
     await runJob();

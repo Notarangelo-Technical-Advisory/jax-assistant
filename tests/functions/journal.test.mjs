@@ -80,6 +80,20 @@ describe('clients', () => {
     });
   });
 
+  it('puts work outside any repo under a client by its subject: the bug fixer agent is IHRDC, Bible study is Church, and personal errands stay General', async () => {
+    const outside = (sourceId, subject) => session({ sourceId, subject, repo: null });
+    await save([
+      outside('a', 'Bug fixer agent monitoring dashboard'),
+      outside('b', 'Ecclesiastes Study Guide leader prep section'),
+      outside('c', 'Bible studies on Ecclesiastes research'),
+      outside('d', 'Part-time job opportunities from GitHub content'),
+      outside('e', '10th Circuit speeding ticket cover letter'),
+    ]);
+
+    const clients = Object.fromEntries((await all('journal')).map(i => [i.sourceId, i.client]));
+    assert.deepEqual(clients, { a: 'ihrdc', b: 'church', c: 'church', d: 'general', e: 'general' });
+  });
+
   it('finds the Jira ticket in a branch name, but not a look-alike', () => {
     assert.equal(ticketInBranch('feature/CNG-7183'), 'CNG-7183');
     assert.equal(ticketInBranch('CNG-42-fix-grid'), 'CNG-42');
@@ -513,6 +527,43 @@ describe('moving stored items after a rule change', () => {
     assert.equal(clients.e10, 'nta');
     assert.equal(clients['mail-1'], 'general', "an email's client needs its recipients, which are not stored");
     assert.ok((await read('journalDays/2026-10-13')).clients.some(c => c.label === 'NTA Business'));
+  });
+
+  it("gives Claude Code work stored with no repo the repo its session files now give it, and the client that repo has", async () => {
+    const db = admin.firestore();
+    await save([
+      session({ sourceId: 's11', repo: null, action: 'Claude Code in GitHub', subject: 'Migration dashboard slide 5 badge' }),
+      session({ sourceId: 's12', repo: null, action: 'Claude Code in GitHub', subject: 'Plan the week' }),
+    ]);
+    const stored = Object.fromEntries((await db.collection('journal').where('source', '==', 'claude').get()).docs.map(d => [d.get('sourceId'), d]));
+    const claudeRepos = new Map([[stored.s11.id, { repo: 'IHRDC/cmsonline', action: 'Claude Code in cmsonline' }]]);
+
+    const dry = await reclassifyJournal(db, { dryRun: true, claudeRepos });
+    assert.equal(dry.reposFilled, 1);
+    assert.equal((await stored.s11.ref.get()).get('repo'), null, 'a dry run writes nothing');
+
+    const s = await reclassifyJournal(db, { claudeRepos });
+
+    assert.equal(s.reposFilled, 1);
+    assert.deepEqual(s.changes.sort((x, y) => x.to.localeCompare(y.to)), [
+      { from: 'general', to: 'executive_assistant', count: 1 },
+      { from: 'general', to: 'ihrdc', count: 1 },
+    ]);
+    const fixed = (await stored.s11.ref.get()).data();
+    assert.deepEqual([fixed.repo, fixed.action, fixed.client], ['IHRDC/cmsonline', 'Claude Code in cmsonline', 'ihrdc']);
+    const left = (await stored.s12.ref.get()).data();
+    assert.deepEqual([left.repo, left.action, left.client], [null, 'Claude Code in GitHub', 'general'], 'work its session files do not place stays as it was');
+    assert.equal((await reclassifyJournal(db, { claudeRepos })).reposFilled, 0, 'a second run changes nothing');
+  });
+
+  it('does not change the repo of a GitHub item from the Claude Code list', async () => {
+    const db = admin.firestore();
+    const [github] = (await db.collection('journal').where('source', '==', 'github').get()).docs;
+
+    const s = await reclassifyJournal(db, { claudeRepos: new Map([[github.id, { repo: 'IHRDC/cmsonline', action: 'Claude Code in cmsonline' }]]) });
+
+    assert.equal(s.reposFilled, 0);
+    assert.equal((await github.ref.get()).get('repo'), 'Notarangelo-Technical-Advisory/jax-assistant');
   });
 
   it("moves Maisie's repo to Executive Assistant, rebuilds the day with its name, and leaves Jira and meetings alone", async () => {
