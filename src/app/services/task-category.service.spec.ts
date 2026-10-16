@@ -26,7 +26,7 @@ describe('TaskCategoryService', () => {
   });
 
   const keys = (): string[] => (categories.latest() ?? []).map((c) => c.key);
-  const builtIn = ['ihrdc', 'solomon', 'dial', 'ppk', 'church', 'embassy', 'cox', 'general'];
+  const builtIn = ['ihrdc', 'solomon', 'dial', 'ppk', 'church', 'embassy', 'cox', 'nta', 'general'];
 
   it('lists the built-in categories when none are stored', async () => {
     await waitFor(() => categories.latest() !== undefined);

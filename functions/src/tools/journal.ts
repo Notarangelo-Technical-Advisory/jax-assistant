@@ -8,8 +8,8 @@ import {DEFAULT_CATEGORIES} from "./definitions";
 // A record of what Jack did and when, and for which client, so he can account
 // for work done a few minutes at a time across a day. The readers live on
 // Jack's Mac (src/mcp/collect-journal.ts), because the gh login, the Jira token
-// in the Keychain, Claude Code's session files, Apple Calendar and Wispr Flow's
-// database are only there. This file decides the client, stores the items and estimates the time,
+// in the Keychain, Claude Code's session files, Apple Calendar, Apple Mail and
+// Wispr Flow's database are only there. This file decides the client, stores the items and estimates the time,
 // so the rules are tested against the emulator.
 //
 // - Each item has a fixed id made from its source and the source's own id, so
@@ -19,7 +19,8 @@ import {DEFAULT_CATEGORIES} from "./definitions";
 //   client comes from the people invited, its calendar or words in its title,
 //   and a meeting with no client is left out (see meetingClient). A recording's
 //   client comes from the meeting it overlaps or its title (see
-//   recordingItems). Clients are the task categories, so the journal and the
+//   recordingItems). An email's client comes from the people it went to or
+//   its subject (see emailItems). Clients are the task categories, so the journal and the
 //   task list use the same names.
 // - Time is an estimate. Items less than GAP_MINUTES apart form one work
 //   session, timed from its first item to its last, and a session is never
@@ -46,6 +47,8 @@ const REPO_CLIENTS: Record<string, string> = {
 /** Every other repo of these owners belongs to the owner's client. Keys are lower case. */
 const OWNER_CLIENTS: Record<string, string> = {
   "ihrdc": "ihrdc",
+  // Jack's own business: nta-time-tracker, engineering-standards, fractional-tech-advisory and so on.
+  "notarangelo-technical-advisory": "nta",
 };
 
 /** Jira sites and their client. */
@@ -58,7 +61,7 @@ const CALENDAR_CLIENTS: Record<string, string> = {
   "IHRDC": "ihrdc",
 };
 
-/** Email domains whose people make a meeting that client's. Keys are lower case. */
+/** Email domains whose people make a meeting or an email that client's. Keys are lower case. */
 const DOMAIN_CLIENTS: Record<string, string> = {
   "ihrdc.com": "ihrdc",
   "coxeng.com": "cox",
@@ -101,7 +104,7 @@ const TEXT_CLIENTS: Array<{words: string; client: string}> = [
   {words: "QA testing agent", client: "ihrdc"},
 ];
 
-export type JournalSource = "github" | "jira" | "claude" | "meeting" | "recording";
+export type JournalSource = "github" | "jira" | "claude" | "meeting" | "recording" | "email";
 
 /** One piece of work, as a reader on the Mac finds it. */
 export interface JournalItemInput {
@@ -126,7 +129,7 @@ export interface JournalItemInput {
   ticket?: string | null;
   /** Jira only: the site, which decides the client. */
   site?: string | null;
-  /** Meetings and recordings: the client their rules chose. Other sources get theirs from where the work happened. */
+  /** Meetings, recordings and emails: the client their rules chose. Other sources get theirs from where the work happened. */
   client?: string | null;
 }
 
@@ -159,6 +162,27 @@ export interface Recording {
   end: string | null;
   /** The recording's notes page in Wispr Flow, or null. */
   url: string | null;
+}
+
+/**
+ * An email Jack sent, as the reader on the Mac finds it. Only the subject and
+ * the recipients' domains reach the journal; the body is never read.
+ */
+export interface SentEmail {
+  /** Mail's message id. */
+  id: string;
+  subject: string;
+  /** ISO timestamp. */
+  sentAt: string;
+  /** Addresses in To and Cc. */
+  recipients: string[];
+}
+
+/** Sent emails read, and how many were left out. */
+export interface EmailItems {
+  items: JournalItemInput[];
+  read: number;
+  noClient: number;
 }
 
 /** Recordings read, and why the ones not journaled were left out. */
@@ -435,6 +459,51 @@ export function recordingItems(recordings: Recording[], meetings: CalendarMeetin
       subject: r.title.trim() || "Untitled recording",
       detail: chosen.detail,
       url: r.url,
+      ticket: ticket?.key ?? null,
+      client: chosen.client,
+    });
+  }
+  return result;
+}
+
+const domainOf = (address: string): string => address.split("@")[1]?.trim().toLowerCase() ?? "";
+
+/**
+ * The journal items for emails Jack sent. An email gets its client from the
+ * first of these that applies, and is left out when none does, so personal
+ * email is not counted:
+ *
+ * - someone it went to has a domain in DOMAIN_CLIENTS (Jack's own addresses
+ *   are ignored);
+ * - a Jira key from one of JIRA_PROJECT_CLIENTS in its subject;
+ * - a word from MEETING_WORDS or TEXT_CLIENTS in its subject.
+ *
+ * An email is a moment, not a span: it counts for MIN_SESSION_MINUTES on its
+ * own, and joins the work around it into one session when it is near.
+ */
+export function emailItems(emails: SentEmail[], ownAddresses: string[] = []): EmailItems {
+  const own = new Set(ownAddresses.map((a) => a.trim().toLowerCase()));
+  const result: EmailItems = {items: [], read: emails.length, noClient: 0};
+  for (const e of emails) {
+    const others = [...new Set(e.recipients.map((a) => a.trim().toLowerCase()).filter((a) => a && !own.has(a)))];
+    const domain = others.map(domainOf).find((d) => DOMAIN_CLIENTS[d]);
+    const ticket = jiraKeyIn(e.subject);
+    const word = titleWords(e.subject) ?? TEXT_CLIENTS.find((t) => wordsOf(e.subject).includes(wordsOf(t.words)));
+
+    const chosen = domain ? {client: DOMAIN_CLIENTS[domain], detail: `To ${domain}`} :
+      ticket ? {client: ticket.client, detail: `${ticket.key} in the subject`} :
+        word ? {client: word.client, detail: `${word.words} in the subject`} : null;
+    if (!chosen) {
+      result.noClient++;
+      continue;
+    }
+    result.items.push({
+      source: "email",
+      sourceId: e.id,
+      at: e.sentAt,
+      action: others.length ? `Sent email to ${others.length} ${others.length === 1 ? "person" : "people"}` : "Sent email",
+      subject: e.subject.trim() || "(no subject)",
+      detail: chosen.detail,
       ticket: ticket?.key ?? null,
       client: chosen.client,
     });
@@ -773,8 +842,9 @@ export async function getJournal(
     note: "Hours are estimates: items less than 20 minutes apart count as one work session, " +
       "from the first item to the last, and a session counts for at least 6 minutes. " +
       "The journal is collected on Jack's Mac every 15 minutes from GitHub, Jira, Claude Code, the " +
-      "meetings on his Jax and IHRDC calendars and the meetings he recorded in Wispr Flow; a meeting " +
-      "counts for its scheduled length, and a recording for the time it was recording.",
+      "meetings on his Jax and IHRDC calendars, the meetings he recorded in Wispr Flow and the emails he " +
+      "sent from Apple Mail to a client; a meeting counts for its scheduled length, a recording for the " +
+      "time it was recording, and an email for the moment it was sent.",
     clients: [...totals.entries()]
       .map(([key, t]) => ({client: key, label: t.label, estimatedHours: hours(t.minutes), itemCount: t.itemCount}))
       .sort((a, b) => b.estimatedHours - a.estimatedHours),

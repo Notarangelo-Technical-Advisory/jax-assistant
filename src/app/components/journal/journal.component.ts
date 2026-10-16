@@ -93,7 +93,7 @@ export interface ItemGroup {
 type Selection = { day: string; client: string | null } | null;
 
 const SOURCE_LABELS: Record<JournalSource, string> = {
-  github: 'GitHub', jira: 'Jira', claude: 'Claude Code', meeting: 'Calendar', recording: 'Wispr Flow',
+  github: 'GitHub', jira: 'Jira', claude: 'Claude Code', meeting: 'Calendar', recording: 'Wispr Flow', email: 'Mail',
 };
 
 @Component({

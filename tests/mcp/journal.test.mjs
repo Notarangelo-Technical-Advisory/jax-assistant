@@ -1,6 +1,6 @@
 // Tests for the work journal job that runs on Jack's Mac
 // (functions/src/mcp/collect-journal.ts). Saved answers stand in for GitHub
-// (gh api), Jira, Apple Calendar and Wispr Flow's database, and a folder of session files stands in
+// (gh api), Jira, Apple Calendar, Apple Mail and Wispr Flow's database, and a folder of session files stands in
 // for Claude Code's, so nothing reaches the real services; the job then runs
 // exactly as launchd runs it, against the Firestore emulator, in Jack's time zone.
 
@@ -24,6 +24,7 @@ const GITHUB_FIXTURE = join(dir, 'github.json');
 const JIRA_FIXTURE = join(dir, 'jira.json');
 const MEETINGS_FIXTURE = join(dir, 'meetings.json');
 const WISPR_FIXTURE = join(dir, 'wispr.json');
+const MAIL_FIXTURE = join(dir, 'mail.json');
 const SESSIONS = join(dir, 'projects');
 
 // A checkout of IHRDC/cmsonline for the Claude Code session to run in.
@@ -121,6 +122,20 @@ const WISPR = [
   { id: 'rec-live', title: '', createdAt: sqliteTime(5), endedAt: null, shareSlug: null },
 ];
 
+// What the Mail script in apple-mail.ts prints. The journal reads only the Sent mailbox.
+const MAIL = {
+  ok: true,
+  accounts: ['jnotarangelo@ihrdc.com', 'jack@notarangelo.com'],
+  received: [{ id: 'in-1', subject: 'Not sent by Jack', sender: 'Brad <brad@ihrdc.com>', date: NOW - 50 * 60_000, to: ['jnotarangelo@ihrdc.com'], cc: [] }],
+  sent: [
+    { id: 'sent-ihrdc', subject: 'Re: Phase two plan', sender: 'Jack <jnotarangelo@ihrdc.com>', date: NOW - 45 * 60_000, to: ['brad@ihrdc.com'], cc: ['gabor@ihrdc.com'] },
+    { id: 'sent-cng', subject: 'CNG-7039 test notes', sender: 'Jack <jack@notarangelo.com>', date: NOW - 40 * 60_000, to: ['vendor@example.com'], cc: [] },
+    // Left out: personal email, and email to Jack himself with nothing in the subject.
+    { id: 'sent-personal', subject: 'Dinner Saturday?', sender: 'Jack <jack@notarangelo.com>', date: NOW - 35 * 60_000, to: ['friend@gmail.com'], cc: [] },
+    { id: 'sent-self', subject: 'Reminder', sender: 'Jack <jack@notarangelo.com>', date: NOW - 30 * 60_000, to: ['jnotarangelo@ihrdc.com'], cc: [] },
+  ],
+};
+
 /** One line of a Claude Code session file. */
 const line = (minutesAgo, type, content, extra = {}) => JSON.stringify({
   type, timestamp: ago(minutesAgo), cwd: CHECKOUT, gitBranch: 'feature/CNG-7039', sessionId: 'sess-1', isSidechain: false,
@@ -152,6 +167,7 @@ beforeEach(async () => {
   write(JIRA_FIXTURE, JIRA);
   write(MEETINGS_FIXTURE, MEETINGS);
   write(WISPR_FIXTURE, WISPR);
+  write(MAIL_FIXTURE, MAIL);
   rmSync(SESSIONS, { recursive: true, force: true });
   mkdirSync(join(SESSIONS, '-cmsonline'), { recursive: true });
   write(join(SESSIONS, '-cmsonline', 'sess-1.jsonl'), SESSION);
@@ -171,7 +187,7 @@ function runScript(script, ...args) {
       env: {
         ...process.env, FIRESTORE_EMULATOR_HOST: FIRESTORE_HOST, GCLOUD_PROJECT: PROJECT_ID,
         MAISIE_GITHUB_FIXTURE: GITHUB_FIXTURE, MAISIE_JIRA_FIXTURE: JIRA_FIXTURE, MAISIE_CLAUDE_PROJECTS_DIR: SESSIONS,
-        MAISIE_MEETINGS_FIXTURE: MEETINGS_FIXTURE, MAISIE_WISPR_FIXTURE: WISPR_FIXTURE,
+        MAISIE_MEETINGS_FIXTURE: MEETINGS_FIXTURE, MAISIE_WISPR_FIXTURE: WISPR_FIXTURE, MAISIE_MAIL_FIXTURE: MAIL_FIXTURE,
         TZ: 'America/New_York',
       },
     });
@@ -257,6 +273,30 @@ describe('work journal job', () => {
     assert.match(output, /Wispr Flow since .*: 2 read, 2 new.*recordings: 4; left out: 1 with no client, 1 not ended yet\)/);
   });
 
+  it('journals emails Jack sent to a client, by the domain they went to or a Jira key in the subject, and never the addresses', async () => {
+    const { output, code } = await runJob();
+    assert.equal(code, 0, output);
+
+    const emails = (await bySource('email')).map(i => [i.client, i.action, i.subject, i.detail, i.ticket, i.at]);
+    assert.deepEqual(emails, [
+      ['ihrdc', 'Sent email to 2 people', 'Re: Phase two plan', 'To ihrdc.com', null, ago(45)],
+      ['ihrdc', 'Sent email to 1 person', 'CNG-7039 test notes', 'CNG-7039 in the subject', 'CNG-7039', ago(40)],
+    ]);
+    assert.doesNotMatch(JSON.stringify(await bySource('email')), /brad@|gabor@|vendor@/);
+    assert.match(output, /Sent email since .*: 2 read, 2 new.*emails sent: 4; left out: 2 with no client\)/);
+  });
+
+  it('when Mail cannot be read, still journals the other sources, and says why', async () => {
+    write(MAIL_FIXTURE, 'execution error: Mail got an error: AppleEvent timed out. (-1712)');
+    const { output, code } = await runJob();
+
+    assert.equal(code, 1);
+    assert.match(output, /Sent email: Mail returned unreadable output/);
+    assert.equal((await bySource('github')).length, 3);
+    assert.equal((await bySource('email')).length, 0);
+    assert.equal((await state()).emailCheckedThrough, undefined, 'Mail starts from the same place next time');
+  });
+
   it("when Wispr Flow's database cannot be read, still journals the other sources, and says why", async () => {
     write(WISPR_FIXTURE, 'Error: unable to open database file');
     const { output, code } = await runJob();
@@ -311,7 +351,7 @@ describe('work journal job', () => {
     assert.ok(days.every(d => d.day === etDay(d.clients[0].sessions[0].start)));
 
     const s = await state();
-    for (const source of ['github', 'jira', 'claude', 'meetings', 'recordings']) assert.ok(s[`${source}CheckedThrough`].toMillis() >= NOW - 60_000, source);
+    for (const source of ['github', 'jira', 'claude', 'meetings', 'recordings', 'email']) assert.ok(s[`${source}CheckedThrough`].toMillis() >= NOW - 60_000, source);
     assert.deepEqual(s.lastErrors, []);
   });
 

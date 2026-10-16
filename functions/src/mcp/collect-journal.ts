@@ -1,7 +1,8 @@
 /**
  * Work journal: collects what Jack did on GitHub, in Jira, in Claude Code, in
- * meetings on his Jax and IHRDC calendars and in meetings he recorded in Wispr
- * Flow into MAISIE's journal, with each day's estimated time per client. Runs on Jack's Mac every 15 minutes, from
+ * meetings on his Jax and IHRDC calendars, in meetings he recorded in Wispr
+ * Flow and in emails he sent from Apple Mail into MAISIE's journal, with each
+ * day's estimated time per client. Runs on Jack's Mac every 15 minutes, from
  * bridge/com.notarangelo.work-journal.plist.
  *
  * Usage (from functions/):
@@ -12,14 +13,14 @@
  *   so its first run may reach back less far). Each later run starts an hour
  *   before the previous one finished; the fixed item ids make the overlap
  *   harmless.
- * - GitHub, Jira, Claude Code, the calendars and Wispr Flow are read
+ * - GitHub, Jira, Claude Code, the calendars, Wispr Flow and Mail are read
  *   separately. If one fails, the others are still collected, and the failed
  *   one starts from the same place next time.
  * - A meeting or a recording is journaled once it has ended, so one still
  *   going on is read again by a later run.
  *
  * The readers are github-activity.ts, jira-activity.ts, claude-sessions.ts,
- * apple-meetings.ts and wispr-recordings.ts beside this file. The rules for clients and time, and for
+ * apple-meetings.ts, wispr-recordings.ts and apple-mail.ts beside this file. The rules for clients and time, and for
  * which meetings count, are in src/tools/journal.ts.
  */
 
@@ -27,13 +28,15 @@
 import {db} from "./firebase";
 import * as admin from "firebase-admin";
 import {
-  JournalItemInput, SaveSummary, clientLabel, loadClientLabels, meetingItems, recordingItems, saveJournalItems, summarizeDays,
+  JournalItemInput, SaveSummary, clientLabel, emailItems, loadClientLabels, meetingItems, recordingItems, saveJournalItems,
+  summarizeDays,
 } from "../tools/journal";
 import {readGitHubActivity} from "./github-activity";
 import {readJiraActivity} from "./jira-activity";
 import {readClaudeSessions} from "./claude-sessions";
 import {readCalendarMeetings} from "./apple-meetings";
 import {readWisprRecordings} from "./wispr-recordings";
+import {readSentMail} from "./apple-mail";
 
 const BACKFILL_DAYS = 30;
 const OVERLAP_MS = 60 * 60 * 1000;
@@ -107,6 +110,15 @@ const SOURCES: Source[] = [
         items: r.items,
         note: ` (recordings: ${r.read}; left out: ${r.noClient} with no client, ${r.notEnded} not ended yet)`,
       };
+    },
+  },
+  {
+    name: "Sent email",
+    stateKey: "email",
+    read: async (since) => {
+      const {ownAddresses, sent} = readSentMail(since);
+      const e = emailItems(sent, ownAddresses);
+      return {items: e.items, note: ` (emails sent: ${e.read}; left out: ${e.noClient} with no client)`};
     },
   },
 ];
