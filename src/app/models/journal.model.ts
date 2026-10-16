@@ -3,9 +3,9 @@
  * journal job on Jack's Mac writes with; the page only reads them.
  */
 
-export type JournalSource = 'github' | 'jira' | 'claude' | 'meeting' | 'recording';
+export type JournalSource = 'github' | 'jira' | 'claude' | 'meeting' | 'recording' | 'email';
 
-/** One piece of work: a pull request, a Jira change, a Claude Code session, a meeting, a recording. */
+/** One piece of work: a pull request, a Jira change, a Claude Code session, a meeting, a recording, a sent email. */
 export interface JournalItem {
   id?: string;
   source: JournalSource;

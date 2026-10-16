@@ -23,7 +23,8 @@ export class TaskCategoryService {
     { key: 'church',  label: 'Church',  order: 4 },
     { key: 'embassy', label: 'Embassy Series', order: 5 },
     { key: 'cox',     label: 'Cox Engineering', order: 6 },
-    { key: 'general', label: 'General', order: 7 },
+    { key: 'nta',     label: 'NTA Business', order: 7 },
+    { key: 'general', label: 'General', order: 8 },
   ];
 
   /**

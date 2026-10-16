@@ -9,6 +9,7 @@
  *
  * Reads the combined Inbox and the combined Sent mailbox of every account, and
  * the addresses of every account, which are Jack's own and are never matched.
+ * The work journal reads the Sent mailbox only (readSentMail).
  *
  * Permission: Automation access to Mail for the process running this, under
  * System Settings > Privacy & Security > Automation.
@@ -17,6 +18,7 @@
 import {execFileSync} from "child_process";
 import {readFileSync} from "fs";
 import {AutoLinkItem} from "../tools/contact-autolink";
+import {SentEmail} from "../tools/journal";
 
 export class AppleMailError extends Error {
   constructor(message: string, readonly code: string) {
@@ -25,7 +27,9 @@ export class AppleMailError extends Error {
   }
 }
 
-export function readMailScript(since: Date): string {
+/** The JXA script. Without the Inbox, `received` is empty and only the Sent mailbox is read. */
+export function readMailScript(since: Date, options: {inbox?: boolean} = {}): string {
+  const inbox = options.inbox ?? true;
   return `
 function run() {
   var Mail = Application('Mail');
@@ -49,7 +53,7 @@ function run() {
   return JSON.stringify({
     ok: true,
     accounts: accounts,
-    received: read(Mail.inbox, 'dateReceived', { dateReceived: { _greaterThan: since } }),
+    received: ${inbox ? "read(Mail.inbox, 'dateReceived', { dateReceived: { _greaterThan: since } })" : "[]"},
     sent: read(Mail.sentMailbox, 'dateSent', { dateSent: { _greaterThan: since } })
   });
 }
@@ -81,8 +85,8 @@ export function senderAddress(sender: string): string {
   return (angle ? angle[1] : sender).trim();
 }
 
-/** Turn the script's JSON output into items to link, or throw a clear error. */
-export function parseAppleMail(raw: string): MailRead {
+/** The script's JSON output, or a clear error. */
+function parseOutput(raw: string): Extract<RawResult, {ok: true}> {
   if (!raw.trim()) throw new AppleMailError("Mail returned no output.", "empty_output");
   let result: RawResult;
   try {
@@ -91,6 +95,12 @@ export function parseAppleMail(raw: string): MailRead {
     throw new AppleMailError(`Mail returned unreadable output: ${raw.slice(0, 300)}`, "bad_output");
   }
   if (!result.ok) throw new AppleMailError(`Mail read failed: ${result.error}`, result.error);
+  return result;
+}
+
+/** Turn the script's JSON output into items to link, or throw a clear error. */
+export function parseAppleMail(raw: string): MailRead {
+  const result = parseOutput(raw);
 
   const item = (m: RawMessage, sent: boolean): AutoLinkItem => ({
     type: "email",
@@ -110,16 +120,26 @@ export function parseAppleMail(raw: string): MailRead {
   };
 }
 
-/**
- * Emails received or sent after `since`. When MAISIE_MAIL_FIXTURE names a
- * file, its contents stand in for the script's output (tests).
- */
-export function readAppleMail(since: Date): MailRead {
+/** Turn the script's JSON output into the emails Jack sent, or throw a clear error. */
+export function parseSentMail(raw: string): {ownAddresses: string[]; sent: SentEmail[]} {
+  const result = parseOutput(raw);
+  return {
+    ownAddresses: result.accounts ?? [],
+    sent: (result.sent ?? []).filter((m) => m.id && Number.isFinite(m.date)).map((m) => ({
+      id: m.id,
+      subject: m.subject ?? "",
+      sentAt: new Date(m.date).toISOString(),
+      recipients: [...(m.to ?? []), ...(m.cc ?? [])],
+    })),
+  };
+}
+
+/** Run the script, or return the fixture's contents when MAISIE_MAIL_FIXTURE names a file (tests). */
+function runMailScript(since: Date, options: {inbox: boolean}): string {
   const fixture = process.env.MAISIE_MAIL_FIXTURE;
-  if (fixture) return parseAppleMail(readFileSync(fixture, "utf-8"));
-  let raw: string;
+  if (fixture) return readFileSync(fixture, "utf-8");
   try {
-    raw = execFileSync("osascript", ["-l", "JavaScript", "-e", readMailScript(since)], {
+    return execFileSync("osascript", ["-l", "JavaScript", "-e", readMailScript(since, options)], {
       encoding: "utf-8",
       // The first run reads 30 days of the Inbox, which took 80 seconds.
       timeout: 600_000,
@@ -128,5 +148,14 @@ export function readAppleMail(since: Date): MailRead {
   } catch (err) {
     throw new AppleMailError(`osascript failed: ${err instanceof Error ? err.message : err}`, "osascript_failed");
   }
-  return parseAppleMail(raw);
+}
+
+/** Emails received or sent after `since`. */
+export function readAppleMail(since: Date): MailRead {
+  return parseAppleMail(runMailScript(since, {inbox: true}));
+}
+
+/** Emails Jack sent after `since`, from the Sent mailbox only, with his own addresses. */
+export function readSentMail(since: Date): {ownAddresses: string[]; sent: SentEmail[]} {
+  return parseSentMail(runMailScript(since, {inbox: false}));
 }

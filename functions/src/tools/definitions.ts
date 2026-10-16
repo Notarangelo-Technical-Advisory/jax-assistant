@@ -14,6 +14,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   {key: "church", label: "Church"},
   {key: "embassy", label: "Embassy Series"},
   {key: "cox", label: "Cox Engineering"},
+  {key: "nta", label: "NTA Business"},
   {key: "general", label: "General"},
 ];
 
@@ -209,7 +210,7 @@ export const buildTools = (
     },
     {
       name: "delete_task_category",
-      description: "Delete a custom task category. Cannot delete built-in categories (ihrdc, solomon, dial, ppk, church, embassy, cox, general). Will fail if there are active tasks under that category — those must be completed or reassigned first.",
+      description: "Delete a custom task category. Cannot delete built-in categories (ihrdc, solomon, dial, ppk, church, embassy, cox, nta, general). Will fail if there are active tasks under that category — those must be completed or reassigned first.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -320,14 +321,14 @@ export const buildTools = (
     },
     {
       name: "get_journal",
-      description: "Get Jack's work journal: what he did and when, for each client, collected every 15 minutes on his Mac from GitHub (pull requests, reviews, comments, pushes), Jira (issues he created, moved, edited or commented on), Claude Code (when he worked in which repo and branch), meetings on his Jax and IHRDC calendars (IHRDC meetings, plus Cox and church meetings on the Jax calendar; each counts for its scheduled length) and meetings he recorded in Wispr Flow (each counts for the time it was recording, under the client of the calendar meeting it overlaps or of a word or IHRDC Jira key in its title). Returns estimated hours per client and per day, the work sessions behind them, and each item with its time in Eastern Time. Use it when Jack asks what he worked on, where his time went, or needs help filling in time entries; compare with get_time_entries to find work he has not logged. Hours are estimates, not logged time.",
+      description: "Get Jack's work journal: what he did and when, for each client, collected every 15 minutes on his Mac from GitHub (pull requests, reviews, comments, pushes), Jira (issues he created, moved, edited or commented on), Claude Code (when he worked in which repo and branch), meetings on his Jax and IHRDC calendars (IHRDC meetings, plus Cox and church meetings on the Jax calendar; each counts for its scheduled length) and meetings he recorded in Wispr Flow (each counts for the time it was recording, under the client of the calendar meeting it overlaps or of a word or IHRDC Jira key in its title) and emails he sent from Apple Mail (only those to a client's email domain, or with an IHRDC Jira key or a client word in the subject; the body is never read). Work in Jack's own business repos counts as 'nta' (NTA Business). Returns estimated hours per client and per day, the work sessions behind them, and each item with its time in Eastern Time. Use it when Jack asks what he worked on, where his time went, or needs help filling in time entries; compare with get_time_entries to find work he has not logged. Hours are estimates, not logged time.",
       input_schema: {
         type: "object" as const,
         properties: {
           start_date: {type: "string", description: "First day, YYYY-MM-DD. Defaults to days_back days before end_date, or today."},
           end_date: {type: "string", description: "Last day, YYYY-MM-DD. Defaults to start_date when start_date is given (one day), otherwise today. For 'since Monday', give both."},
           days_back: {type: "number", description: "Days before end_date to start from when start_date is not given (0 = that day only). At most 30."},
-          client: {type: "string", description: "Optional: one client's work only, by task category key, e.g. 'ihrdc', 'solomon', 'church', 'general'."},
+          client: {type: "string", description: "Optional: one client's work only, by task category key, e.g. 'ihrdc', 'nta', 'solomon', 'church', 'general'."},
         },
         required: [],
       },

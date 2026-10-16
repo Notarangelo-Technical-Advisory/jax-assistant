@@ -183,6 +183,22 @@ describe('JournalComponent', () => {
       expect(badge?.textContent?.trim()).toBe('Calendar');
     });
 
+    it('shows a sent email at the time it was sent, marked Mail, with why it counts', async () => {
+      await seedDocument('journal/email', item({
+        source: 'email', sourceId: '<m1@ihrdc.com>', day: '2026-10-09', at: '2026-10-09T14:05:00.000Z', endAt: null,
+        action: 'Sent email to 2 people', subject: 'Re: Phase two plan', detail: 'To ihrdc.com', url: null, repo: null, ticket: null,
+      }));
+      page.select('2026-10-09', null);
+      await waitFor(() => page.dayItems().length === 1);
+
+      const shown = text();
+      expect(shown).toContain('10:05 AM');
+      expect(shown).toContain('Mail Sent email to 2 people');
+      expect(shown).toContain('Re: Phase two plan');
+      expect(shown).toContain('To ihrdc.com');
+      expect(text('.source[data-source="email"]').trim()).toBe('Mail');
+    });
+
     it('shows a Wispr Flow recording with its notes link, marked Wispr Flow', async () => {
       await seedDocument('journal/recording', item({
         source: 'recording', sourceId: 'rec-1', day: '2026-10-09',
