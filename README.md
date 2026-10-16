@@ -202,9 +202,10 @@ work session, with the description written to his saved memory for invoice
 descriptions, and shows him the list. She posts only after he says yes.
 
 - `add_time_entries` checks every entry first and posts all of them or none. A
-  future date, an unknown or inactive customer or project, a time not on the
-  hour or half hour, or an overlap with an entry already in the tracker
+  future date, an unknown or inactive customer or project, or an overlap with an entry already in the tracker
   refuses the whole request. It previews (`dry_run`) unless told otherwise.
+- Times are to the minute, because Jack bills to the minute. Hours are end
+  minus start to two decimals, as the tracker works them out.
 - Entries are written in the shape the tracker's own form writes, as
   `unbilled`, plus `source: "maisie"`.
 - `delete_time_entry` removes only an unbilled entry that MAISIE posted.

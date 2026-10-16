@@ -94,10 +94,18 @@ describe('add_time_entries', () => {
     assert.match(done.error, /no active project "Old Site"/);
   });
 
-  it('refuses times off the half hour, an end before the start, a future date and an empty description', async () => {
+  it('posts the exact minutes, because Jack bills to the minute', async () => {
+    const posted = await tool('add_time_entries', { dry_run: false, entries: [entry({ start_time: '09:12', end_time: '10:05' })] });
+
+    assert.deepEqual([posted.entries[0].start, posted.entries[0].end, posted.entries[0].hours], ['09:12', '10:05', 0.88]);
+    const [saved] = await entriesInTracker();
+    assert.deepEqual([saved.startTime, saved.endTime, saved.durationHours], ['09:12', '10:05', 0.88]);
+  });
+
+  it('refuses a malformed time, an end before the start, a future date and an empty description', async () => {
     for (const [bad, why] of [
-      [{ start_time: '09:15' }, /hour or half hour/],
-      [{ end_time: '9:30' }, /hour or half hour/],
+      [{ start_time: '9:15' }, /HH:MM/],
+      [{ end_time: '10:60' }, /HH:MM/],
       [{ start_time: '10:00', end_time: '10:00' }, /after the start time/],
       [{ date: '2099-01-05' }, /in the future/],
       [{ date: '10/13/2026' }, /YYYY-MM-DD/],

@@ -282,7 +282,7 @@ export const buildTools = (
     },
     {
       name: "add_time_entries",
-      description: "Post time entries to Jack's NTA time tracker, as unbilled time, usually after summarizing his work journal. Each entry needs a date, a customer, start and end times on the hour or half hour (24-hour, ET; the tracker offers nothing else) and a description written to his saved style for invoice descriptions. The project may be left out when the customer has only one active project. Every entry is checked first: a future date, an unknown customer or project, or an overlap with an entry already in the tracker or in the same request refuses the whole request and posts nothing. dry_run defaults to true and only checks and previews. Run it first, show Jack the preview, and post with dry_run false ONLY after he has said yes to those entries in this conversation.",
+      description: "Post time entries to Jack's NTA time tracker, as unbilled time, usually after summarizing his work journal. Each entry needs a date, a customer, start and end times to the minute (24-hour, ET; Jack bills to the minute, so use the journal's times, not rounded ones) and a description written to his saved style for invoice descriptions. The project may be left out when the customer has only one active project. Every entry is checked first: a future date, an unknown customer or project, or an overlap with an entry already in the tracker or in the same request refuses the whole request and posts nothing. dry_run defaults to true and only checks and previews. Run it first, show Jack the preview, and post with dry_run false ONLY after he has said yes to those entries in this conversation.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -295,8 +295,8 @@ export const buildTools = (
                 date: {type: "string", description: "YYYY-MM-DD"},
                 customer: {type: "string", description: "Customer name as in the time tracker, e.g. 'IHRDC', or its ID"},
                 project: {type: "string", description: "Project name or ID. Optional when the customer has one active project."},
-                start_time: {type: "string", description: "HH:MM, 24-hour ET, on :00 or :30"},
-                end_time: {type: "string", description: "HH:MM, 24-hour ET, on :00 or :30, later the same day"},
+                start_time: {type: "string", description: "HH:MM, 24-hour ET, to the minute"},
+                end_time: {type: "string", description: "HH:MM, 24-hour ET, to the minute, later the same day"},
                 description: {type: "string", description: "The line as it should appear on the invoice"},
               },
               required: ["date", "customer", "start_time", "end_time", "description"],

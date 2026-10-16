@@ -8,10 +8,9 @@ import {etDateKey} from "../et-time";
  *
  * Entries are written in the same shape the tracker's own form writes
  * (nta-time-tracker, time-entry-form.component.ts), so the tracker can show,
- * edit and invoice them like any other entry. Two rules follow from that form:
- *   - times are on the hour or half hour, because its start and end pickers
- *     offer nothing else, and an entry at 10:15 would open with blank times;
- *   - durationHours is end minus start, as its calculateDuration() works it out.
+ * edit and invoice them like any other entry. Times are to the minute, as its
+ * time fields are, and durationHours is end minus start to two decimals, as its
+ * calculateDuration() works it out. Jack bills to the minute.
  *
  * Each entry also carries `source: "maisie"`. The tracker ignores the field;
  * delete_time_entry uses it so Maisie can only remove what she posted.
@@ -19,7 +18,7 @@ import {etDateKey} from "../et-time";
 
 const MAX_ENTRIES = 50;
 const MAX_DESCRIPTION_LENGTH = 1000;
-const TIME = /^([01]\d|2[0-3]):(00|30)$/;
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface TimeEntryInput {
@@ -105,7 +104,7 @@ export async function addTimeEntries(input: {
       continue;
     }
     if (!e.start_time || !TIME.test(e.start_time) || !e.end_time || !TIME.test(e.end_time)) {
-      fail("start and end times must be HH:MM on the hour or half hour (24-hour, ET), because the time tracker offers only those");
+      fail("start and end times must be HH:MM (24-hour, ET)");
       continue;
     }
     if (minutes(e.end_time) <= minutes(e.start_time)) {
@@ -147,7 +146,7 @@ export async function addTimeEntries(input: {
   }
 
   // No two entries may cover the same time, whether already in the tracker or
-  // in this batch: Jack cannot bill one half hour twice.
+  // in this batch: Jack cannot bill the same minutes twice.
   const dates = [...new Set(checked.map((c) => c.date))];
   const existing = (await Promise.all(dates.map((d) =>
     fta.collection("timeEntries").where("date", "==", d).get()
