@@ -195,7 +195,31 @@ describe('PostTimePanelComponent', () => {
     expect(text()).toContain('Nothing was posted.');
   });
 
-  it('says when the tracker cannot be reached, and tries again', async () => {
+  it('tries once more by itself when the function cannot be reached, as when it is starting up', async () => {
+    await open();
+    panel.rows().forEach((r) => (r.description = ''));
+
+    const drafting = panel.draft();
+    (await nextRequest(http, URL)).error(new ProgressEvent('error'));
+    await answer('draft', { success: true, descriptions: ['First', 'Second'] });
+    await drafting;
+
+    expect(panel.rows().map((r) => r.description)).toEqual(['First', 'Second']);
+    expect(panel.message()).toBeNull();
+  });
+
+  it('does not try again when Maisie answered with a reason', async () => {
+    await open();
+
+    const drafting = panel.draft();
+    (await nextRequest(http, URL)).flush({ success: false, error: 'Maisie could not draft the descriptions.' }, { status: 502, statusText: 'Bad Gateway' });
+    await drafting;
+
+    http.expectNone(URL);
+    expect(text()).toContain('Maisie could not draft the descriptions.');
+  });
+
+  it('says when the tracker cannot be reached twice in a row, and Jack can try again', async () => {
     fixture = TestBed.createComponent(PostTimePanelComponent);
     fixture.componentRef.setInput('day', DAY);
     fixture.componentRef.setInput('client', IHRDC);
@@ -203,8 +227,9 @@ describe('PostTimePanelComponent', () => {
     panel = fixture.componentInstance;
     fixture.detectChanges();
     (await nextRequest(http, URL)).error(new ProgressEvent('error'));
+    (await nextRequest(http, URL)).error(new ProgressEvent('error'));
     await waitFor(() => panel.state() === 'error');
-    expect(text()).toContain('The time tracker could not be reached.');
+    expect(text()).toContain('Could not load the time tracker for this day.');
 
     panel.retry();
     await answer('day', trackerDay());

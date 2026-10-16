@@ -84,14 +84,40 @@ export class TimeTrackerService {
     return this.call<PostResult>({ action: 'post', entries });
   }
 
+  /**
+   * One call to the function, tried a second time when it could not be
+   * reached. A Cloud Function that is new or has been idle can fail its first
+   * request while it starts. Trying a post again is safe: if the first
+   * attempt did save the entries, the overlap check refuses the second.
+   */
   private async call<T>(body: Record<string, unknown>): Promise<T> {
     const token = await this.auth.getIdToken();
+    const send = () => firstValueFrom(this.http.post<T>(URL, body, { headers: { Authorization: `Bearer ${token}` } }));
     try {
-      return await firstValueFrom(this.http.post<T>(URL, body, { headers: { Authorization: `Bearer ${token}` } }));
-    } catch (err) {
-      // The function answers a failed draft with a reason; show it rather than an HTTP code.
-      const reason = (err as { error?: { error?: string } }).error?.error;
-      throw new Error(reason ?? 'The time tracker could not be reached.');
+      return await send();
+    } catch (first) {
+      if (reasonFrom(first)) throw new Error(reasonFrom(first)!);
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      try {
+        return await send();
+      } catch (second) {
+        throw new Error(reasonFrom(second) ?? UNREACHABLE[String(body['action'])] ?? 'Maisie could not be reached. Try again in a moment.');
+      }
     }
   }
+}
+
+const RETRY_DELAY_MS = 1500;
+
+/** What the page says when the function cannot be reached twice in a row. */
+const UNREACHABLE: Record<string, string> = {
+  day: 'Could not load the time tracker for this day. Try again in a moment.',
+  draft: 'Could not reach Maisie to draft the descriptions. Try again in a moment.',
+  post: 'Could not reach the time tracker, so it is not certain the entries were posted. Try again: entries already posted are refused, not doubled.',
+};
+
+/** The reason the function gave, when it answered with one; a refusal is never retried. */
+function reasonFrom(err: unknown): string | null {
+  const reason = (err as { error?: { error?: unknown } }).error?.error;
+  return typeof reason === 'string' ? reason : null;
 }
