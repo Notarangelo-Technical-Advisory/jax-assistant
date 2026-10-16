@@ -41,11 +41,20 @@ Each item gets a client from where the work happened. The clients are MAISIE's t
 | `embassy-book-series` | Embassy Series |
 | Everything else (Jack's personal repos under `jacknota`, such as `JaxPersonal`), and work outside any repo | General, unless its words name IHRDC (below) |
 
-The table is `REPO_CLIENTS`, `OWNER_CLIENTS` and `JIRA_SITE_CLIENTS` in `functions/src/tools/journal.ts`. A Claude Code session in a scratch folder counts for the repo of the session that made the folder. Work that would be General is IHRDC when its title, action, detail or ticket names an IHRDC Jira key (CNG, THREEX or ITSP, in any case) or the words "Jira", "Aishwarya", "QA test agent" or "QA testing agent". This covers Claude Code sessions Jack starts outside any repo, such as "CNG-7189 QA testing agent". The words are `TEXT_CLIENTS` in `functions/src/tools/journal.ts`. Work in a repo with its own client keeps it: a Maisie session about a Jira token stays Executive Assistant.
+The table is `REPO_CLIENTS`, `OWNER_CLIENTS` and `JIRA_SITE_CLIENTS` in `functions/src/tools/journal.ts`. A Claude Code session in a scratch folder counts for the repo of the session that made the folder.
+
+A Claude Code session often moves to a folder that is in no repo, such as `~/Documents/GitHub` (the folder above the repos) or Claude Code's own `memory` folder. Until 2026-10-15 that work had no repo and became General: 604 items, 27.7 hours, in the 30 days to 2026-10-15, most of it IHRDC. Now such a span takes, in order:
+
+1. the repo the session was started in, from the folder Claude Code files the session under (`homeRepoOf` in `claude-sessions.ts`);
+2. when that has no repo either, the repo that most of the session's activity was in.
+
+Work that would still be General is given a client by its words. It is IHRDC when its title, action, detail or ticket names an IHRDC Jira key (CNG, THREEX or ITSP, in any case) or the words "Jira", "Aishwarya", "QA test agent", "QA testing agent" or "Bug fixer agent". It is Church for "Bible study", "Bible studies" or "Ecclesiastes". The words are `TEXT_CLIENTS` in `functions/src/tools/journal.ts`. Work in a repo with its own client keeps it: a Maisie session about a Jira token stays Executive Assistant.
+
+What is left in General is mostly personal work in `JaxPersonal`, such as a job search or a letter about a traffic ticket. It is General on purpose, because it is not for a client. If Jack wants it counted, add a task category and map the repo to it in `REPO_CLIENTS`.
 
 A client can be any task category, including one Jack added, such as Executive Assistant (`executive_assistant`); the journal shows it by its name.
 
-After changing `REPO_CLIENTS` or `OWNER_CLIENTS`, move the GitHub and Claude Code items already in the journal from the Mac, once the change is on `main`:
+After changing `REPO_CLIENTS`, `OWNER_CLIENTS` or `TEXT_CLIENTS`, move the GitHub and Claude Code items already in the journal from the Mac, once the change is on `main`. The command also reads Claude Code's session files again (the last 90 days, though Claude Code keeps about a month), so that a stored item with no repo gets the one its session now gives it:
 
 ```bash
 cd functions

@@ -14,6 +14,10 @@
  * finishing, or a long tool run picking up again after a pause, is the session
  * working, not Jack. Work that moves to another folder or branch after his
  * prompt, with no pause, is still his.
+ *
+ * A span in a folder that is in no repo, such as the folder above the repos or
+ * Claude Code's own memory folder, takes the repo the session was started in,
+ * so the journal gives it that repo's client and not General.
  */
 
 import {execFileSync} from "child_process";
@@ -81,6 +85,30 @@ export function repoOf(cwd: string, cache = new Map<string, string | null>()): s
   }
   cache.set(dir, repo);
   return repo;
+}
+
+/**
+ * "owner/name" of the repo a session was started in, from the folder name
+ * Claude Code files it under, or null. A removed worktree is filed under its
+ * own name, so the repo's name is used.
+ */
+export function homeRepoOf(projectName: string, cache = new Map<string, string | null>()): string | null {
+  const dir = decodeFolderName(projectName.replace(/--claude-worktrees-.*$/, ""));
+  return dir ? repoOf(dir, cache) : null;
+}
+
+/**
+ * The repo of each span. A span in no repo takes the session's home repo, and
+ * when that is none, the repo that most of the session's activity was in.
+ */
+export function spanRepos(spans: Activity[][], home: string | null, repoFor: (cwd: string) => string | null): Array<string | null> {
+  const own = spans.map((span) => repoFor(span[0].cwd));
+  const activity = new Map<string, number>();
+  own.forEach((repo, i) => {
+    if (repo) activity.set(repo, (activity.get(repo) ?? 0) + spans[i].length);
+  });
+  const mostActive = [...activity.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  return own.map((repo) => repo ?? home ?? mostActive);
 }
 
 /** True for a line Jack typed, not a tool result or a message Claude Code added. */
@@ -162,6 +190,7 @@ export function readClaudeSessions(since: Date, root = process.env.MAISIE_CLAUDE
   for (const project of readdirSync(root, {withFileTypes: true})) {
     if (!project.isDirectory()) continue;
     const dir = join(root, project.name);
+    const home = homeRepoOf(project.name, repos);
     for (const file of readdirSync(dir)) {
       if (!file.endsWith(".jsonl")) continue;
       const path = join(dir, file);
@@ -171,6 +200,7 @@ export function readClaudeSessions(since: Date, root = process.env.MAISIE_CLAUDE
       const sessionId = session.sessionId || basename(file, ".jsonl");
       const spans = workSpans(session.activity);
       const prompted = promptedSpans(spans);
+      const spanRepo = spanRepos(spans, home, (cwd) => repoOf(cwd, repos));
       for (const [i, span] of spans.entries()) {
         const first = span[0];
         const last = span[span.length - 1];
@@ -180,7 +210,7 @@ export function readClaudeSessions(since: Date, root = process.env.MAISIE_CLAUDE
           result.skipped++;
           continue;
         }
-        const repo = repoOf(first.cwd, repos);
+        const repo = spanRepo[i];
         const where = repo?.split("/")[1] ?? basename(first.cwd);
         result.items.push({
           source: "claude",
