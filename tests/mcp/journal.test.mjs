@@ -391,13 +391,15 @@ describe('work journal job', () => {
     assert.deepEqual(s.lastErrors, []);
   });
 
-  it('a later run reads only from an hour before the last one, and reading the same work again adds nothing', async () => {
+  it('a later run reads only from shortly before the last one, and reading the same work again adds nothing', async () => {
     await runJob();
     const before = (await items()).length;
 
     const next = runJob();
     assert.equal(next.code, 0, next.output);
-    assert.match(next.output, /GitHub since .*: 0 read/);
+    // GitHub reads 8 hours back, so it sees the same 3 events again and adds nothing; Jira reads 1 hour back.
+    assert.match(next.output, /GitHub since .*: 3 read, 0 new, 0 changed, 3 already in the journal/);
+    assert.match(next.output, /Jira since .*: 0 read/);
 
     // Forget how far it read, so the whole 30 days are read again.
     await db.doc('metadata/journal').delete();
@@ -405,6 +407,50 @@ describe('work journal job', () => {
     assert.equal(again.code, 0, again.output);
     assert.match(again.output, /GitHub since .*: 3 read, 0 new, 0 changed, 3 already in the journal/);
     assert.equal((await items()).length, before);
+  });
+
+  it('journals a push that GitHub added to its feed hours after it happened, after a run had already passed its time', async () => {
+    await runJob();
+    // Three hours ago, but only now in the feed, as with Jack's phone pushes on 2026-10-18.
+    write(GITHUB_FIXTURE, { ...GITHUB, 'users/jacknota/events': [
+      { id: '106', type: 'PushEvent', created_at: ago(180), repo: { name: 'Notarangelo-Technical-Advisory/Grace-Pres' },
+        payload: { ref: 'refs/heads/main', before: '0000000', head: 'c16c914' } },
+      ...GITHUB['users/jacknota/events'],
+    ], 'repos/Notarangelo-Technical-Advisory/Grace-Pres/commits/c16c914': {
+      commit: { message: 'Add worship convictions deck for October 2026 congregational meeting' },
+    } });
+
+    const { output, code } = runJob();
+
+    assert.equal(code, 0, output);
+    const push = (await bySource('github')).find(i => i.sourceId === '106');
+    assert.equal(push?.client, 'church');
+    assert.equal(push?.subject, 'Add worship convictions deck for October 2026 congregational meeting');
+  });
+
+  it('with --from, reads every source again from that day, picking up work a run missed and adding nothing twice', async () => {
+    await runJob();
+    const before = (await items()).length;
+    // Two days ago, beyond even GitHub's 8 hours, and only now in the feed.
+    write(GITHUB_FIXTURE, { ...GITHUB, 'users/jacknota/events': [
+      { id: '107', type: 'PushEvent', created_at: ago(60 * 48), repo: { name: 'Notarangelo-Technical-Advisory/Grace-Pres' },
+        payload: { ref: 'refs/heads/main', before: '0000000', head: 'c16c914' } },
+      ...GITHUB['users/jacknota/events'],
+    ], 'repos/Notarangelo-Technical-Advisory/Grace-Pres/commits/c16c914': { commit: { message: 'Add worship convictions deck' } } });
+
+    assert.match(runJob().output, /GitHub since .*: 3 read, 0 new/);
+    const day = etDay(new Date(NOW - 60 * 48 * 60_000).toISOString());
+    const { output, code } = runJob('--from', day);
+
+    assert.equal(code, 0, output);
+    assert.match(output, /GitHub since .*: 4 read, 1 new, 0 changed, 3 already in the journal/);
+    assert.equal((await items()).length, before + 1);
+  });
+
+  it('refuses --from without a day', async () => {
+    const { output, code } = runJob('--from', 'Sunday');
+    assert.equal(code, 1);
+    assert.match(output, /--from needs a day as YYYY-MM-DD/);
   });
 
   it('a dry run prints what it would add and writes nothing, not even its progress', async () => {

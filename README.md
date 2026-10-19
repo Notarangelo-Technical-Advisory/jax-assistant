@@ -237,7 +237,10 @@ per week, day and client, and each client's work sessions and items. It opens
 on the last 14 days; filters choose other dates and one client or all clients. MAISIE
 reads it with `get_journal`. After a change to which repo belongs to which
 client, `npm run journal:reclassify` (from `functions/`) moves the items already
-stored. See `projects/work-journal/README.md`.
+stored. To pick up work a run missed, `npm run journal:collect -- --from 2026-10-18`
+(from `functions/`) reads every source again from that day; work already in the
+journal is not added twice. GitHub is always read from 8 hours before the last
+run, because its feed can show an event hours after it happened. See `projects/work-journal/README.md`.
 
 ```bash
 cp bridge/com.notarangelo.work-journal.plist ~/Library/LaunchAgents/
