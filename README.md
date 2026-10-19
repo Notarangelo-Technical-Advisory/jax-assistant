@@ -237,7 +237,16 @@ per week, day and client, and each client's work sessions and items. It opens
 on the last 14 days; filters choose other dates and one client or all clients. MAISIE
 reads it with `get_journal`. After a change to which repo belongs to which
 client, `npm run journal:reclassify` (from `functions/`) moves the items already
-stored. To pick up work a run missed, `npm run journal:collect -- --from 2026-10-18`
+stored. Claude Code sessions Jack runs in the cloud (from his phone, the web or the
+desktop app) never reach the Mac, so a scheduled cloud task records them each
+night at 11:44 PM ET. It saves only each session's title, repo, where it ran and
+the time of each event, marking the messages Jack typed (never their text), as
+one file per day on the `journal-data` branch of the private
+`fractional-tech-advisory` repo (`functions/src/mcp/export-cloud-sessions.ts`).
+The journal job reads the last two days of those files with `gh` and journals
+each stretch of a session that has a message from Jack, like a Claude Code
+session on the Mac (`functions/src/mcp/cloud-sessions.ts`). The task tags its
+own session `journal:skip` so it is not journaled. To pick up work a run missed, `npm run journal:collect -- --from 2026-10-18`
 (from `functions/`) reads every source again from that day; work already in the
 journal is not added twice. GitHub is always read from 8 hours before the last
 run, because its feed can show an event hours after it happened. See `projects/work-journal/README.md`.

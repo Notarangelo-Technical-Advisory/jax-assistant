@@ -453,6 +453,42 @@ describe('work journal job', () => {
     assert.match(output, /--from needs a day as YYYY-MM-DD/);
   });
 
+  it("journals Claude Code work Jack did on his phone, from the nightly export, one item per stretch he prompted", async () => {
+    // A Grace-Pres session: a prompt and 6 minutes of work, a 40-minute pause with only
+    // background work after it, then a second prompt.
+    const events = [[ago(200), 1], [ago(197), 0], [ago(194), 0], [ago(150), 0], [ago(149), 0], [ago(100), 1], [ago(98), 0]];
+    const files = {};
+    for (const [at, p] of events) {
+      const day = etDay(at);
+      files[day] ??= { day, sessions: [{ id: 'session_01GRACE', title: 'Grace Presbyterian worship principles presentation', origin: 'ios',
+        repo: 'Notarangelo-Technical-Advisory/Grace-Pres', branch: null, events: [] }] };
+      files[day].sessions[0].events.push([at, p]);
+    }
+    const contents = Object.fromEntries(Object.entries(files).map(([day, file]) => [
+      `repos/Notarangelo-Technical-Advisory/fractional-tech-advisory/contents/journal/cloud-sessions/${day}.json`,
+      { content: Buffer.from(JSON.stringify(file)).toString('base64') },
+    ]));
+    write(GITHUB_FIXTURE, { ...GITHUB, ...contents });
+
+    const { output, code } = runJob();
+
+    assert.equal(code, 0, output);
+    assert.match(output, /Claude Code in the cloud since .*: 2 read, 2 new/);
+    assert.match(output, /stretches with no prompt left out: 1/);
+    const cloud = (await bySource('claude')).filter((i) => i.sourceId.startsWith('cloud:'));
+    assert.deepEqual(cloud.map((i) => [i.client, i.action, i.at, i.endAt, i.detail]), [
+      ['church', 'Claude Code on phone in Grace-Pres', ago(200), ago(194), '1 prompt'],
+      ['church', 'Claude Code on phone in Grace-Pres', ago(100), ago(98), '1 prompt'],
+    ]);
+    assert.equal(cloud[0].url, 'https://claude.ai/code/session_01GRACE', 'each item opens its session on claude.ai');
+  });
+
+  it('says which days the nightly export has not covered yet, and still journals the rest', async () => {
+    const { output, code } = runJob();
+    assert.equal(code, 0, output);
+    assert.match(output, /Claude Code in the cloud since .*: 0 read.*days not exported yet: \d{4}-\d{2}-\d{2}/);
+  });
+
   it('a dry run prints what it would add and writes nothing, not even its progress', async () => {
     const { output, code } = await runJob('--dry-run');
 
