@@ -11,6 +11,7 @@
     "autolink:contacts": "tsx src/mcp/autolink-contacts.ts",
     "journal:collect": "tsx src/mcp/collect-journal.ts",
     "journal:reclassify": "tsx src/mcp/reclassify-journal.ts",
+    "journal:export-cloud": "tsx src/mcp/export-cloud-sessions.ts",
     "typecheck:mcp": "tsc -p tsconfig.mcp.json"
   },
   "engines": {

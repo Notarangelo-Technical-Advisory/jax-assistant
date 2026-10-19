@@ -40,6 +40,7 @@ import {readClaudeSessions} from "./claude-sessions";
 import {readCalendarMeetings} from "./apple-meetings";
 import {readWisprRecordings} from "./wispr-recordings";
 import {readSentMail} from "./apple-mail";
+import {readCloudSessions} from "./cloud-sessions";
 import {etDayStart} from "../et-time";
 
 const BACKFILL_DAYS = 30;
@@ -52,6 +53,11 @@ const OVERLAP_MS = 60 * 60 * 1000;
  * so reading the same events again adds nothing.
  */
 const GITHUB_OVERLAP_MS = 8 * 60 * 60 * 1000;
+/**
+ * Cloud Claude Code sessions arrive once a night, from a scheduled cloud task
+ * (cloud-sessions.ts), so each run reads the last two days again.
+ */
+const CLOUD_OVERLAP_MS = 48 * 60 * 60 * 1000;
 const STATE = db.doc("metadata/journal");
 
 function startFrom(checkedThrough: unknown, now: Date, overlapMs = OVERLAP_MS, from: Date | null = null): Date {
@@ -83,6 +89,16 @@ const SOURCES: Source[] = [
       const a = readGitHubActivity(since);
       const failures = a.lookupFailures ? `; titles not found: ${a.lookupFailures}` : "";
       return {items: a.items, note: ` (as ${a.login}; events left out: ${a.skipped}${failures})`};
+    },
+  },
+  {
+    name: "Claude Code in the cloud",
+    stateKey: "cloud",
+    overlapMs: CLOUD_OVERLAP_MS,
+    read: async (since, now) => {
+      const c = readCloudSessions(since, now);
+      const missing = c.missingDays.length ? `; days not exported yet: ${c.missingDays.join(", ")}` : "";
+      return {items: c.items, note: ` (stretches with no prompt left out: ${c.skipped}${missing})`};
     },
   },
   {
