@@ -246,7 +246,11 @@ one file per day on the `journal-data` branch of the private
 The journal job reads the last two days of those files with `gh` and journals
 each stretch of a session that has a message from Jack, like a Claude Code
 session on the Mac (`functions/src/mcp/cloud-sessions.ts`). The task tags its
-own session `journal:skip` so it is not journaled. To pick up work a run missed, `npm run journal:collect -- --from 2026-10-18`
+own session `journal:skip` so it is not journaled. At the end of each run, the job brings the Mac's copy of jax-assistant up to
+date with GitHub (`functions/src/mcp/self-update.ts`), so the next run uses any
+fix merged since. It only fast-forwards `main`, runs `npm install` when
+`functions/package-lock.json` changed, and leaves the copy alone when it is on
+another branch or has uncommitted changes. To pick up work a run missed, `npm run journal:collect -- --from 2026-10-18`
 (from `functions/`) reads every source again from that day; work already in the
 journal is not added twice. GitHub is always read from 8 hours before the last
 run, because its feed can show an event hours after it happened. See `projects/work-journal/README.md`.
