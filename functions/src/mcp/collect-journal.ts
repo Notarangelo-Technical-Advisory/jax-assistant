@@ -8,11 +8,14 @@
  * Usage (from functions/):
  *   npm run journal:collect -- --dry-run   # show what would be added, write nothing
  *   npm run journal:collect                # collect
+ *   npm run journal:collect -- --from 2026-10-18   # also read again from that day
  *
  * - The first run looks back BACKFILL_DAYS (GitHub keeps at most 300 events,
  *   so its first run may reach back less far). Each later run starts an hour
- *   before the previous one finished; the fixed item ids make the overlap
- *   harmless.
+ *   before the previous one finished (GitHub: 8 hours, because its feed can
+ *   show an event hours late); the fixed item ids make the overlap harmless.
+ * - --from YYYY-MM-DD reads every source again from the start of that day, to
+ *   pick up work a run missed. Work already in the journal is not added twice.
  * - GitHub, Jira, Claude Code, the calendars, Wispr Flow and Mail are read
  *   separately. If one fails, the others are still collected, and the failed
  *   one starts from the same place next time.
@@ -37,14 +40,24 @@ import {readClaudeSessions} from "./claude-sessions";
 import {readCalendarMeetings} from "./apple-meetings";
 import {readWisprRecordings} from "./wispr-recordings";
 import {readSentMail} from "./apple-mail";
+import {etDayStart} from "../et-time";
 
 const BACKFILL_DAYS = 30;
 const OVERLAP_MS = 60 * 60 * 1000;
+/**
+ * GitHub adds an event to the feed from 30 seconds to 6 hours after it
+ * happened, by its own documentation. An event that arrived after a run had
+ * already read past its time was never read: two pushes Jack made from his
+ * phone on 2026-10-18 were lost this way. Items are saved by their event id,
+ * so reading the same events again adds nothing.
+ */
+const GITHUB_OVERLAP_MS = 8 * 60 * 60 * 1000;
 const STATE = db.doc("metadata/journal");
 
-function startFrom(checkedThrough: unknown, now: Date): Date {
+function startFrom(checkedThrough: unknown, now: Date, overlapMs = OVERLAP_MS, from: Date | null = null): Date {
   const last = checkedThrough instanceof admin.firestore.Timestamp ? checkedThrough.toMillis() : null;
-  return new Date(last ? last - OVERLAP_MS : now.getTime() - BACKFILL_DAYS * 86_400_000);
+  const start = last ? last - overlapMs : now.getTime() - BACKFILL_DAYS * 86_400_000;
+  return new Date(from ? Math.min(start, from.getTime()) : start);
 }
 
 function report(label: string, s: SaveSummary, extra: string, labels: ReadonlyMap<string, string>): void {
@@ -57,12 +70,15 @@ interface Source {
   name: string;
   stateKey: string;
   read: (since: Date, now: Date) => Promise<{items: JournalItemInput[]; note: string}>;
+  /** How far before the last run to start reading; an hour unless the source is slow to show new work. */
+  overlapMs?: number;
 }
 
 const SOURCES: Source[] = [
   {
     name: "GitHub",
     stateKey: "github",
+    overlapMs: GITHUB_OVERLAP_MS,
     read: async (since) => {
       const a = readGitHubActivity(since);
       const failures = a.lookupFailures ? `; titles not found: ${a.lookupFailures}` : "";
@@ -125,6 +141,14 @@ const SOURCES: Source[] = [
 
 async function main(): Promise<void> {
   const dryRun = process.argv.includes("--dry-run");
+  const fromArg = process.argv[process.argv.indexOf("--from") + 1];
+  // Noon UTC is the same date in Eastern Time, so etDayStart gives that day's midnight ET.
+  const from = process.argv.includes("--from") && /^\d{4}-\d{2}-\d{2}$/.test(fromArg ?? "") ?
+    etDayStart(new Date(`${fromArg}T12:00:00Z`)) : null;
+  if (process.argv.includes("--from") && !from) {
+    console.error("--from needs a day as YYYY-MM-DD, such as --from 2026-10-18.");
+    process.exit(1);
+  }
   const now = new Date();
   const state = (await STATE.get()).data() ?? {};
   const labels = await loadClientLabels(db);
@@ -134,7 +158,7 @@ async function main(): Promise<void> {
 
   if (dryRun) console.log("Dry run: nothing was written.\n");
   for (const source of SOURCES) {
-    const since = startFrom(state[`${source.stateKey}CheckedThrough`], now);
+    const since = startFrom(state[`${source.stateKey}CheckedThrough`], now, source.overlapMs, from);
     try {
       const {items, note} = await source.read(since, now);
       const saved = await saveJournalItems(db, items, {dryRun});
