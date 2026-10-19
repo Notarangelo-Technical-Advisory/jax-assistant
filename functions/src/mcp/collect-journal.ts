@@ -14,6 +14,9 @@
  *   so its first run may reach back less far). Each later run starts an hour
  *   before the previous one finished (GitHub: 8 hours, because its feed can
  *   show an event hours late); the fixed item ids make the overlap harmless.
+ * - At the end of each run it brings this copy of the repo up to date with
+ *   GitHub (self-update.ts), so the next run uses any fix merged since. It
+ *   only fast-forwards main, and leaves a branch or uncommitted changes alone.
  * - --from YYYY-MM-DD reads every source again from the start of that day, to
  *   pick up work a run missed. Work already in the journal is not added twice.
  * - GitHub, Jira, Claude Code, the calendars, Wispr Flow and Mail are read
@@ -42,6 +45,8 @@ import {readWisprRecordings} from "./wispr-recordings";
 import {readSentMail} from "./apple-mail";
 import {readCloudSessions} from "./cloud-sessions";
 import {etDayStart} from "../et-time";
+import {selfUpdate} from "./self-update";
+import {join} from "path";
 
 const BACKFILL_DAYS = 30;
 const OVERLAP_MS = 60 * 60 * 1000;
@@ -197,6 +202,13 @@ async function main(): Promise<void> {
 
   update["lastErrors"] = failures;
   if (!dryRun) await STATE.set(update, {merge: true});
+
+  // Last, so an update can never hold up or break this run's collecting; the
+  // next run uses the new code. Not in a dry run, and never under the emulator
+  // (the tests), so a test cannot pull.
+  if (!dryRun && !process.env.FIRESTORE_EMULATOR_HOST) {
+    console.log(`Code: ${selfUpdate(join(__dirname, "..", "..", "..")).note}`);
+  }
   if (failures.length) throw new Error(failures.join("\n"));
 }
 
