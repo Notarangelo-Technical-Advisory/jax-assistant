@@ -935,6 +935,18 @@ $border: #334155;
   &:focus { outline: none; border-color: $accent; }
 }
 
+// "every [3] months", "on day [1]": the words say what each number box means.
+.recurrence-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: $text-secondary;
+  white-space: nowrap;
+
+  .recurrence-day-input { width: 64px; }
+}
+
 .task-recurrence {
   font-size: 0.7rem;
   color: $accent;
@@ -1454,7 +1466,8 @@ $border: #334155;
 
   .recurrence-select,
   .recurrence-day-select,
-  .recurrence-day-input {
+  .recurrence-day-input,
+  .recurrence-field {
     flex: 1 1 auto;
   }
 
