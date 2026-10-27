@@ -43,6 +43,8 @@ Follow [`docs/standards/testing.md`](docs/standards/testing.md). In this app, ad
 
 ## Context map
 
+[`docs/architecture/architecture.md`](docs/architecture/architecture.md) is the technical reference: stack, collections, functions, Mac programs, CI and tests. Update it in the same pull request as any change it describes.
+
 [`docs/architecture/context-map.html`](docs/architecture/context-map.html) is the domain-driven design map of MAISIE. Update it in the same pull request when a change does any of these:
 
 - Adds or removes an area, such as a new feature with its own records and tools
