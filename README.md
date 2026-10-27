@@ -8,6 +8,24 @@ MAISIE is Jack's executive assistant. She runs on three surfaces:
 | Scheduled briefings | Same, unattended | `morningBriefing` (7am/1pm ET), `invoiceReminder` |
 | VS Code (Claude Code) | Everything above **plus** native Apple Mail and Calendar | Two local MCP servers |
 
+## How MAISIE is organized
+
+[`docs/architecture/context-map.html`](docs/architecture/context-map.html) is a
+domain-driven design map of MAISIE: her nine areas, what each one owns, and how
+they connect to each other and to outside systems. Open it in a browser, because
+GitHub shows only its source. It loads nothing from the network, so it works
+offline and can be copied anywhere.
+
+- **Three areas are core:** the assistant (chat, memories and the shared tools),
+  the work journal, and time and billing. Together they turn Jack's day into
+  invoices.
+- **Five areas support them:** tasks, contacts, calendar, the briefing and
+  headlines, and the LinkedIn posts.
+- **The desktop bridge is plumbing:** it runs Mail and Calendar actions on the
+  Mac for the cloud.
+- **Whoever makes a change updates the map** when the change adds an area, a
+  Firestore collection or an outside system, or changes how two areas connect.
+
 ## MAISIE in VS Code
 
 Two stdio MCP servers expose MAISIE to Claude Code. Both are local-only and are

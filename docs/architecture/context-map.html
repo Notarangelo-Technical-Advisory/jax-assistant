@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAISIE Context Map</title>
+<!--
+  Domain-driven design context map of MAISIE (jax-assistant).
+  Self-contained: every style is in this file and it loads nothing from the network,
+  so it works offline and can be copied anywhere. Colours are the NTA brand tokens.
+  Update it when a change adds an area, a Firestore collection or an outside system,
+  or changes how two areas connect.
+-->
+<style>
+:root {
+  --bg: #FFFFFF;
+  --surface: #F8FAFC;
+  --fg: #0F172A;
+  --fg-2: #334155;
+  --fg-3: #64748B;
+  --border: #E2E8F0;
+  --border-strong: #94A3B8;
+  --navy: #1E3A8A;
+  --navy-light: #3B82F6;
+  --green: #10B981;
+  --core-fill: #EEF2FB;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-diagram: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0F172A; --surface: #1E293B; --fg: #F1F5F9; --fg-2: #CBD5E1; --fg-3: #94A3B8;
+    --border: #334155; --border-strong: #64748B; --navy: #93B4F8; --navy-light: #60A5FA;
+    --green: #34D399; --core-fill: #172554;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.page { max-width: 1280px; margin: 0 auto; padding: 40px 16px 64px; display: flex; flex-direction: column; gap: 36px; }
+header { display: flex; flex-direction: column; gap: 10px; max-width: 72ch; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3); }
+h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.15; font-weight: 700; color: var(--navy); margin: 0; text-wrap: balance; }
+h2 { font-size: 20px; font-weight: 600; margin: 0; color: var(--fg); text-wrap: balance; }
+h3 { font-size: 13px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--fg-3); font-weight: 500; margin: 0 0 12px; }
+p { margin: 0; color: var(--fg-2); }
+code { font-family: var(--font-mono); font-size: .86em; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+section { display: flex; flex-direction: column; gap: 14px; }
+
+/* Ways in */
+.ways { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.way { border-top: 3px solid var(--navy); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.way b { font-size: 14px; color: var(--fg); }
+.way span { font-size: 13px; color: var(--fg-3); }
+@media (max-width: 760px) { .ways { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Diagram */
+.map-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.map-scroll svg { display: block; width: 100%; min-width: 1000px; height: auto; }
+svg text { font-family: var(--font-diagram); }
+.box-core { fill: var(--core-fill); stroke: var(--navy); stroke-width: 2; }
+.box-sup { fill: var(--bg); stroke: var(--navy-light); stroke-width: 1.5; }
+.box-gen { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.5; }
+.box-ext { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.t-name { font-size: 16px; font-weight: 600; fill: var(--fg); }
+.t-name-core { font-size: 16px; font-weight: 600; fill: var(--navy); }
+.t-tag { font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+.tag-core { fill: var(--green); }
+.tag-sup { fill: var(--navy-light); }
+.tag-gen { fill: var(--fg-3); }
+.t-agg { font-size: 13px; font-weight: 500; fill: var(--fg); }
+.t-body { font-size: 12.5px; fill: var(--fg-2); }
+.t-mono { font-family: var(--font-mono); font-size: 11px; fill: var(--fg-3); }
+.t-ext { font-size: 12.5px; fill: var(--fg-2); }
+.t-ext-name { font-size: 13px; font-weight: 600; fill: var(--fg); }
+.divider { stroke: var(--border); stroke-width: 1; }
+.ln-tool { stroke: var(--green); stroke-width: 2; fill: none; }
+.ln-rel { stroke: var(--fg-3); stroke-width: 1.5; fill: none; }
+.badge rect { fill: var(--bg); stroke: var(--fg-3); stroke-width: 1.2; }
+.badge text { font-family: var(--font-mono); font-size: 11px; font-weight: 500; fill: var(--fg); }
+.badge-ohs rect { stroke: var(--green); }
+
+/* Legend */
+.legend { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 28px; }
+@media (max-width: 860px) { .legend { grid-template-columns: minmax(0, 1fr); } }
+.legend ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.legend li { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 12px; align-items: start; font-size: 14px; color: var(--fg-2); }
+.legend li b { color: var(--fg); font-weight: 600; }
+.swatch { height: 22px; border-radius: 5px; }
+.sw-core { background: var(--core-fill); border: 2px solid var(--navy); }
+.sw-sup { background: var(--bg); border: 1.5px solid var(--navy-light); }
+.sw-gen { background: var(--surface); border: 1.5px solid var(--border-strong); }
+.sw-ext { background: var(--surface); border: 1.5px dashed var(--border-strong); }
+.sw-tool { height: 2px; margin-top: 10px; background: var(--green); }
+.code-pill { font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-align: center; border: 1.2px solid var(--fg-3); border-radius: 11px; height: 22px; line-height: 20px; color: var(--fg); }
+
+/* Table */
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 720px; }
+th { text-align: left; font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-3); border-bottom: 1px solid var(--border-strong); padding: 8px 12px 8px 0; }
+td { border-bottom: 1px solid var(--border); padding: 10px 12px 10px 0; vertical-align: top; color: var(--fg-2); }
+td:first-child { color: var(--fg); font-weight: 500; white-space: nowrap; }
+td.pat { white-space: nowrap; font-family: var(--font-mono); font-size: 12.5px; color: var(--fg); }
+
+.notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 860px) { .notes { grid-template-columns: minmax(0, 1fr); } }
+.note { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.note b { color: var(--fg); }
+footer { font-size: 13px; color: var(--fg-3); border-top: 1px solid var(--border); padding-top: 14px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="eyebrow">Domain-driven design · jax-assistant</div>
+    <h1>MAISIE Context Map</h1>
+    <p>This map shows the nine areas (bounded contexts) inside MAISIE, what each one owns, and how each one connects to the others and to the outside systems it reads or writes.</p>
+  </header>
+
+  <section aria-label="Ways in">
+    <h2>Four ways to reach MAISIE</h2>
+    <div class="ways">
+      <div class="way"><b>Web dashboard</b><span>Angular app: dashboard, journal and contacts pages, chat with voice</span></div>
+      <div class="way"><b>SMS</b><span>Twilio to the <code>receiveSms</code> function, same tool loop as the chat</span></div>
+      <div class="way"><b>VS Code</b><span><code>maisie</code> and <code>desktop</code> MCP servers on the Mac</span></div>
+      <div class="way"><b>Schedules</b><span>Briefings, headlines, LinkedIn steps, invoice reminder, Mac jobs</span></div>
+    </div>
+  </section>
+
+  <section aria-label="Context map">
+    <h2>The context map</h2>
+    <div class="map-scroll">
+      <svg viewBox="0 0 1260 900" role="img" aria-labelledby="map-title map-desc">
+        <title id="map-title">MAISIE context map</title>
+        <desc id="map-desc">MAISIE Assistant sits in the centre and reaches eight other areas through its shared tools. Work Journal and Time and Billing are core with the assistant. Outside systems sit above and below.</desc>
+
+        <!-- Tool lines from the assistant to every area (open host service) -->
+        <g class="ln-tool">
+          <line x1="440" y1="372" x2="360" y2="270"/>
+          <line x1="630" y1="355" x2="630" y2="270"/>
+          <line x1="820" y1="372" x2="900" y2="270"/>
+          <line x1="440" y1="450" x2="330" y2="450"/>
+          <line x1="820" y1="450" x2="930" y2="450"/>
+          <line x1="440" y1="528" x2="360" y2="630"/>
+          <line x1="630" y1="545" x2="630" y2="630"/>
+          <line x1="820" y1="528" x2="900" y2="630"/>
+        </g>
+
+        <!-- Other relationships -->
+        <g class="ln-rel">
+          <line x1="360" y1="205" x2="465" y2="205"/>
+          <line x1="795" y1="205" x2="900" y2="205"/>
+          <line x1="630" y1="84" x2="630" y2="140"/>
+          <line x1="1065" y1="84" x2="1065" y2="140"/>
+          <line x1="1080" y1="375" x2="1080" y2="270"/>
+          <line x1="195" y1="760" x2="195" y2="820"/>
+          <line x1="630" y1="760" x2="630" y2="820"/>
+          <line x1="1065" y1="760" x2="1065" y2="820"/>
+          <path d="M30 470 H14 V847 H30"/>
+        </g>
+
+        <!-- Outside systems, top -->
+        <rect class="box-ext" x="420" y="30" width="420" height="54" rx="8"/>
+        <text class="t-ext-name" x="436" y="52">Work sources</text>
+        <text class="t-ext" x="436" y="72">GitHub · Jira · Claude Code · Wispr Flow · the Mac</text>
+
+        <rect class="box-ext" x="900" y="30" width="330" height="54" rx="8"/>
+        <text class="t-ext-name" x="916" y="52">NTA Time Tracker</text>
+        <text class="t-ext" x="916" y="72">Firestore project fta-invoice-tracking</text>
+
+        <!-- Tasks -->
+        <rect class="box-sup" x="30" y="140" width="330" height="130" rx="10"/>
+        <text class="t-name" x="46" y="168">Tasks</text>
+        <text class="t-tag tag-sup" x="344" y="168" text-anchor="end">SUPPORTING</text>
+        <text class="t-agg" x="46" y="194">Task · TaskCategory · RecurrenceRule</text>
+        <text class="t-body" x="46" y="214">A category is a client: IHRDC, DIAL, PPK …</text>
+        <text class="t-body" x="46" y="232">Repeats every N months or N times</text>
+        <text class="t-mono" x="46" y="256">tasks · taskCategories</text>
+
+        <!-- Work Journal -->
+        <rect class="box-core" x="465" y="140" width="330" height="130" rx="10"/>
+        <text class="t-name-core" x="481" y="168">Work Journal</text>
+        <text class="t-tag tag-core" x="779" y="168" text-anchor="end">CORE</text>
+        <text class="t-agg" x="481" y="194">JournalItem → JournalDay → WorkSession</text>
+        <text class="t-body" x="481" y="214">Every item has one client</text>
+        <text class="t-body" x="481" y="232">A client Jack sets by hand is kept</text>
+        <text class="t-mono" x="481" y="256">journal · journalDays</text>
+
+        <!-- Time & Billing -->
+        <rect class="box-core" x="900" y="140" width="330" height="130" rx="10"/>
+        <text class="t-name-core" x="916" y="168">Time &amp; Billing</text>
+        <text class="t-tag tag-core" x="1214" y="168" text-anchor="end">CORE</text>
+        <text class="t-agg" x="916" y="194">TimeEntry · Invoice · Customer · Project</text>
+        <text class="t-body" x="916" y="214">Post every entry or none</text>
+        <text class="t-body" x="916" y="232">Times to the minute; no overlaps</text>
+        <text class="t-mono" x="916" y="256">fta-client.ts · time-entries.ts</text>
+
+        <!-- Contacts -->
+        <rect class="box-sup" x="30" y="375" width="300" height="150" rx="10"/>
+        <text class="t-name" x="46" y="403">Contacts</text>
+        <text class="t-tag tag-sup" x="314" y="403" text-anchor="end">SUPPORTING</text>
+        <text class="t-agg" x="46" y="429">Contact · Company</text>
+        <text class="t-agg" x="46" y="449">ContactNote · ContactLink</text>
+        <text class="t-body" x="46" y="469">Links: mail, meetings, texts, calls</text>
+        <text class="t-body" x="46" y="487">iCloud owns names, emails, phones</text>
+        <text class="t-mono" x="46" y="511">contacts · companies · contactLinks</text>
+
+        <!-- MAISIE Assistant (centre) -->
+        <rect class="box-core" x="440" y="355" width="380" height="190" rx="12"/>
+        <text class="t-name-core" x="460" y="386" style="font-size:19px">MAISIE Assistant</text>
+        <text class="t-tag tag-core" x="800" y="386" text-anchor="end">CORE</text>
+        <text class="t-agg" x="460" y="414">ChatSession · ChatMessage · Memory</text>
+        <text class="t-body" x="460" y="436">Sends persona and state with each request</text>
+        <text class="t-body" x="460" y="456">About 35 tools in one Sonnet 5.5 tool loop</text>
+        <text class="t-body" x="460" y="476">At most 50 memories of 4,000 characters each</text>
+        <line class="divider" x1="460" y1="494" x2="800" y2="494"/>
+        <text class="t-mono" x="460" y="514">functions/src/tools</text>
+        <text class="t-mono" x="460" y="532">one executor for chat, SMS and MCP</text>
+
+        <!-- Briefing & Headlines -->
+        <rect class="box-sup" x="930" y="375" width="300" height="150" rx="10"/>
+        <text class="t-name" x="946" y="403">Briefing &amp; Headlines</text>
+        <text class="t-tag tag-sup" x="1214" y="403" text-anchor="end">SUPPORTING</text>
+        <text class="t-agg" x="946" y="429">Briefing · Alert · Headlines</text>
+        <text class="t-body" x="946" y="449">Reads tasks, calendar, unbilled time</text>
+        <text class="t-body" x="946" y="469">7 AM and 1 PM ET; Haiku 5.5 text</text>
+        <text class="t-body" x="946" y="487">Headlines only from news feeds</text>
+        <text class="t-mono" x="946" y="511">briefings · alerts</text>
+
+        <!-- Calendar -->
+        <rect class="box-sup" x="30" y="630" width="330" height="130" rx="10"/>
+        <text class="t-name" x="46" y="658">Calendar</text>
+        <text class="t-tag tag-sup" x="344" y="658" text-anchor="end">SUPPORTING</text>
+        <text class="t-agg" x="46" y="684">CalendarEvent (Apple Calendar copy)</text>
+        <text class="t-body" x="46" y="704">Changes since last sync are marked</text>
+        <text class="t-body" x="46" y="722">Cloud writes wait in a queue</text>
+        <text class="t-mono" x="46" y="746">calendarEvents · pendingCalendarActions</text>
+
+        <!-- Desktop Bridge -->
+        <rect class="box-gen" x="465" y="630" width="330" height="130" rx="10"/>
+        <text class="t-name" x="481" y="658">Desktop Bridge</text>
+        <text class="t-tag tag-gen" x="779" y="658" text-anchor="end">GENERIC</text>
+        <text class="t-agg" x="481" y="684">DesktopAction: mail search, read, draft</text>
+        <text class="t-body" x="481" y="704">The cloud never sends mail</text>
+        <text class="t-body" x="481" y="722">Sending happens only in VS Code</text>
+        <text class="t-mono" x="481" y="746">pendingDesktopActions · every 30 s</text>
+
+        <!-- LinkedIn -->
+        <rect class="box-sup" x="900" y="630" width="330" height="130" rx="10"/>
+        <text class="t-name" x="916" y="658">LinkedIn Posts</text>
+        <text class="t-tag tag-sup" x="1214" y="658" text-anchor="end">SUPPORTING</text>
+        <text class="t-agg" x="916" y="684">LinkedInWeek (one post each Tuesday)</text>
+        <text class="t-body" x="916" y="704">idea → drafted → approved → posted</text>
+        <text class="t-body" x="916" y="722">An edit returns a post to drafted</text>
+        <text class="t-mono" x="916" y="746">linkedin/week (dashboard card)</text>
+
+        <!-- Outside systems, bottom -->
+        <rect class="box-ext" x="30" y="820" width="765" height="54" rx="8"/>
+        <text class="t-ext-name" x="46" y="842">Jack's Mac</text>
+        <text class="t-ext" x="46" y="862">Apple Mail · Calendar (EventKit reads, AppleScript writes) · Contacts · Messages · Call history</text>
+
+        <rect class="box-ext" x="900" y="820" width="330" height="54" rx="8"/>
+        <text class="t-ext-name" x="916" y="842">fractional-tech-advisory repo</text>
+        <text class="t-ext" x="916" y="862">LinkedIn queue, drafts, writing skill</text>
+
+        <!-- Badges -->
+        <g class="badge"><rect x="391" y="195" width="42" height="20" rx="10"/><text x="412" y="209" text-anchor="middle">SK</text></g>
+        <g class="badge"><rect x="826" y="195" width="42" height="20" rx="10"/><text x="847" y="209" text-anchor="middle">C/S</text></g>
+        <g class="badge"><rect x="609" y="102" width="42" height="20" rx="10"/><text x="630" y="116" text-anchor="middle">ACL</text></g>
+        <g class="badge"><rect x="1044" y="102" width="42" height="20" rx="10"/><text x="1065" y="116" text-anchor="middle">ACL</text></g>
+        <g class="badge"><rect x="1059" y="312" width="42" height="20" rx="10"/><text x="1080" y="326" text-anchor="middle">C/S</text></g>
+        <g class="badge"><rect x="174" y="780" width="42" height="20" rx="10"/><text x="195" y="794" text-anchor="middle">ACL</text></g>
+        <g class="badge"><rect x="609" y="780" width="42" height="20" rx="10"/><text x="630" y="794" text-anchor="middle">ACL</text></g>
+        <g class="badge"><rect x="1044" y="780" width="42" height="20" rx="10"/><text x="1065" y="794" text-anchor="middle">CF</text></g>
+        <g class="badge"><rect x="0" y="640" width="28" height="20" rx="10"/><text x="14" y="654" text-anchor="middle">CF</text></g>
+        <g class="badge badge-ohs"><rect x="851" y="440" width="48" height="20" rx="10"/><text x="875" y="454" text-anchor="middle">OHS</text></g>
+      </svg>
+    </div>
+  </section>
+
+  <section aria-label="Legend" class="legend">
+    <div>
+      <h3>Kinds of area</h3>
+      <ul>
+        <li><span class="swatch sw-core"></span><span><b>Core.</b> The reason MAISIE exists: she turns Jack's day into billable hours and acts for him.</span></li>
+        <li><span class="swatch sw-sup"></span><span><b>Supporting.</b> Built for Jack's way of working, and it serves the core.</span></li>
+        <li><span class="swatch sw-gen"></span><span><b>Generic.</b> Plumbing that any assistant would need.</span></li>
+        <li><span class="swatch sw-ext"></span><span><b>Outside system.</b> MAISIE does not own its data.</span></li>
+      </ul>
+    </div>
+    <div>
+      <h3>Lines and labels</h3>
+      <ul>
+        <li><span class="sw-tool"></span><span><b>Green line, OHS (open host service).</b> MAISIE Assistant uses this area through its shared tools.</span></li>
+        <li><span class="code-pill">ACL</span><span><b>Anti-corruption layer.</b> Code that translates an outside system's data into MAISIE's own terms.</span></li>
+        <li><span class="code-pill">CF</span><span><b>Conformist.</b> MAISIE accepts the other side's model as it is.</span></li>
+        <li><span class="code-pill">C/S</span><span><b>Customer and supplier.</b> One area depends on what the other area provides.</span></li>
+        <li><span class="code-pill">SK</span><span><b>Shared kernel.</b> Two areas share one small part of the model.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section aria-label="Relationships">
+    <h2>Each connection, and the code behind it</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Connection</th><th>Pattern</th><th>How it works</th></tr></thead>
+        <tbody>
+          <tr><td>MAISIE Assistant → every area</td><td class="pat">OHS</td><td>One tool executor in <code>functions/src/tools</code> serves the web chat, SMS and the <code>maisie</code> MCP server, so a tool behaves the same everywhere.</td></tr>
+          <tr><td>Tasks ↔ Work Journal</td><td class="pat">SK</td><td>The list of clients is the list of task categories. A journal item's client is a category name.</td></tr>
+          <tr><td>Work Journal → Time &amp; Billing</td><td class="pat">C/S</td><td>The journal page drafts and posts a day's work sessions as time entries through the <code>timeEntries</code> function (actions <code>day</code>, <code>draft</code>, <code>post</code>).</td></tr>
+          <tr><td>Time &amp; Billing → NTA Time Tracker</td><td class="pat">ACL, CF on write</td><td><code>fta-client.ts</code> reads customers, projects, entries and invoices from <code>fta-invoice-tracking</code>. New entries use the tracker's own shape, as <code>unbilled</code> with <code>source: "maisie"</code>.</td></tr>
+          <tr><td>Work sources → Work Journal</td><td class="pat">ACL</td><td><code>collect-journal.ts</code> runs every 15 minutes on the Mac and turns GitHub, Jira, Claude Code, Wispr Flow, meetings and sent mail into journal items with a client.</td></tr>
+          <tr><td>Briefing → Tasks, Calendar, Time &amp; Billing</td><td class="pat">C/S</td><td><code>refreshBriefingFacts</code> and <code>morningBriefing</code> collect overdue tasks, events and unbilled hours. Haiku 5.5 writes the short summary.</td></tr>
+          <tr><td>Jack's Mac → Contacts</td><td class="pat">CF, ACL</td><td>The import at 6:00 each morning accepts iCloud as the master copy. <code>autolink-contacts.ts</code> runs every 15 minutes and turns mail, meetings, texts and calls into contact links.</td></tr>
+          <tr><td>Jack's Mac → Calendar</td><td class="pat">ACL</td><td><code>calendar-sync.ts</code> reads through EventKit, because AppleScript cannot list each meeting in a repeating series. Writes from the cloud wait in <code>pendingCalendarActions</code>.</td></tr>
+          <tr><td>Desktop Bridge ↔ Jack's Mac</td><td class="pat">ACL</td><td><code>desktop-bridge.ts</code> checks <code>pendingDesktopActions</code> every 30 seconds and runs the Mail action. The cloud tool waits up to 40 seconds for the result.</td></tr>
+          <tr><td>LinkedIn Posts → repo</td><td class="pat">CF</td><td>The queue file and drafts in <code>fractional-tech-advisory</code> are the only record. Firestore keeps only the dashboard card, refreshed each day at 6:30 AM.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-label="Notes">
+    <h2>Three points to keep in mind</h2>
+    <div class="notes">
+      <div class="note"><b>Three areas are core.</b><p>MAISIE Assistant, Work Journal and Time &amp; Billing together turn scattered work into invoices. A change there needs the most care and the most tests.</p></div>
+      <div class="note"><b>Billing data is not MAISIE's.</b><p>The NTA Time Tracker owns entries and invoices. MAISIE only adds unbilled entries, and she can delete only the entries she posted.</p></div>
+      <div class="note"><b>The Mac is a separate world.</b><p>The cloud reaches Mail and Calendar only through queues on the Mac. Contacts, the journal and calendar reads all depend on Mac jobs and macOS permissions.</p></div>
+    </div>
+  </section>
+
+  <footer>Last checked against the code on 27 October 2026 (commit 681609a), from <code>README.md</code>, <code>firestore.rules</code>, <code>src/app/models</code>, <code>functions/src</code> and <code>projects/*/README.md</code>.</footer>
+</div>
+</body>
+</html>
