@@ -521,44 +521,39 @@
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
           </select>
+          @if (newTaskRecurrenceType) {
+            <label class="recurrence-field" title="Every N days, weeks or months. Leave blank for every one; 3 months is quarterly.">
+              <span>every</span>
+              <input type="number" [(ngModel)]="newTaskRecurrenceInterval" class="recurrence-day-input" min="1" placeholder="1" />
+              <span>{{ recurrenceUnit(newTaskRecurrenceType) }}</span>
+            </label>
+          }
           @if (newTaskRecurrenceType === 'weekly') {
-            <select [(ngModel)]="newTaskRecurrenceDay" class="recurrence-day-select" title="Day of week">
-              <option [value]="0">Sunday</option>
-              <option [value]="1">Monday</option>
-              <option [value]="2">Tuesday</option>
-              <option [value]="3">Wednesday</option>
-              <option [value]="4">Thursday</option>
-              <option [value]="5">Friday</option>
-              <option [value]="6">Saturday</option>
-            </select>
+            <label class="recurrence-field" title="Day of the week">
+              <span>on</span>
+              <select [(ngModel)]="newTaskRecurrenceDay" class="recurrence-day-select">
+                <option [value]="0">Sunday</option>
+                <option [value]="1">Monday</option>
+                <option [value]="2">Tuesday</option>
+                <option [value]="3">Wednesday</option>
+                <option [value]="4">Thursday</option>
+                <option [value]="5">Friday</option>
+                <option [value]="6">Saturday</option>
+              </select>
+            </label>
           }
           @if (newTaskRecurrenceType === 'monthly') {
-            <input
-              type="number"
-              [(ngModel)]="newTaskRecurrenceDay"
-              class="recurrence-day-input"
-              min="1" max="31"
-              placeholder="Day of month"
-              title="Day of month (1–31)"
-            />
+            <label class="recurrence-field" title="Day of the month, 1 to 31. In shorter months, the last day.">
+              <span>on day</span>
+              <input type="number" [(ngModel)]="newTaskRecurrenceDay" class="recurrence-day-input" min="1" max="31" placeholder="1–31" />
+            </label>
           }
           @if (newTaskRecurrenceType) {
-            <input
-              type="number"
-              [(ngModel)]="newTaskRecurrenceInterval"
-              class="recurrence-day-input"
-              min="1"
-              placeholder="Every N"
-              title="Every N days, weeks or months (blank = every one; 3 months = quarterly)"
-            />
-            <input
-              type="number"
-              [(ngModel)]="newTaskRecurrenceTimes"
-              class="recurrence-day-input"
-              min="1"
-              placeholder="Times"
-              title="How many times in total (blank = no end)"
-            />
+            <label class="recurrence-field" title="How many times in total. Leave blank for no end.">
+              <span>ends after</span>
+              <input type="number" [(ngModel)]="newTaskRecurrenceTimes" class="recurrence-day-input" min="1" placeholder="no end" />
+              <span>times</span>
+            </label>
           }
           <button class="btn-add" (click)="addTask()">Add</button>
         </div>
@@ -623,43 +618,38 @@
                           <option value="weekly">Weekly</option>
                           <option value="monthly">Monthly</option>
                         </select>
+                        @if (editingTaskRecurrenceType) {
+                          <label class="recurrence-field" title="Every N days, weeks or months. Leave blank for every one; 3 months is quarterly.">
+                            <span>every</span>
+                            <input type="number" [(ngModel)]="editingTaskRecurrenceInterval" class="recurrence-day-input" min="1" placeholder="1" />
+                            <span>{{ recurrenceUnit(editingTaskRecurrenceType) }}</span>
+                          </label>
+                        }
                         @if (editingTaskRecurrenceType === 'weekly') {
-                          <select [(ngModel)]="editingTaskRecurrenceDay" class="recurrence-day-select">
-                            <option [value]="0">Sunday</option>
-                            <option [value]="1">Monday</option>
-                            <option [value]="2">Tuesday</option>
-                            <option [value]="3">Wednesday</option>
-                            <option [value]="4">Thursday</option>
-                            <option [value]="5">Friday</option>
-                            <option [value]="6">Saturday</option>
-                          </select>
+                          <label class="recurrence-field" title="Day of the week">
+                            <span>on</span>
+                            <select [(ngModel)]="editingTaskRecurrenceDay" class="recurrence-day-select">
+                              <option [value]="0">Sunday</option>
+                              <option [value]="1">Monday</option>
+                              <option [value]="2">Tuesday</option>
+                              <option [value]="3">Wednesday</option>
+                              <option [value]="4">Thursday</option>
+                              <option [value]="5">Friday</option>
+                              <option [value]="6">Saturday</option>
+                            </select>
+                          </label>
                         }
                         @if (editingTaskRecurrenceType === 'monthly') {
-                          <input
-                            type="number"
-                            [(ngModel)]="editingTaskRecurrenceDay"
-                            class="recurrence-day-input"
-                            min="1" max="31"
-                            placeholder="Day"
-                          />
+                          <label class="recurrence-field" title="Day of the month, 1 to 31. In shorter months, the last day.">
+                            <span>on day</span>
+                            <input type="number" [(ngModel)]="editingTaskRecurrenceDay" class="recurrence-day-input" min="1" max="31" placeholder="1–31" />
+                          </label>
                         }
                         @if (editingTaskRecurrenceType) {
-                          <input
-                            type="number"
-                            [(ngModel)]="editingTaskRecurrenceInterval"
-                            class="recurrence-day-input"
-                            min="1"
-                            placeholder="Every N"
-                            title="Every N days, weeks or months (blank = every one; 3 months = quarterly)"
-                          />
-                          <input
-                            type="number"
-                            [(ngModel)]="editingTaskRecurrenceTimes"
-                            class="recurrence-day-input"
-                            min="1"
-                            placeholder="Times left"
-                            title="How many times are left, counting this one (blank = no end)"
-                          />
+                          <label class="recurrence-field" title="How many times are left, counting this one. Leave blank for no end.">
+                            <input type="number" [(ngModel)]="editingTaskRecurrenceTimes" class="recurrence-day-input" min="1" placeholder="no end" />
+                            <span>times left</span>
+                          </label>
                         }
                         <button class="btn-save-inline" (click)="saveTask(task)" title="Save">&#10003;</button>
                         <button class="btn-cancel-inline" (click)="cancelEditTask()" title="Cancel">&#10005;</button>

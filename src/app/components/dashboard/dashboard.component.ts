@@ -755,6 +755,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.taskSaveError.set(null);
   }
 
+  /** The word after "every [N]" in the recurrence fields. */
+  recurrenceUnit(type: string): string {
+    return type === 'daily' ? 'days' : type === 'weekly' ? 'weeks' : 'months';
+  }
+
   recurrenceLabel(task: Task): string {
     return task.recurrence ? describeRecurrence(task.recurrence) : '';
   }
