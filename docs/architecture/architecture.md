@@ -143,7 +143,7 @@ All functions are in `us-central1`. There are no `onCall` functions: every HTTP 
 | `linkedinRefresh`, `linkedinDraft`, `linkedinApprovalRequest`, `linkedinPostReminder` | Schedule (daily; Thursday; Friday; Tuesday) | Reads the post queue from the `fractional-tech-advisory` repo, drafts, and texts Jack reminders |
 | `linkedinAction` | HTTPS | Dashboard card actions for the post |
 | `invoiceReminder` | Schedule, 09:00 ET, days 5–7 | Raises an alert when last month is not yet invoiced |
-| `receiveSms` | HTTPS (Twilio webhook) | Turns a text into add, complete or list task with `LIGHT_MODEL`, and replies |
+| `receiveSms` | HTTPS (Twilio webhook) | Refuses any request without a valid Twilio signature (`twilio-signature.ts`) and any sender other than Jack. Turns a text into add, complete or list task with `LIGHT_MODEL`, and replies |
 
 Environment variable names: `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, `FINNHUB_API_KEY`, `LINKEDIN_QUEUE_PAT`, `MAISIE_PAT`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `JACK_PHONE_NUMBER`.
 
@@ -252,7 +252,6 @@ npm run test:all
 
 These were found when this document was written on 2026-10-27. Each needs a decision before it is changed.
 
-- **The SMS webhook does not check Twilio's signature.** The check in `receiveSms` is commented out. The only protection is that the `From` number must be Jack's. Anyone who knows the webhook URL can send a request that claims to come from that number, and so add or complete tasks.
 - **SMS does not use the shared tools.** `receiveSms` has its own parser with 3 actions and a fixed category list. The context map and README say it uses the tool loop.
 - **The docs give old timings for the desktop bridge.** The README and context map say it polls every 30 seconds and the cloud waits 40. The code polls every 10 seconds and waits 90.
 - **The tool counts in the docs are wrong.** The README and a comment in `definitions.ts` say 4 cloud tools are missing from VS Code; the real number is 11. The README tool table also leaves out `move_journal_items`.
