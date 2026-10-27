@@ -8,30 +8,7 @@ import { collectionData } from 'rxfire/firestore';
 import { Observable } from 'rxjs';
 import { Task, TaskRecurrence } from '../models/task.model';
 import { FIRESTORE } from '../firebase';
-
-function getNextOccurrence(recurrence: TaskRecurrence, fromDate: Date): string {
-  const next = new Date(fromDate);
-  next.setHours(0, 0, 0, 0);
-
-  if (recurrence.type === 'daily') {
-    next.setDate(next.getDate() + 1);
-  } else if (recurrence.type === 'weekly' && recurrence.dayOfWeek !== undefined) {
-    const currentDay = next.getDay();
-    let daysUntil = recurrence.dayOfWeek - currentDay;
-    if (daysUntil <= 0) daysUntil += 7;
-    next.setDate(next.getDate() + daysUntil);
-  } else if (recurrence.type === 'monthly' && recurrence.dayOfMonth !== undefined) {
-    const target = recurrence.dayOfMonth;
-    if (target > next.getDate()) {
-      next.setDate(target);
-    } else {
-      next.setMonth(next.getMonth() + 1);
-      next.setDate(target);
-    }
-  }
-
-  return next.toISOString().split('T')[0];
-}
+import { nextDueDate } from './recurrence';
 
 /**
  * Fields an inline task edit may change. `null` clears the field; leaving a key
@@ -94,10 +71,14 @@ export class TaskService {
     const snap = await getDoc(ref);
     const data = snap.data() as Task | undefined;
 
-    if (data?.recurrence) {
-      // Recurring task: advance due date to next occurrence instead of completing
-      const nextDue = getNextOccurrence(data.recurrence, new Date());
-      await updateDoc(ref, { dueDate: nextDue });
+    const recurrence = data?.recurrence;
+    if (recurrence && (recurrence.remaining === undefined || recurrence.remaining > 1)) {
+      // A repeating task stays open with its next due date, until its last time.
+      // Same rule as Maisie's complete_task tool (see recurrence.ts).
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      const updates: Record<string, unknown> = { dueDate: nextDueDate(recurrence, data.dueDate, today) };
+      if (recurrence.remaining !== undefined) updates['recurrence.remaining'] = recurrence.remaining - 1;
+      await updateDoc(ref, updates);
     } else {
       await updateDoc(ref, {
         completed: true,

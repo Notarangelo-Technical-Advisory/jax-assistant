@@ -7,6 +7,7 @@ import {
 import {readCalendarEvents, formatEventTime, extractMeetingLink, extractPasscode} from "./calendar-read";
 import {Category, DEFAULT_CATEGORY_KEYS} from "./definitions";
 import {etDateKey, etDaysWindow, addDaysToKey} from "../et-time";
+import {RecurrenceRule, cleanRecurrence, firstDueDate, nextDueDate, recurrenceError} from "../recurrence";
 import {refreshWeek, approvePost, markPosted, writeDraft, describeWeek, LinkedInWeek} from "../linkedin";
 import {
   findContacts,
@@ -153,24 +154,51 @@ export async function executeTool(
 
   // ─── Tasks ───────────────────────────────────────────────────
   case "add_task": {
-    const input = rawInput as {title: string; category: string; dueDate?: string};
+    const input = rawInput as {title: string; category: string; dueDate?: string; recurrence?: RecurrenceRule};
+    let recurrence: RecurrenceRule | null = null;
+    if (input.recurrence) {
+      const error = recurrenceError(input.recurrence);
+      if (error) return {success: false, error: `recurrence: ${error}`};
+      recurrence = cleanRecurrence(input.recurrence);
+    }
+    // A repeating task with no date would never come due, so give it its first one.
+    const dueDate = input.dueDate || (recurrence ? firstDueDate(recurrence, etDateKey(new Date())) : null);
     const docRef = await db.collection("tasks").add({
       title: input.title,
       category: input.category,
       completed: false,
-      dueDate: input.dueDate || null,
+      dueDate,
+      recurrence,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    return {success: true, taskId: docRef.id};
+    return {success: true, taskId: docRef.id, dueDate};
   }
 
   case "complete_task": {
     const input = rawInput as {taskId: string};
-    await db.collection("tasks").doc(input.taskId).update({
+    const ref = db.collection("tasks").doc(input.taskId);
+    const task = (await ref.get()).data();
+    if (!task) return {success: false, error: `No task with ID ${input.taskId}.`};
+    const recurrence = task["recurrence"] as RecurrenceRule | null | undefined;
+
+    // A repeating task stays open with its next due date, until its last time.
+    if (recurrence && (recurrence.remaining === undefined || recurrence.remaining > 1)) {
+      const previousDueDate = (task["dueDate"] as string | null) ?? null;
+      const dueDate = nextDueDate(recurrence, previousDueDate, etDateKey(new Date()));
+      const updates: Record<string, unknown> = {dueDate};
+      if (recurrence.remaining !== undefined) updates["recurrence.remaining"] = recurrence.remaining - 1;
+      await ref.update(updates);
+      return {
+        success: true, repeats: true, previousDueDate, nextDueDate: dueDate,
+        remaining: recurrence.remaining === undefined ? null : recurrence.remaining - 1,
+      };
+    }
+
+    await ref.update({
       completed: true,
       completedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    return {success: true};
+    return {success: true, ...(recurrence ? {repeats: false, lastTime: true} : {})};
   }
 
   case "reopen_task": {
@@ -183,10 +211,20 @@ export async function executeTool(
   }
 
   case "update_task": {
-    const input = rawInput as {taskId: string; dueDate?: string | null; title?: string};
+    const input = rawInput as {taskId: string; dueDate?: string | null; title?: string; recurrence?: RecurrenceRule | null};
     const updates: Record<string, unknown> = {};
     if (input.title !== undefined) updates["title"] = input.title;
     if (input.dueDate !== undefined) updates["dueDate"] = input.dueDate ?? null;
+    if (input.recurrence !== undefined) {
+      if (input.recurrence === null) {
+        updates["recurrence"] = null;
+      } else {
+        const error = recurrenceError(input.recurrence);
+        if (error) return {success: false, error: `recurrence: ${error}`};
+        updates["recurrence"] = cleanRecurrence(input.recurrence);
+      }
+    }
+    if (Object.keys(updates).length === 0) return {success: true};
     await db.collection("tasks").doc(input.taskId).update(updates);
     return {success: true};
   }

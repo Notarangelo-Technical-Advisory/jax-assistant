@@ -7,11 +7,17 @@ import {
 
 // The task list against the Firestore emulator, signed in as Jack.
 
-/** A date as YYYY-MM-DD, `days` from today. */
+/** A date as YYYY-MM-DD, `days` from today in Eastern Time, which is the "today" the service uses. */
 function daysFromToday(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const d = new Date(`${today}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The weekday (Sunday = 0) `days` from today in Eastern Time. */
+function weekdayIn(days: number): number {
+  return new Date(`${daysFromToday(days)}T00:00:00Z`).getUTCDay();
 }
 
 describe('TaskService', () => {
@@ -91,8 +97,7 @@ describe('TaskService', () => {
   });
 
   it('moves a weekly task to the next matching weekday', async () => {
-    const inTwoDays = new Date(Date.now() + 2 * 86_400_000).getDay();
-    const task = await add('Friday demo', 'ihrdc', undefined, { type: 'weekly', dayOfWeek: inTwoDays });
+    const task = await add('Friday demo', 'ihrdc', undefined, { type: 'weekly', dayOfWeek: weekdayIn(2) });
 
     await service.completeTask(task.id!);
     await waitFor(() => tasks.latest()![0].dueDate !== null);
@@ -100,11 +105,33 @@ describe('TaskService', () => {
   });
 
   it('moves a weekly task due today to the same weekday next week', async () => {
-    const task = await add('Status report', 'ihrdc', undefined, { type: 'weekly', dayOfWeek: new Date().getDay() });
+    const task = await add('Status report', 'ihrdc', undefined, { type: 'weekly', dayOfWeek: weekdayIn(0) });
 
     await service.completeTask(task.id!);
     await waitFor(() => tasks.latest()![0].dueDate !== null);
     expect(tasks.latest()![0].dueDate).toBe(daysFromToday(7));
+  });
+
+  it('moves a quarterly task three months on from its due date', async () => {
+    const task = await add('Change the furnace filters', 'general', '2099-01-01', { type: 'monthly', interval: 3, dayOfMonth: 1 });
+
+    await service.completeTask(task.id!);
+    await waitFor(() => tasks.latest()![0].dueDate !== '2099-01-01');
+    expect(tasks.latest()![0].dueDate).toBe('2099-04-01');
+    expect(tasks.latest()![0].completed).toBeFalse();
+  });
+
+  it('counts down the times left on a task, and closes it after the last one', async () => {
+    const task = await add('Feed the geraniums', 'general', '2099-01-01', { type: 'monthly', dayOfMonth: 1, remaining: 2 });
+
+    await service.completeTask(task.id!);
+    await waitFor(() => tasks.latest()![0].dueDate === '2099-02-01');
+    expect(tasks.latest()![0].recurrence).toEqual({ type: 'monthly', dayOfMonth: 1, remaining: 1 });
+
+    await service.completeTask(task.id!);
+    await waitFor(() => tasks.latest()!.length === 0);
+    const [stored] = await listDocuments('tasks');
+    expect(stored['completed']).toEqual({ booleanValue: true });
   });
 
   it('deletes a task', async () => {

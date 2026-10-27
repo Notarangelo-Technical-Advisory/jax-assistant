@@ -23,6 +23,7 @@ import { LinkedInWeek } from '../../models/linkedin.model';
 import { Briefing, Headlines } from '../../models/briefing.model';
 import { headlineSourceNote } from './headline-sources';
 import { Task, TaskRecurrence } from '../../models/task.model';
+import { describeRecurrence } from '../../services/recurrence';
 import { TaskCategory } from '../../models/task-category.model';
 import { Alert } from '../../models/alert.model';
 import { ChatSession } from '../../models/chat-session.model';
@@ -92,6 +93,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   editingTaskDueDate = '';
   editingTaskRecurrenceType = '';
   editingTaskRecurrenceDay: number | null = null;
+  editingTaskRecurrenceInterval: number | string | null = null;
+  editingTaskRecurrenceTimes: number | string | null = null;
 
   chatInput = '';
   newTaskTitle = '';
@@ -99,6 +102,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   newTaskDueDate = '';
   newTaskRecurrenceType = '';
   newTaskRecurrenceDay: number | null = null;
+  newTaskRecurrenceInterval: number | string | null = null;
+  newTaskRecurrenceTimes: number | string | null = null;
   voice = localStorage.getItem('maisie-voice') || DEFAULT_VOICE;
   ttsMuted = signal(localStorage.getItem('maisie-muted') === 'true');
 
@@ -640,21 +645,38 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // ── Tasks ──────────────────────────────────────────────────
 
-  buildRecurrence(type: string, day: number | string | null): TaskRecurrence | undefined {
+  buildRecurrence(
+    type: string,
+    day: number | string | null,
+    interval: number | string | null = null,
+    times: number | string | null = null,
+  ): TaskRecurrence | undefined {
     // The day controls hand back strings — `[value]="0"` binds the string "0",
     // and a number input yields a string once it's typed into. Coerce before
-    // storing, or Firestore keeps "1" and getNextOccurrence does string maths.
-    const parsed = day === null || day === '' ? NaN : Number(day);
-    const dayNum = Number.isFinite(parsed) ? parsed : null;
-    if (type === 'daily') return { type: 'daily' };
-    if (type === 'weekly' && dayNum !== null) return { type: 'weekly', dayOfWeek: dayNum };
-    if (type === 'monthly' && dayNum !== null) return { type: 'monthly', dayOfMonth: dayNum };
-    return undefined;
+    // storing, or Firestore keeps "1" and the date rule does string maths.
+    const toNum = (v: number | string | null) => {
+      const parsed = v === null || v === '' ? NaN : Number(v);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const dayNum = toNum(day);
+    let rule: TaskRecurrence;
+    if (type === 'daily') rule = { type: 'daily' };
+    else if (type === 'weekly' && dayNum !== null) rule = { type: 'weekly', dayOfWeek: dayNum };
+    else if (type === 'monthly' && dayNum !== null) rule = { type: 'monthly', dayOfMonth: dayNum };
+    else return undefined;
+    // Blank or 1 means every day/week/month; blank times means no end.
+    const every = toNum(interval);
+    if (every !== null && every > 1) rule.interval = Math.floor(every);
+    const count = toNum(times);
+    if (count !== null && count >= 1) rule.remaining = Math.floor(count);
+    return rule;
   }
 
   async addTask(): Promise<void> {
     if (!this.newTaskTitle.trim()) return;
-    const recurrence = this.buildRecurrence(this.newTaskRecurrenceType, this.newTaskRecurrenceDay);
+    const recurrence = this.buildRecurrence(
+      this.newTaskRecurrenceType, this.newTaskRecurrenceDay, this.newTaskRecurrenceInterval, this.newTaskRecurrenceTimes,
+    );
     await this.taskService.addTask(
       this.newTaskTitle.trim(),
       this.newTaskCategory,
@@ -665,6 +687,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.newTaskDueDate = '';
     this.newTaskRecurrenceType = '';
     this.newTaskRecurrenceDay = null;
+    this.newTaskRecurrenceInterval = null;
+    this.newTaskRecurrenceTimes = null;
   }
 
   toggleBillingEntries(): void {
@@ -690,6 +714,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.editingTaskDueDate = task.dueDate || '';
     this.editingTaskRecurrenceType = task.recurrence?.type || '';
     this.editingTaskRecurrenceDay = task.recurrence?.dayOfWeek ?? task.recurrence?.dayOfMonth ?? null;
+    this.editingTaskRecurrenceInterval = task.recurrence?.interval ?? null;
+    this.editingTaskRecurrenceTimes = task.recurrence?.remaining ?? null;
     this.taskSaveError.set(null);
   }
 
@@ -698,7 +724,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.editingTaskId = null;
       return;
     }
-    const recurrence = this.buildRecurrence(this.editingTaskRecurrenceType, this.editingTaskRecurrenceDay);
+    const recurrence = this.buildRecurrence(
+      this.editingTaskRecurrenceType, this.editingTaskRecurrenceDay,
+      this.editingTaskRecurrenceInterval, this.editingTaskRecurrenceTimes,
+    );
     // null, not undefined: clearing the due date or the recurrence has to write
     // an actual value, and Firestore refuses undefined.
     const updates: TaskUpdates = {
@@ -727,15 +756,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   recurrenceLabel(task: Task): string {
-    const r = task.recurrence;
-    if (!r) return '';
-    if (r.type === 'daily') return 'daily';
-    if (r.type === 'weekly' && r.dayOfWeek !== undefined) {
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      return `wkly ${days[r.dayOfWeek]}`;
-    }
-    if (r.type === 'monthly' && r.dayOfMonth !== undefined) return `mthly ${r.dayOfMonth}`;
-    return '';
+    return task.recurrence ? describeRecurrence(task.recurrence) : '';
   }
 
   async dismissAlert(alert: Alert): Promise<void> {
