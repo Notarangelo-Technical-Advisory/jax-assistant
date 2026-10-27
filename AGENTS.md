@@ -40,3 +40,14 @@ Follow [`docs/standards/testing.md`](docs/standards/testing.md). In this app, ad
 - A new or changed web page or service → a `*.spec.ts` file next to it, run against the emulators (`src/testing/emulator-testing.ts`)
 
 `npm run test:all` runs `test:ci`, `test:site`, `test:rules`, `test:functions`, `test:mcp` and `test:bridge`. `tests.yml` runs the same suites on every pull request and before every deploy. See the Tests section of `README.md` for what each suite covers.
+
+## Context map
+
+[`docs/architecture/context-map.html`](docs/architecture/context-map.html) is the domain-driven design map of MAISIE. Update it in the same pull request when a change does any of these:
+
+- Adds or removes an area, such as a new feature with its own records and tools
+- Adds, renames or removes a Firestore collection
+- Adds or removes an outside system that MAISIE reads or writes
+- Changes how two areas connect, for example a new queue or a new cross-project read
+
+Keep the file self-contained: every style stays inside it and it loads nothing from the network. Change the date and commit in its footer to the day you checked it against the code.
