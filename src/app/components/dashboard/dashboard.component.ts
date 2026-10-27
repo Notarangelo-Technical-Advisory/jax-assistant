@@ -22,6 +22,7 @@ import { LinkedInService, LinkedInAction } from '../../services/linkedin.service
 import { LinkedInWeek } from '../../models/linkedin.model';
 import { Briefing, Headlines } from '../../models/briefing.model';
 import { headlineSourceNote } from './headline-sources';
+import { followDueDate } from './recurrence-day';
 import { Task, TaskRecurrence } from '../../models/task.model';
 import { describeRecurrence } from '../../services/recurrence';
 import { TaskCategory } from '../../models/task-category.model';
@@ -92,7 +93,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   editingTaskTitle = '';
   editingTaskDueDate = '';
   editingTaskRecurrenceType = '';
-  editingTaskRecurrenceDay: number | null = null;
+  editingTaskRecurrenceDay: number | string | null = null;
   editingTaskRecurrenceInterval: number | string | null = null;
   editingTaskRecurrenceTimes: number | string | null = null;
 
@@ -101,7 +102,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   newTaskCategory = 'general';
   newTaskDueDate = '';
   newTaskRecurrenceType = '';
-  newTaskRecurrenceDay: number | null = null;
+  newTaskRecurrenceDay: number | string | null = null;
   newTaskRecurrenceInterval: number | string | null = null;
   newTaskRecurrenceTimes: number | string | null = null;
   voice = localStorage.getItem('maisie-voice') || DEFAULT_VOICE;
@@ -670,6 +671,31 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const count = toNum(times);
     if (count !== null && count >= 1) rule.remaining = Math.floor(count);
     return rule;
+  }
+
+  // The repeat day follows the due date while it is the due date's own day,
+  // and a blank one is filled from the due date (see recurrence-day.ts).
+
+  setNewTaskDueDate(date: string): void {
+    this.newTaskRecurrenceDay = followDueDate(this.newTaskRecurrenceType, this.newTaskRecurrenceDay, this.newTaskDueDate, date);
+    this.newTaskDueDate = date;
+  }
+
+  setNewTaskRecurrenceType(type: string): void {
+    this.newTaskRecurrenceType = type;
+    this.newTaskRecurrenceDay = followDueDate(type, this.newTaskRecurrenceDay, '', this.newTaskDueDate);
+  }
+
+  setEditingTaskDueDate(date: string): void {
+    this.editingTaskRecurrenceDay = followDueDate(
+      this.editingTaskRecurrenceType, this.editingTaskRecurrenceDay, this.editingTaskDueDate, date,
+    );
+    this.editingTaskDueDate = date;
+  }
+
+  setEditingTaskRecurrenceType(type: string): void {
+    this.editingTaskRecurrenceType = type;
+    this.editingTaskRecurrenceDay = followDueDate(type, this.editingTaskRecurrenceDay, '', this.editingTaskDueDate);
   }
 
   async addTask(): Promise<void> {
