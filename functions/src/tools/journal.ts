@@ -22,6 +22,9 @@ import {DEFAULT_CATEGORIES} from "./definitions";
 //   recordingItems). An email's client comes from the people it went to or
 //   its subject (see emailItems). Clients are the task categories, so the journal and the
 //   task list use the same names.
+// - Jack can move items to another client on the journal page (see
+//   moveJournalItems). A moved item keeps the client he chose: the journal job
+//   and reclassifyJournal no longer change it.
 // - Time is an estimate. Items less than GAP_MINUTES apart form one work
 //   session, timed from its first item to its last, and a session is never
 //   shorter than MIN_SESSION_MINUTES.
@@ -223,6 +226,8 @@ export interface JournalItem {
   url: string | null;
   repo: string | null;
   ticket: string | null;
+  /** True when Jack moved the item to its client himself; nothing changes that client again. */
+  clientByHand?: boolean;
 }
 
 export interface WorkSession {
@@ -599,8 +604,10 @@ export async function saveJournalItems(
     const snaps = await db.getAll(...part.map((id) => col.doc(id)));
     for (const snap of snaps) {
       const item = items.get(snap.id)!;
-      summary.byClient[item.client] = (summary.byClient[item.client] ?? 0) + 1;
       const old = snap.data();
+      // Jack moved it himself: his client stands, whatever the rules now say.
+      if (old?.["clientByHand"] === true && typeof old["client"] === "string") item.client = old["client"];
+      summary.byClient[item.client] = (summary.byClient[item.client] ?? 0) + 1;
       if (old && SAME_FIELDS.every((f) => (old[f] ?? null) === item[f])) {
         summary.unchanged++;
         continue;
@@ -716,6 +723,8 @@ export interface ReclassifySummary {
   changed: number;
   /** Claude Code items that were given a repo they had none of, or would be in a dry run. */
   reposFilled: number;
+  /** Items Jack moved himself whose client the rules would change; they keep his client. */
+  keptByHand: number;
   /** How many items moved from each client to each other client. */
   changes: Array<{from: string; to: string; count: number}>;
   /** The days whose summaries were rebuilt, or would be. */
@@ -729,21 +738,27 @@ export interface ReclassifySummary {
  * that changed. Run it after changing those rules: the job reads GitHub's last
  * 300 events only, so older items would otherwise keep their old client. Jira items,
  * meetings and recordings keep their client, because their rules need what
- * the job read at the time.
+ * the job read at the time. Items Jack moved himself keep his client.
  */
 export async function reclassifyJournal(
   db: admin.firestore.Firestore,
   options: {dryRun?: boolean; claudeRepos?: ReadonlyMap<string, {repo: string; action: string}>} = {}
 ): Promise<ReclassifySummary> {
   const snap = await db.collection("journal").where("source", "in", ["github", "claude"]).get();
-  const summary: ReclassifySummary = {dryRun: !!options.dryRun, checked: snap.size, changed: 0, reposFilled: 0, changes: [], days: []};
+  const summary: ReclassifySummary = {
+    dryRun: !!options.dryRun, checked: snap.size, changed: 0, reposFilled: 0, keptByHand: 0, changes: [], days: [],
+  };
   const writes: Array<{ref: admin.firestore.DocumentReference; fields: Partial<JournalItem>}> = [];
   const days = new Set<string>();
   for (const doc of snap.docs) {
     const stored = doc.data() as JournalItem;
     const found = stored.source === "claude" ? options.claudeRepos?.get(doc.id) : undefined;
     const item = found && found.repo !== stored.repo ? {...stored, repo: found.repo, action: found.action} : stored;
-    const client = itemClient(item);
+    let client = itemClient(item);
+    if (stored.clientByHand && client !== stored.client) {
+      summary.keptByHand++;
+      client = stored.client;
+    }
     if (client === stored.client && item === stored) continue;
     const fields: Partial<JournalItem> = {};
     if (item !== stored) {
@@ -772,6 +787,57 @@ export async function reclassifyJournal(
     await summarizeDays(db, summary.days);
   }
   return summary;
+}
+
+// ─── Moving items to another client ────────────────────────────
+
+/** The most items one move takes: more than a busy day holds. */
+export const MAX_MOVE_ITEMS = 500;
+
+export interface MoveJournalItemsInput {
+  /** Journal item ids, as the page reads them. */
+  ids?: unknown;
+  /** The task category key to move them to, such as "ihrdc". */
+  client?: unknown;
+}
+
+/**
+ * Move items to another client, because the rules chose the wrong one: work
+ * in the NTA repo that was for IHRDC, for example. Each item is marked as moved
+ * by hand, so the journal job and reclassifyJournal keep Jack's choice, and the
+ * days the items are on are rebuilt so their hours follow.
+ */
+export async function moveJournalItems(
+  db: admin.firestore.Firestore,
+  input: MoveJournalItemsInput
+): Promise<Record<string, unknown>> {
+  const ids = Array.isArray(input.ids) ?
+    [...new Set(input.ids.filter((id): id is string => typeof id === "string" && id.trim() !== ""))] : [];
+  if (ids.length === 0) return {success: false, error: "Choose at least one item to move."};
+  if (ids.length > MAX_MOVE_ITEMS) return {success: false, error: `Move at most ${MAX_MOVE_ITEMS} items at a time.`};
+  const client = typeof input.client === "string" ? input.client.trim().toLowerCase() : "";
+  const labels = await loadClientLabels(db);
+  if (!labels.has(client)) return {success: false, error: "Choose a client from the task categories."};
+
+  const col = db.collection("journal");
+  const snaps = await db.getAll(...ids.map((id) => col.doc(id)));
+  const missing = snaps.filter((s) => !s.exists).length;
+  if (missing) {
+    return {success: false, error: `${missing} of these items ${missing === 1 ? "is" : "are"} no longer in the journal. Reload the page and try again.`};
+  }
+
+  const toMove = snaps.filter((s) => s.get("client") !== client || s.get("clientByHand") !== true);
+  const days = new Set<string>();
+  for (const part of chunks(toMove, BATCH_LIMIT)) {
+    const batch = db.batch();
+    for (const snap of part) {
+      batch.update(snap.ref, {client, clientByHand: true, updatedAt: admin.firestore.FieldValue.serverTimestamp()});
+      days.add(snap.get("day"));
+    }
+    await batch.commit();
+  }
+  await summarizeDays(db, [...days]);
+  return {success: true, moved: toMove.length, client, label: clientLabel(client, labels), days: [...days].sort()};
 }
 
 // ─── get_journal ───────────────────────────────────────────────

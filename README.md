@@ -234,7 +234,11 @@ meetings on his Jax and IHRDC calendars, once they have ended; meetings he
 recorded in Wispr Flow that can be tied to a client; and emails he sent from
 Apple Mail to a client (subject and recipients' domain only, never the body). The `/journal` page (book icon in the dashboard header) shows estimated hours
 per week, day and client, and each client's work sessions and items. It opens
-on the last 14 days; filters choose other dates and one client or all clients. MAISIE
+on the last 14 days; filters choose other dates and one client or all clients.
+When the rules give work the wrong client, Jack ticks the items in a day's
+details, chooses another client and presses Move. The page calls the
+`journalItems` Cloud Function, which moves them and rebuilds their days; the
+journal job and `journal:reclassify` keep his choice from then on. MAISIE
 reads it with `get_journal`. After a change to which repo belongs to which
 client, `npm run journal:reclassify` (from `functions/`) moves the items already
 stored. Claude Code sessions Jack runs in the cloud (from his phone, the web or the

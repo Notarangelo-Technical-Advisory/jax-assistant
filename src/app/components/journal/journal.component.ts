@@ -123,6 +123,13 @@ export class JournalComponent implements OnDestroy {
   selection = signal<Selection>(null);
   /** Every item of the selected day. */
   dayItems = signal<JournalItem[]>([]);
+  /** The ids of the items ticked to move to another client. */
+  checked = signal<ReadonlySet<string>>(new Set());
+  /** The client to move the ticked items to; '' until one is chosen. */
+  moveTo = signal('');
+  moving = signal(false);
+  moveMessage = signal('');
+  moveError = signal('');
 
   readonly hours = hours;
   readonly presets = RANGE_PRESETS;
@@ -281,9 +288,71 @@ export class JournalComponent implements OnDestroy {
     return groups.filter((g) => g.items.length);
   });
 
+  /** Every item shown in the details. */
+  shownItems = computed<JournalItem[]>(() => this.groups().flatMap((g) => g.items));
+
+  /** The ticked items that are still shown: one moved out of a client's day leaves it. */
+  checkedIds = computed<string[]>(() =>
+    this.shownItems().filter((i) => i.id && this.checked().has(i.id)).map((i) => i.id!));
+
+  /** The clients the ticked items can move to: every task category but the one open. */
+  moveTargets = computed(() => this.categories().filter((c) => c.key !== this.selection()?.client));
+
+  isChecked(item: JournalItem): boolean {
+    return !!item.id && this.checked().has(item.id);
+  }
+
+  allChecked(items: JournalItem[]): boolean {
+    return items.length > 0 && items.every((i) => this.isChecked(i));
+  }
+
+  toggleItem(item: JournalItem): void {
+    if (!item.id) return;
+    const next = new Set(this.checked());
+    if (!next.delete(item.id)) next.add(item.id);
+    this.checked.set(next);
+  }
+
+  /** Tick every one of `items`, or untick them all when they are all ticked already. */
+  toggleAll(items: JournalItem[]): void {
+    const tick = !this.allChecked(items);
+    const next = new Set(this.checked());
+    for (const i of items) if (i.id) tick ? next.add(i.id) : next.delete(i.id);
+    this.checked.set(next);
+  }
+
+  /**
+   * Move the ticked items to the chosen client. When that empties the
+   * client's day that is open, the whole day opens instead, so Jack sees where
+   * the items went.
+   */
+  async moveChecked(): Promise<void> {
+    const ids = this.checkedIds();
+    const client = this.moveTo();
+    const sel = this.selection();
+    if (!ids.length || !client || !sel || this.moving()) return;
+    const emptiesClient = !!sel.client && ids.length === this.shownItems().length;
+    this.moving.set(true);
+    this.moveMessage.set('');
+    this.moveError.set('');
+    const result = await this.journal.moveItems(ids, client);
+    this.moving.set(false);
+    if (!result.success) {
+      this.moveError.set(result.error ?? 'The items could not be moved. Try again in a moment.');
+      return;
+    }
+    if (emptiesClient) this.select(sel.day, null);
+    this.checked.set(new Set());
+    const label = result.label ?? this.categories().find((c) => c.key === client)?.label ?? client;
+    this.moveMessage.set(`Moved ${ids.length} ${ids.length === 1 ? 'item' : 'items'} to ${label}.`);
+  }
+
   select(day: string, client: string | null): void {
     const before = this.selection();
     this.selection.set({ day, client });
+    this.checked.set(new Set());
+    this.moveMessage.set('');
+    this.moveError.set('');
     if (before?.day === day) return;
     this.dayItems.set([]);
     this.itemsSub?.unsubscribe();

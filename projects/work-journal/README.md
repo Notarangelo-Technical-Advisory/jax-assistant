@@ -64,6 +64,8 @@ npm run journal:reclassify                # move it and rebuild the days
 
 Jira items, meetings, recordings and emails keep their client, because their rules need what the job read at the time.
 
+When the rules give an item the wrong client, for example IHRDC work kept in the NTA repo because it was sensitive, Jack moves it on the journal page: tick the items (one at a time, a whole work session from its heading, or Select all), choose a client under "Move to" and press Move. The `journalItems` Cloud Function sets the client, marks the item `clientByHand: true` and rebuilds the day. The journal job and `journal:reclassify` never change the client of an item marked that way; the reclassify command says how many it kept.
+
 NTA Business (`nta`) is a built-in task category, added 2026-10-16. Work in those repos that was journaled before then is still under General until `npm run journal:reclassify` is run on the Mac.
 
 ### Meetings

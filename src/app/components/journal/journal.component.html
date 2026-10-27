@@ -117,25 +117,64 @@
           <app-post-time-panel [day]="sel.day" [client]="client" [items]="dayItems()" />
         }
 
+        <!-- Move ticked items to another client, when the rules chose the wrong one -->
+        @if (shownItems().length) {
+          @let shown = shownItems();
+          <section class="move-bar" aria-label="Move items to another client">
+            <label class="check-all">
+              <input type="checkbox" [checked]="allChecked(shown)" (change)="toggleAll(shown)" />
+              <span>Select all</span>
+            </label>
+            <span class="checked-count">{{ checkedIds().length }} selected</span>
+            <label class="move-to">
+              <span>Move to</span>
+              <select name="moveTo" [ngModel]="moveTo()" (ngModelChange)="moveTo.set($event)">
+                <option value="">Choose a client</option>
+                @for (c of moveTargets(); track c.key) {
+                  <option [value]="c.key">{{ c.label }}</option>
+                }
+              </select>
+            </label>
+            <button type="button" class="btn-move" [disabled]="!checkedIds().length || !moveTo() || moving()" (click)="moveChecked()">
+              {{ moving() ? 'Moving...' : 'Move' }}
+            </button>
+          </section>
+        }
+        @if (moveMessage()) {<p class="move-message">{{ moveMessage() }}</p>}
+        @if (moveError()) {<p class="move-error">{{ moveError() }}</p>}
+
         @for (group of groups(); track group.key) {
           <section class="group">
             @if (group.start && group.end) {
               <h3 class="group-head">
-                <span>{{ time(group.start) }}–{{ time(group.end) }}</span>
+                <label class="group-check">
+                  <input type="checkbox" [checked]="allChecked(group.items)" (change)="toggleAll(group.items)"
+                    [attr.aria-label]="'Select the items from ' + time(group.start) + ' to ' + time(group.end)" />
+                  <span>{{ time(group.start) }}–{{ time(group.end) }}</span>
+                </label>
                 <span class="hours">{{ hours(group.minutes ?? 0) }}</span>
               </h3>
             } @else if (group.key === 'other') {
-              <h3 class="group-head"><span>Collected since the summary was made</span></h3>
+              <h3 class="group-head">
+                <label class="group-check">
+                  <input type="checkbox" [checked]="allChecked(group.items)" (change)="toggleAll(group.items)"
+                    aria-label="Select the items collected since the summary was made" />
+                  <span>Collected since the summary was made</span>
+                </label>
+              </h3>
             }
             <ul class="items">
               @for (item of group.items; track item.id) {
-                <li class="item">
+                <li class="item" [class.checked]="isChecked(item)">
+                  <input type="checkbox" class="item-check" [checked]="isChecked(item)" (change)="toggleItem(item)"
+                    [attr.aria-label]="'Select ' + item.action + ': ' + item.subject" />
                   <span class="time">{{ time(item.at) }}@if (item.endAt) {–{{ time(item.endAt) }}}</span>
                   <div class="what">
                     <div class="action">
                       <span class="source" [attr.data-source]="item.source">{{ sourceLabel(item.source) }}</span>
                       {{ item.action }}
                       @if (!client) {<span class="client-tag">{{ clientLabel(item.client) }}</span>}
+                      @if (item.clientByHand) {<span class="by-hand" title="You moved this item to its client; the journal job keeps your choice">Moved by you</span>}
                     </div>
                     @if (item.url) {
                       <a class="subject" [href]="item.url" target="_blank" rel="noopener">{{ item.subject }}</a>
