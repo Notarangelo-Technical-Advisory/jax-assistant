@@ -81,6 +81,7 @@ export const MCP_TOOL_NAMES = [
   "add_time_entries",
   "delete_time_entry",
   "get_journal",
+  "move_journal_items",
   "save_memory",
   "get_memories",
   "forget_memory",
@@ -354,6 +355,18 @@ export const buildTools = (
           client: {type: "string", description: "Optional: one client's work only, by task category key, e.g. 'ihrdc', 'nta', 'solomon', 'church', 'general'."},
         },
         required: [],
+      },
+    },
+    {
+      name: "move_journal_items",
+      description: "Move work journal items to another client, when the journal's rules gave them the wrong one, e.g. IHRDC work Jack kept in the NTA Business repo. Find the items' ids with get_journal first. When Jack names the items exactly, move them. When you chose them yourself from his description (\"the IHRDC-looking ones on Tuesday\"), list them briefly (time, action, subject) and move them only after he says yes. Moved items keep the client Jack chose: the journal job will not change it back. The day's estimated hours are recalculated. Moving an item again, or back, is allowed.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          item_ids: {type: "array", items: {type: "string"}, description: "The ids of the items to move, from get_journal. At most 500."},
+          client: {type: "string", description: "The task category key to move them to, e.g. 'ihrdc', 'nta', 'cox', 'general'."},
+        },
+        required: ["item_ids", "client"],
       },
     },
     {

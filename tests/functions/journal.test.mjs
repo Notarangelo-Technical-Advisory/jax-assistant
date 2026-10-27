@@ -644,6 +644,22 @@ describe('moving items to another client by hand', () => {
     assert.deepEqual((await read('journalDays/2026-10-14')).clients.map(c => c.client), ['ihrdc']);
   });
 
+  it("lets Maisie move items she found with get_journal, and get_journal then shows them as moved by hand", async () => {
+    const before = await tool('get_journal', { start_date: '2026-10-13', client: 'nta' });
+    const ids = before.items.map(i => i.id);
+    assert.equal(ids.length, 2);
+
+    const s = await tool('move_journal_items', { item_ids: ids, client: 'ihrdc' });
+
+    assert.deepEqual([s.success, s.moved, s.label], [true, 2, 'IHRDC']);
+    const after = await tool('get_journal', { start_date: '2026-10-13' });
+    assert.deepEqual(after.clients.map(c => [c.label, c.itemCount]), [['IHRDC', 3]]);
+    assert.deepEqual(after.items.map(i => [i.subject, i.movedByHand ?? false]).sort(), [
+      ['AI Shared Services pages', true], ['Fix saved grid layout', false], ['Glass report notes', true],
+    ]);
+    assert.equal((await tool('move_journal_items', { item_ids: ids, client: 'acme' })).success, false);
+  });
+
   it('refuses no items, an unknown client, an item no longer in the journal and too many items, and changes nothing', async () => {
     const id = await idOf('e20');
     for (const [ids, client] of [[[], 'ihrdc'], ['not a list', 'ihrdc'], [[id], 'acme'], [[id], ''], [[id, 'github_gone'], 'ihrdc'],
