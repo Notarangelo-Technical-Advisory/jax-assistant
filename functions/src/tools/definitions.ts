@@ -95,6 +95,23 @@ export const MCP_TOOL_NAMES = [
 ];
 
 /**
+ * How a task repeats. Shared by add_task and update_task; the rules behind it
+ * are in ../recurrence.ts.
+ */
+const RECURRENCE_SCHEMA = {
+  type: "object",
+  description: "Make the task repeat. Completing it then moves the due date to the next time instead of closing it. Quarterly = monthly with interval 3. \"Monthly for 3 months\" = monthly with remaining 3.",
+  properties: {
+    type: {type: "string", enum: ["daily", "weekly", "monthly"]},
+    interval: {type: "integer", description: "Every N days, weeks or months. Default 1."},
+    dayOfWeek: {type: "integer", description: "Weekly only: 0 (Sunday) to 6 (Saturday). Defaults to the due date's weekday."},
+    dayOfMonth: {type: "integer", description: "Monthly only: 1 to 31. Defaults to the due date's day. Clamped to the last day of shorter months."},
+    remaining: {type: "integer", description: "How many times in total, counting the first. Completing the last one closes the task. Omit for no end."},
+  },
+  required: ["type"],
+};
+
+/**
  * Build the tool schemas. Category enums are rebuilt from `cats` on every call,
  * so callers must rebuild after create_task_category / delete_task_category.
  *
@@ -134,15 +151,16 @@ export const buildTools = (
           },
           dueDate: {
             type: "string",
-            description: "Optional due date in YYYY-MM-DD format",
+            description: "Optional due date in YYYY-MM-DD format. For a repeating task, the first due date; when omitted, the first date the rule falls on from today.",
           },
+          recurrence: RECURRENCE_SCHEMA,
         },
         required: ["title", "category"],
       },
     },
     {
       name: "complete_task",
-      description: "Mark a task as completed. Use the task ID from the active tasks list.",
+      description: "Mark a task as completed. Use the task ID from the active tasks list. A repeating task stays open with its next due date, unless this was its last time; the result says which.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -170,7 +188,7 @@ export const buildTools = (
     },
     {
       name: "update_task",
-      description: "Update an existing task's due date, title, or category. Use the task ID from the active tasks list. Use this when Jack asks to change or set a due date on an existing task.",
+      description: "Update an existing task's due date, title, or recurrence. Use the task ID from the active tasks list. Use this when Jack asks to change or set a due date on an existing task, or to make a task repeat.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -185,6 +203,11 @@ export const buildTools = (
           title: {
             type: "string",
             description: "New title for the task. Omit to leave unchanged.",
+          },
+          recurrence: {
+            ...RECURRENCE_SCHEMA,
+            type: ["object", "null"],
+            description: `${RECURRENCE_SCHEMA.description} Replaces the whole rule. Omit to leave unchanged. Pass null to stop it repeating.`,
           },
         },
         required: ["taskId"],

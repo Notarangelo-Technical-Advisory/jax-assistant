@@ -66,6 +66,26 @@ describe('maisie MCP server', () => {
     }
   });
 
+  it('lets VS Code make a task repeat when adding or updating it', async () => {
+    const { tools } = await client.listTools();
+    for (const name of ['add_task', 'update_task']) {
+      const recurrence = tools.find(t => t.name === name).inputSchema.properties.recurrence;
+      assert.ok(recurrence, `${name} has no recurrence field`);
+      assert.deepEqual(recurrence.properties.type.enum, ['daily', 'weekly', 'monthly']);
+      assert.ok(recurrence.properties.interval && recurrence.properties.remaining);
+    }
+  });
+
+  it('keeps a repeating task open with its next due date when VS Code completes it', async () => {
+    const added = await call('add_task', {
+      title: 'Change the furnace filters', category: 'general', dueDate: '2099-01-01',
+      recurrence: { type: 'monthly', interval: 3, dayOfMonth: 1 },
+    });
+    const done = await call('complete_task', { taskId: added.taskId });
+    assert.equal(done.repeats, true);
+    assert.equal(done.nextDueDate, '2099-04-01');
+  });
+
   it('still keeps the cloud-only tools out of VS Code', async () => {
     const names = (await client.listTools()).tools.map(t => t.name);
     for (const hidden of ['code_with_github', 'get_calendar', 'mail_draft']) {
