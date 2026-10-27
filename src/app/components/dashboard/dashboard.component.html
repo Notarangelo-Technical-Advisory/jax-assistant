@@ -511,11 +511,12 @@
           </select>
           <input
             type="date"
-            [(ngModel)]="newTaskDueDate"
+            [ngModel]="newTaskDueDate"
+            (ngModelChange)="setNewTaskDueDate($event)"
             class="due-date-input"
             title="Due date (optional)"
           />
-          <select [(ngModel)]="newTaskRecurrenceType" class="recurrence-select" title="Recurrence (optional)">
+          <select [ngModel]="newTaskRecurrenceType" (ngModelChange)="setNewTaskRecurrenceType($event)" class="recurrence-select" title="Recurrence (optional)">
             <option value="">No recurrence</option>
             <option value="daily">Daily</option>
             <option value="weekly">Weekly</option>
@@ -607,12 +608,13 @@
                         <input
                           type="date"
                           class="task-due-edit"
-                          [(ngModel)]="editingTaskDueDate"
+                          [ngModel]="editingTaskDueDate"
+                          (ngModelChange)="setEditingTaskDueDate($event)"
                           (keyup.enter)="saveTask(task)"
                           (keyup.escape)="cancelEditTask()"
                           (click)="$event.stopPropagation()"
                         />
-                        <select [(ngModel)]="editingTaskRecurrenceType" class="recurrence-select" title="Recurrence">
+                        <select [ngModel]="editingTaskRecurrenceType" (ngModelChange)="setEditingTaskRecurrenceType($event)" class="recurrence-select" title="Recurrence">
                           <option value="">No recurrence</option>
                           <option value="daily">Daily</option>
                           <option value="weekly">Weekly</option>
