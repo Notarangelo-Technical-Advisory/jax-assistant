@@ -15,7 +15,7 @@
     "typecheck:mcp": "tsc -p tsconfig.mcp.json"
   },
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "dependencies": {
