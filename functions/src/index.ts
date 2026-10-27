@@ -17,6 +17,7 @@ import {moveJournalItems} from "./tools/journal";
 import {refreshWeek, draftIfIdea, approvePost, markPosted, writeDraft, saveDraftText, describeWeek, textJack} from "./linkedin";
 // Every "what day is it" question here is "what day is it in Norwell" — see et-time.ts.
 import {ET_ZONE, etDateKey, etDayStart, etNextDayStart, etDayParts} from "./et-time";
+import {candidateUrls, isTwilioRequest} from "./twilio-signature";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -1543,17 +1544,14 @@ export const receiveSms = onRequest(
     }
 
     // ── 1. Validate Twilio signature ───────────────────────────
-    // Temporarily logging URL for debugging — signature check bypassed
-    const signature = req.headers["x-twilio-signature"] as string;
-    const webhookUrl = `https://${req.headers.host}${req.originalUrl}`;
-    console.log(`[receiveSms] hit. URL: ${webhookUrl}, sig present: ${!!signature}, from: ${req.body?.From}`);
-    // TODO: re-enable signature validation once confirmed working
-    // const isValid = twilio.validateRequest(authToken, signature, webhookUrl, req.body as Record<string, string>);
-    // if (!isValid) {
-    //   console.warn(`[receiveSms] Invalid Twilio signature. URL used: ${webhookUrl}`);
-    //   res.status(403).send("Forbidden");
-    //   return;
-    // }
+    // See twilio-signature.ts for why several URLs are tried.
+    const signature = req.headers["x-twilio-signature"] as string | undefined;
+    const urls = candidateUrls(req.headers.host, req.originalUrl);
+    if (!isTwilioRequest(authToken, signature, urls, req.body as Record<string, string>)) {
+      console.warn(`[receiveSms] Refused: invalid Twilio signature (signature present: ${!!signature}). URLs tried: ${urls.join(", ")}`);
+      res.status(403).send("Forbidden");
+      return;
+    }
 
     // ── 2. Only accept messages from Jack's phone ──────────────
     const fromNumber = req.body.From as string;
