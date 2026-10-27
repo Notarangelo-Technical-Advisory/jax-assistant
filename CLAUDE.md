@@ -31,7 +31,8 @@ setup; `.mcp.json` is gitignored because it holds absolute paths.
 - **`maisie`** (`functions/src/mcp/server.ts`) — MAISIE's task, billing,
   contact and work journal tools plus `get_maisie_context` and a `maisie`
   persona prompt. Use `get_journal` when Jack asks what he worked on or needs
-  help filling in time entries (see `projects/work-journal/README.md`). Shares
+  help filling in time entries (see `projects/work-journal/README.md`), and
+  `move_journal_items` when work is under the wrong client. Shares
   `functions/src/tools/` with the cloud `chat` function, so there is one
   implementation per tool.
 - **`desktop`** (`bridge/mcp/desktop-server.ts`) — Apple Mail and Calendar.

@@ -147,7 +147,13 @@ describe('maisie MCP server', () => {
     const journal = await call('get_journal', { start_date: '2026-10-13' });
     assert.equal(journal.isError, false);
     assert.deepEqual(journal.clients.map(c => [c.label, c.estimatedHours]), [['IHRDC', 0.1]]);
-    assert.deepEqual(journal.items.map(i => [i.time, i.action, i.ticket]), [['9:21 AM', 'Opened PR #674', 'CNG-7039']]);
+    assert.deepEqual(journal.items.map(i => [i.id, i.time, i.action, i.ticket]), [['j1', '9:21 AM', 'Opened PR #674', 'CNG-7039']]);
+
+    assert.ok(tools.some(t => t.name === 'move_journal_items'));
+    const moved = await call('move_journal_items', { item_ids: ['j1'], client: 'nta' });
+    assert.equal(moved.isError, false);
+    assert.deepEqual([moved.moved, moved.label], [1, 'NTA Business']);
+    assert.deepEqual((await admin.firestore().doc('journalDays/2026-10-13').get()).get('clients').map(c => c.client), ['nta']);
   });
 });
 

@@ -805,7 +805,8 @@ export interface MoveJournalItemsInput {
  * Move items to another client, because the rules chose the wrong one: work
  * in the NTA repo that was for IHRDC, for example. Each item is marked as moved
  * by hand, so the journal job and reclassifyJournal keep Jack's choice, and the
- * days the items are on are rebuilt so their hours follow.
+ * days the items are on are rebuilt so their hours follow. The journal page
+ * (the journalItems function) and the move_journal_items tool both use it.
  */
 export async function moveJournalItems(
   db: admin.firestore.Firestore,
@@ -916,7 +917,7 @@ export async function getJournal(
   }
 
   const items = itemSnap.docs
-    .map((d) => d.data() as JournalItem)
+    .map((d) => ({id: d.id, ...(d.data() as JournalItem)}))
     .filter((i) => !client || i.client === client)
     .sort((a, b) => a.at.localeCompare(b.at));
 
@@ -934,6 +935,7 @@ export async function getJournal(
     days,
     itemCount: items.length,
     items: items.slice(0, MAX_ITEMS).map((i) => ({
+      id: i.id,
       day: i.day,
       time: i.endAt ? `${etTime(i.at)}–${etTime(i.endAt)}` : etTime(i.at),
       client: clientLabel(i.client, labels),
@@ -944,6 +946,7 @@ export async function getJournal(
       ticket: i.ticket,
       repo: i.repo,
       url: i.url,
+      ...(i.clientByHand ? {movedByHand: true} : {}),
     })),
     ...(items.length > MAX_ITEMS ? {itemsLeftOut: items.length - MAX_ITEMS} : {}),
   };

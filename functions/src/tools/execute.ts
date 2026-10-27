@@ -21,7 +21,7 @@ import {
   LinkInput,
   SaveContactInput,
 } from "./contacts";
-import {getJournal, GetJournalInput} from "./journal";
+import {getJournal, GetJournalInput, moveJournalItems} from "./journal";
 import {loadMemories, saveMemory, forgetMemory} from "./memories";
 import {addTimeEntries, deleteTimeEntry, TimeEntryInput} from "./time-entries";
 
@@ -444,6 +444,11 @@ export async function executeTool(
   case "get_journal":
     return getJournal(db, rawInput as GetJournalInput);
 
+  case "move_journal_items": {
+    const input = rawInput as {item_ids?: unknown; client?: unknown};
+    return moveJournalItems(db, {ids: input.item_ids, client: input.client});
+  }
+
   case "add_time_entries":
     return addTimeEntries(rawInput as {entries?: TimeEntryInput[]; dry_run?: boolean});
 
@@ -668,6 +673,7 @@ export const toolLabel = (name: string, input: Record<string, unknown>): string 
   case "get_time_entries": return "Loading time log...";
   case "get_invoice_status": return "Checking invoice status...";
   case "get_journal": return "Reading your work journal...";
+  case "move_journal_items": return "Moving the journal items...";
   case "add_time_entries": return input["dry_run"] === false ? "Posting time entries..." : "Checking the time entries...";
   case "delete_time_entry": return "Deleting the time entry...";
   case "save_memory": return `Remembering "${input["topic"]}"...`;
