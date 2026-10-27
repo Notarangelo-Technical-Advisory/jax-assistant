@@ -210,14 +210,72 @@ $email: #2dd4bf;
 
 .item {
   display: grid;
-  grid-template-columns: 7.5rem 1fr;
+  grid-template-columns: 1rem 7.5rem 1fr;
   gap: 0.75rem;
   padding: 0.5rem 0;
   border-top: 1px solid rgba($border, 0.6);
   &:first-child { border-top: none; }
+  &.checked { background: rgba($accent, 0.08); }
 
-  @media (max-width: 560px) { grid-template-columns: 1fr; gap: 0.2rem; }
+  // On a phone the time sits above what was done, both beside the tick box.
+  @media (max-width: 560px) {
+    grid-template-columns: 1rem 1fr;
+    gap: 0.2rem 0.75rem;
+    .item-check { grid-row: span 2; }
+  }
 }
+
+input[type='checkbox'] { margin: 0.15rem 0 0; accent-color: $accent; cursor: pointer; }
+
+.group-check {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  input { margin: 0; }
+}
+
+.move-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.6rem 1rem;
+  background: $bg-card;
+  border: 1px solid $border;
+  border-radius: 10px;
+  font-size: 0.85rem;
+
+  .check-all, .move-to { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+  .check-all input { margin: 0; }
+  .checked-count { color: $text-secondary; flex: 1; }
+  .move-to span { color: $text-secondary; }
+  select {
+    padding: 0.35rem 0.6rem;
+    border: 1px solid $border;
+    border-radius: 6px;
+    background: $bg-input;
+    color: $text-primary;
+    font: inherit;
+    color-scheme: dark;
+  }
+}
+
+.btn-move {
+  padding: 0.4rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: $accent;
+  color: $text-primary;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  &:disabled { opacity: 0.45; cursor: default; }
+}
+
+.move-message, .move-error { margin: 0; font-size: 0.85rem; }
+.move-message { color: $meeting; }
+.move-error { color: $danger; }
 
 .time { color: $text-secondary; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 
@@ -257,6 +315,14 @@ a.subject { color: $accent; text-decoration: none; &:hover { text-decoration: un
   font-size: 0.7rem;
 }
 .client-tag { margin-left: 0.35rem; }
+.by-hand {
+  margin-left: 0.35rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  border: 1px solid $border;
+  color: $text-secondary;
+  font-size: 0.7rem;
+}
 
 .empty { color: $text-secondary; font-size: 0.9rem; }
 .hint { margin-top: 2rem; text-align: center; }

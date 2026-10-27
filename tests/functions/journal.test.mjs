@@ -12,7 +12,7 @@ const fromFunctions = createRequire(new URL('../../functions/package.json', impo
 const admin = fromFunctions('firebase-admin');
 const {
   clientFor, ticketInBranch, workSessions, summarizeDay, saveJournalItems, summarizeDays, meetingClient, meetingItems,
-  recordingItems, reclassifyJournal, emailItems,
+  recordingItems, reclassifyJournal, emailItems, moveJournalItems,
 } = fromFunctions('./lib/tools/journal.js');
 
 before(setUp);
@@ -574,5 +574,84 @@ describe('moving stored items after a rule change', () => {
     const day = await read('journalDays/2026-10-13');
     assert.deepEqual(day.clients.map(c => c.label).sort(), ['Executive Assistant', 'IHRDC']);
     assert.equal((await reclassifyJournal(admin.firestore())).changed, 0, 'a second run moves nothing');
+  });
+});
+
+describe('moving items to another client by hand', () => {
+  // IHRDC work kept in the NTA repo, because it was sensitive: the rules put it under NTA Business.
+  const ntaPush = (fields = {}) => pr({
+    sourceId: 'e20', repo: 'Notarangelo-Technical-Advisory/fractional-tech-advisory', action: 'Pushed to main',
+    subject: 'AI Shared Services pages', ticket: null, ...fields,
+  });
+  const move = (ids, client) => moveJournalItems(admin.firestore(), { ids, client });
+  const idOf = async (sourceId) => (await admin.firestore().collection('journal').where('sourceId', '==', sourceId).get()).docs[0].id;
+
+  beforeEach(async () => {
+    await save([pr(), ntaPush(), ntaPush({ sourceId: 'e21', at: '2026-10-13T13:30:00Z', subject: 'Glass report notes' })]);
+    await summarizeDays(admin.firestore(), ['2026-10-13']);
+  });
+
+  it('moves the chosen items, marks them as moved by hand, and rebuilds the day so the hours follow', async () => {
+    assert.deepEqual((await read('journalDays/2026-10-13')).clients.map(c => c.client).sort(), ['ihrdc', 'nta']);
+
+    const s = await move([await idOf('e20'), await idOf('e21')], 'IHRDC');
+
+    assert.deepEqual([s.success, s.moved, s.client, s.label, s.days], [true, 2, 'ihrdc', 'IHRDC', ['2026-10-13']]);
+    const moved = (await all('journal')).filter(i => i.sourceId !== 'e1');
+    assert.deepEqual(moved.map(i => [i.client, i.clientByHand]), [['ihrdc', true], ['ihrdc', true]]);
+    const day = await read('journalDays/2026-10-13');
+    assert.deepEqual(day.clients.map(c => [c.label, c.itemCount, c.minutes]), [['IHRDC', 3, 9]]);
+    assert.equal(day.totalMinutes, 9);
+  });
+
+  it('can move items to a client Jack added as a task category', async () => {
+    await admin.firestore().collection('taskCategories').add({ key: 'executive_assistant', label: 'Executive Assistant', order: 101 });
+
+    const s = await move([await idOf('e20')], 'executive_assistant');
+
+    assert.deepEqual([s.success, s.label], [true, 'Executive Assistant']);
+    assert.ok((await read('journalDays/2026-10-13')).clients.some(c => c.label === 'Executive Assistant'));
+  });
+
+  it('the journal job keeps the client Jack chose when it reads the item again, even when the item changed', async () => {
+    await move([await idOf('e20')], 'ihrdc');
+
+    const again = await save([ntaPush()]);
+    assert.deepEqual([again.unchanged, again.updated, again.byClient], [1, 0, { ihrdc: 1 }]);
+
+    const later = await save([ntaPush({ subject: 'AI Shared Services pages, revised' })]);
+    assert.equal(later.updated, 1);
+    const stored = (await all('journal')).find(i => i.sourceId === 'e20');
+    assert.deepEqual([stored.client, stored.clientByHand, stored.subject], ['ihrdc', true, 'AI Shared Services pages, revised']);
+  });
+
+  it('reclassifying after a rule change keeps the client Jack chose, and says how many it kept', async () => {
+    await move([await idOf('e20')], 'ihrdc');
+
+    const s = await reclassifyJournal(admin.firestore());
+
+    assert.deepEqual([s.changed, s.keptByHand], [0, 1]);
+    assert.equal((await all('journal')).find(i => i.sourceId === 'e20').client, 'ihrdc');
+  });
+
+  it('rebuilds every day the items are on', async () => {
+    await save([ntaPush({ sourceId: 'e22', at: '2026-10-14T13:00:00Z' })]);
+    await summarizeDays(admin.firestore(), ['2026-10-14']);
+
+    const s = await move([await idOf('e20'), await idOf('e22')], 'ihrdc');
+
+    assert.deepEqual(s.days, ['2026-10-13', '2026-10-14']);
+    assert.deepEqual((await read('journalDays/2026-10-14')).clients.map(c => c.client), ['ihrdc']);
+  });
+
+  it('refuses no items, an unknown client, an item no longer in the journal and too many items, and changes nothing', async () => {
+    const id = await idOf('e20');
+    for (const [ids, client] of [[[], 'ihrdc'], ['not a list', 'ihrdc'], [[id], 'acme'], [[id], ''], [[id, 'github_gone'], 'ihrdc'],
+      [Array.from({ length: 501 }, (_, i) => `id${i}`), 'ihrdc']]) {
+      const s = await move(ids, client);
+      assert.equal(s.success, false, JSON.stringify([ids.length, client]));
+      assert.equal(typeof s.error, 'string');
+    }
+    assert.equal((await all('journal')).find(i => i.sourceId === 'e20').client, 'nta');
   });
 });

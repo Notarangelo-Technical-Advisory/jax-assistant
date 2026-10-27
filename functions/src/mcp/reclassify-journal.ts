@@ -30,6 +30,7 @@ async function main(): Promise<void> {
   if (dryRun) console.log("Dry run: nothing was written.\n");
   console.log(`${s.checked} GitHub and Claude Code items checked; ${s.changed} ${dryRun ? "would move" : "moved"} to another client.`);
   if (s.reposFilled) console.log(`${s.reposFilled} Claude Code items ${dryRun ? "would get" : "got"} the repo their session was started in.`);
+  if (s.keptByHand) console.log(`${s.keptByHand} items Jack moved by hand keep the client he chose.`);
   for (const c of s.changes) console.log(`  ${clientLabel(c.from, labels)} → ${clientLabel(c.to, labels)}: ${c.count}`);
   if (s.days.length) console.log(`Days ${dryRun ? "to rebuild" : "rebuilt"}: ${s.days.length}, from ${s.days[0]} to ${s.days[s.days.length - 1]}.`);
 }

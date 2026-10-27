@@ -1,11 +1,14 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withXhr } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { JOURNAL_NOW, JournalComponent, addDays, hours, presetRange, weekStart } from './journal.component';
 import {
-  EmulatorApp, clearEmulators, createEmulatorApp, provideEmulator, seedDocument, signInAsJack, waitFor
+  EmulatorApp, clearEmulators, createEmulatorApp, nextRequest, provideEmulator, seedDocument, signInAsJack, waitFor
 } from '../../../testing/emulator-testing';
+import { AuthService } from '../../services/auth.service';
+
+const MOVE_URL = 'https://journalitems-nxe253ex3a-uc.a.run.app';
 
 // The journal page against the Firestore emulator, signed in as Jack, with the
 // real security rules. The journal job on Jack's Mac writes the journal; here
@@ -314,6 +317,97 @@ describe('JournalComponent', () => {
       expect(shown).toContain('All clients · Tuesday, October 13');
       expect(shown).toContain('About 2.4 h from 4 items');
       expect(shown).toContain('Pushed to main General');
+    });
+
+    describe('moving items to another client', () => {
+      let http: HttpTestingController;
+      const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
+      const click = (selector: string, index = 0): void => {
+        fixture.detectChanges();
+        root().querySelectorAll<HTMLElement>(selector)[index].click();
+        fixture.detectChanges();
+      };
+      const chooseClient = (key: string): void => {
+        const select = root().querySelector<HTMLSelectElement>('select[name="moveTo"]')!;
+        select.value = key;
+        select.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+      };
+
+      beforeEach(async () => {
+        http = TestBed.inject(HttpTestingController);
+        const auth = TestBed.inject(AuthService);
+        await waitFor(() => auth.currentUser() !== null);
+      });
+
+      afterEach(() => http.verify());
+
+      it("ticks one session's items from its heading, and every item shown with Select all", async () => {
+        page.select('2026-10-13', 'ihrdc');
+        await waitFor(() => page.dayItems().length === 4);
+
+        click('.group-check input');
+        expect(page.checkedIds()).toEqual(['pr-opened', 'jira-move']);
+        expect(text('.move-bar')).toContain('2 selected');
+
+        click('.check-all input');
+        expect(page.checkedIds()).toEqual(['pr-opened', 'jira-move', 'claude']);
+        click('.check-all input');
+        expect(page.checkedIds()).toEqual([]);
+      });
+
+      it('offers every task category but the client open, and moves nothing until one is chosen', async () => {
+        page.select('2026-10-13', 'ihrdc');
+        await waitFor(() => page.dayItems().length === 4 && page.categories().length > 0);
+        click('.item-check');
+
+        const options = [...root().querySelectorAll<HTMLOptionElement>('select[name="moveTo"] option')].map((o) => o.textContent?.trim());
+        expect(options).toContain('NTA Business');
+        expect(options).not.toContain('IHRDC');
+        expect(root().querySelector<HTMLButtonElement>('.btn-move')!.disabled).toBeTrue();
+      });
+
+      it('moves the ticked items through the journalItems function, and opens the whole day when the client has none left', async () => {
+        page.select('2026-10-13', 'general');
+        await waitFor(() => page.dayItems().length === 4 && page.categories().length > 0);
+        click('.item-check');
+        chooseClient('ihrdc');
+        click('.btn-move');
+
+        const request = await nextRequest(http, MOVE_URL);
+        expect(request.request.body).toEqual({ action: 'move', ids: ['general'], client: 'ihrdc' });
+        expect(request.request.headers.get('Authorization')).toMatch(/^Bearer .+/);
+        request.flush({ success: true, moved: 1, client: 'ihrdc', label: 'IHRDC', days: ['2026-10-13'] });
+        await waitFor(() => !page.moving());
+
+        expect(page.selection()).toEqual({ day: '2026-10-13', client: null });
+        expect(page.checkedIds()).toEqual([]);
+        expect(text()).toContain('Moved 1 item to IHRDC.');
+      });
+
+      it('shows why a move was refused, and keeps the items ticked to try again', async () => {
+        page.select('2026-10-13', 'ihrdc');
+        await waitFor(() => page.dayItems().length === 4 && page.categories().length > 0);
+        click('.item-check');
+        chooseClient('nta');
+        click('.btn-move');
+
+        (await nextRequest(http, MOVE_URL)).flush({ success: false, error: '1 of these items is no longer in the journal. Reload the page and try again.' });
+        await waitFor(() => !page.moving());
+
+        expect(text('.move-error')).toContain('no longer in the journal');
+        expect(page.checkedIds()).toEqual(['pr-opened']);
+        expect(page.selection()).toEqual({ day: '2026-10-13', client: 'ihrdc' });
+      });
+
+      it('marks an item Jack moved himself', async () => {
+        await seedDocument('journal/general', { ...ITEMS['journal/general'], client: 'ihrdc', clientByHand: true });
+        page.select('2026-10-13', null);
+        await waitFor(() => page.dayItems().some((i) => i.clientByHand));
+
+        expect(text()).toContain('Turn certificate checks back on');
+        expect(text('.by-hand')).toContain('Moved by you');
+      });
     });
   });
 });

@@ -27,6 +27,8 @@ export interface JournalItem {
   url: string | null;
   repo: string | null;
   ticket: string | null;
+  /** True when Jack moved the item to its client himself; the journal job keeps his choice. */
+  clientByHand?: boolean;
 }
 
 /** Items less than 20 minutes apart, counted as one stretch of work. */
