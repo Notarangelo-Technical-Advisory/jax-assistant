@@ -15,10 +15,8 @@ MAISIE helps Jack publish one LinkedIn post every Tuesday for Notarangelo Techni
 
 - **Every day, 6:30 AM** (`linkedinRefresh`): reloads the card from GitHub, so hand edits show up.
 - **Thursday, 9:00 AM** (`linkedinDraft`): if next Tuesday's row says `idea`, MAISIE writes the draft with the skill, saves it, and marks it `drafted`.
-- **Friday, 9:00 AM** (`linkedinApprovalRequest`): texts Jack to approve the draft, unless it is already approved.
-- **Tuesday, 7:45 AM** (`linkedinPostReminder`): texts Jack.
-  - If the post is approved, the card shows it with Copy buttons.
-  - If nothing is approved, the text says to post nothing.
+- **Tuesday:** if the post is approved, the card shows it with Copy buttons. If nothing is approved, post nothing.
+- MAISIE sends no texts. The Friday approval text and the Tuesday reminder text were removed on 2026-10-27, with all SMS; the dashboard card shows the stage instead.
 - **When Jack posts**, he presses "I posted it", and can add the link. The row becomes `posted`.
 
 ## How Jack acts
@@ -26,7 +24,7 @@ MAISIE helps Jack publish one LinkedIn post every Tuesday for Notarangelo Techni
 - **On the dashboard's LinkedIn card:** Copy post, Copy first comment, Approve, Edit, Ask MAISIE for changes, I posted it, and Draft it now for an idea. The card folds to one line with the arrow beside "LinkedIn".
 - **Ask MAISIE for changes** opens a box on the card. Jack types what to change, and MAISIE rewrites the draft with the skill, in about a minute. The rewritten post is `drafted`, ready for approval. (The button first opened the chat panel, which on a narrow screen appears below everything else, so it seemed to do nothing.)
 - **Edit** saves Jack's own text for the post and first comment to the draft file. The post goes back to `drafted`, even if it was approved, so the words approved are always the words posted. A poll's question and options are edited in GitHub or through MAISIE.
-- **In chat or by text:** "Show me Tuesday's LinkedIn post", "I approve the Sep 29 post", "Change the first line of the Oct 6 post to …", "I posted it".
+- **In chat:** "Show me Tuesday's LinkedIn post", "I approve the Sep 29 post", "Change the first line of the Oct 6 post to …", "I posted it".
 
 ## Jack's rules, and where the code enforces them
 
@@ -41,7 +39,6 @@ MAISIE helps Jack publish one LinkedIn post every Tuesday for Notarangelo Techni
 ## Setup
 
 - **GitHub secret `LINKEDIN_QUEUE_PAT`** in `jax-assistant`: a fine-grained token with access only to `fractional-tech-advisory`, with the Contents permission set to Read and write.
-- **Text messages** use the existing Twilio settings. Sending a text first is new for MAISIE, which until now only replied to Jack's texts. If the Twilio number is not allowed to start messages, the texts fail and are logged. The card still works.
 
 ## Not included
 

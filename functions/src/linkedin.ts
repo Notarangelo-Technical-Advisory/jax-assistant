@@ -1,6 +1,5 @@
 import * as admin from "firebase-admin";
 import Anthropic from "@anthropic-ai/sdk";
-import twilio from "twilio";
 import {MODEL} from "./model";
 
 // ─── LinkedIn: the weekly Tuesday post ──────────────────────────
@@ -531,22 +530,5 @@ export function describeWeek(w: LinkedInWeek): string {
   case "missing-today": return `No LinkedIn post is approved for today, so nothing should be published.${low}`;
   case "posted": return `The LinkedIn post for Tuesday ${day}, ${title}, is posted.${low}`;
   default: return `The LinkedIn queue has no row for Tuesday ${day}.${low}`;
-  }
-}
-
-/** Best effort: a failed text is logged, not thrown, because the card still shows it. */
-export async function textJack(body: string): Promise<void> {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const auth = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_PHONE_NUMBER;
-  const to = process.env.JACK_PHONE_NUMBER;
-  if (!sid || !auth || !from || !to) {
-    console.warn("[linkedin] Twilio is not configured; no text sent");
-    return;
-  }
-  try {
-    await twilio(sid, auth).messages.create({from, to, body});
-  } catch (err) {
-    console.error("[linkedin] text to Jack failed:", err);
   }
 }

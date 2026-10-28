@@ -51,7 +51,7 @@ code { font-family: var(--font-mono); font-size: .86em; color: var(--fg); backgr
 section { display: flex; flex-direction: column; gap: 14px; }
 
 /* Ways in */
-.ways { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .way { border-top: 3px solid var(--navy); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .way b { font-size: 14px; color: var(--fg); }
 .way span { font-size: 13px; color: var(--fg-3); }
@@ -121,10 +121,9 @@ footer { font-size: 13px; color: var(--fg-3); border-top: 1px solid var(--border
   </header>
 
   <section aria-label="Ways in">
-    <h2>Four ways to reach MAISIE</h2>
+    <h2>Three ways to reach MAISIE</h2>
     <div class="ways">
       <div class="way"><b>Web dashboard</b><span>Angular app: dashboard, journal and contacts pages, chat with voice</span></div>
-      <div class="way"><b>SMS</b><span>Twilio to the <code>receiveSms</code> function, same tool loop as the chat</span></div>
       <div class="way"><b>VS Code</b><span><code>maisie</code> and <code>desktop</code> MCP servers on the Mac</span></div>
       <div class="way"><b>Schedules</b><span>Briefings, headlines, LinkedIn steps, invoice reminder, Mac jobs</span></div>
     </div>
@@ -218,7 +217,7 @@ footer { font-size: 13px; color: var(--fg-3); border-top: 1px solid var(--border
         <text class="t-body" x="460" y="476">At most 50 memories of 4,000 characters each</text>
         <line class="divider" x1="460" y1="494" x2="800" y2="494"/>
         <text class="t-mono" x="460" y="514">functions/src/tools</text>
-        <text class="t-mono" x="460" y="532">one executor for chat, SMS and MCP</text>
+        <text class="t-mono" x="460" y="532">one executor for chat and MCP</text>
 
         <!-- Briefing & Headlines -->
         <rect class="box-sup" x="930" y="375" width="300" height="150" rx="10"/>
@@ -309,7 +308,7 @@ footer { font-size: 13px; color: var(--fg-3); border-top: 1px solid var(--border
       <table>
         <thead><tr><th>Connection</th><th>Pattern</th><th>How it works</th></tr></thead>
         <tbody>
-          <tr><td>MAISIE Assistant → every area</td><td class="pat">OHS</td><td>One tool executor in <code>functions/src/tools</code> serves the web chat, SMS and the <code>maisie</code> MCP server, so a tool behaves the same everywhere.</td></tr>
+          <tr><td>MAISIE Assistant → every area</td><td class="pat">OHS</td><td>One tool executor in <code>functions/src/tools</code> serves the web chat and the <code>maisie</code> MCP server, so a tool behaves the same everywhere.</td></tr>
           <tr><td>Tasks ↔ Work Journal</td><td class="pat">SK</td><td>The list of clients is the list of task categories. A journal item's client is a category name.</td></tr>
           <tr><td>Work Journal → Time &amp; Billing</td><td class="pat">C/S</td><td>The journal page drafts and posts a day's work sessions as time entries through the <code>timeEntries</code> function (actions <code>day</code>, <code>draft</code>, <code>post</code>).</td></tr>
           <tr><td>Time &amp; Billing → NTA Time Tracker</td><td class="pat">ACL, CF on write</td><td><code>fta-client.ts</code> reads customers, projects, entries and invoices from <code>fta-invoice-tracking</code>. New entries use the tracker's own shape, as <code>unbilled</code> with <code>source: "maisie"</code>.</td></tr>
@@ -333,7 +332,7 @@ footer { font-size: 13px; color: var(--fg-3); border-top: 1px solid var(--border
     </div>
   </section>
 
-  <footer>Last checked against the code on 27 October 2026 (commit 681609a), from <code>README.md</code>, <code>firestore.rules</code>, <code>src/app/models</code>, <code>functions/src</code> and <code>projects/*/README.md</code>.</footer>
+  <footer>Last checked against the code on 27 October 2026 (commit 96d4663, with SMS removed), from <code>README.md</code>, <code>firestore.rules</code>, <code>src/app/models</code>, <code>functions/src</code> and <code>projects/*/README.md</code>.</footer>
 </div>
 </body>
 </html>

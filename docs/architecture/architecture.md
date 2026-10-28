@@ -3,7 +3,7 @@
 > **Last checked against the code**: 2026-10-27
 > **Status**: Authoritative reference. Keep it in step with the code. See [Keeping This Doc Updated](#keeping-this-doc-updated).
 
-MAISIE is Jack Notarangelo's personal assistant. It has one user. Jack reaches it four ways: the web dashboard, SMS, VS Code (through two local MCP servers), and schedules that run on their own. It manages tasks, contacts, the calendar, a work journal, daily briefings, LinkedIn posts, and billing against the NTA Time Tracker.
+MAISIE is Jack Notarangelo's personal assistant. It has one user. Jack reaches it three ways: the web dashboard, VS Code (through two local MCP servers), and schedules that run on their own. SMS was removed on 2026-10-27. It manages tasks, contacts, the calendar, a work journal, daily briefings, LinkedIn posts, and billing against the NTA Time Tracker.
 
 **For the domain view**, see the [context map](context-map.html): the nine areas, the outside systems, and how each pair connects. This document covers the technical view: stack, structure, data, functions, Mac programs, CI and local setup. It does not repeat the context map.
 
@@ -19,9 +19,8 @@ MAISIE is Jack Notarangelo's personal assistant. It has one user. Jack reaches i
 | Firebase (browser) | Firebase JS SDK with `rxfire`; no AngularFire | 11.10.0 / 6.2.0 |
 | Firebase (server) | `firebase-admin` / `firebase-functions` (2nd generation) | 12.7.0 / 6.6.0 |
 | AI | Anthropic SDK `@anthropic-ai/sdk` | 0.115.0 |
-| Models (`functions/src/model.ts`) | `MODEL` for chat, LinkedIn drafts and invoice descriptions; `LIGHT_MODEL` for briefings, headlines and SMS | `claude-sonnet-5-5` / `claude-haiku-5-5` |
+| Models (`functions/src/model.ts`) | `MODEL` for chat, LinkedIn drafts and invoice descriptions; `LIGHT_MODEL` for briefings and headlines | `claude-sonnet-5-5` / `claude-haiku-5-5` |
 | Voice | ElevenLabs text-to-speech through `fetch` | `eleven_turbo_v2_5` |
-| SMS | Twilio | 5.13.0 |
 | MCP | `@modelcontextprotocol/sdk`, run with `tsx` | 1.30.0 |
 | Markdown | `marked` | 17.0.4 |
 | Tests | Karma + Jasmine, `node:test`, `@firebase/rules-unit-testing`, on the Firebase emulators | Karma 6.4.4 |
@@ -62,7 +61,6 @@ MAISIE is Jack Notarangelo's personal assistant. It has one user. Jack reaches i
 
 ```
 Web dashboard ──HTTPS + ID token──▶ Cloud Functions ──▶ Firestore ◀── Mac programs (bridge/)
-SMS (Twilio) ──webhook──▶ receiveSms                        ▲              │
 Schedules ──Cloud Scheduler──▶ briefing, headlines, LinkedIn │              ▼
 VS Code ──stdio──▶ maisie MCP server (shared tools) ─────────┘     Apple Mail, Calendar,
 VS Code ──stdio──▶ desktop MCP server ──────────────────────────▶  Contacts, Messages
@@ -103,7 +101,7 @@ All routes load lazily: `/login`, `/contacts`, `/journal` and `/` (dashboard). N
 
 | Collection | Holds | Web app access (`firestore.rules`) | Written by |
 |---|---|---|---|
-| `tasks`, `taskCategories` | Tasks with due date and repeat rule; categories | Read and write when signed in | Web app, tools, SMS |
+| `tasks`, `taskCategories` | Tasks with due date and repeat rule; categories | Read and write when signed in | Web app, tools |
 | `chatSessions` | Session title and last message | Read and write when signed in | Web app, `chat` |
 | `chatMessages`, `chatThinking/{sessionId}` | Messages in order; the current tool step | Read (and delete messages) | `chat` |
 | `contacts`, `companies`, `contactNotes`, `contactLinks`, `contactLinkDismissals` | People, companies, notes, and links to emails, meetings, texts and calls | Read and write when signed in | Web app, tools, Mac contacts jobs |
@@ -140,12 +138,11 @@ All functions are in `us-central1`. There are no `onCall` functions: every HTTP 
 | `refreshBriefingFacts` | Schedule, every 30 min 06:00–20:00 ET, weekdays | Refreshes the briefing facts |
 | `onCalendarChange` | Firestore write to `metadata/calendarChange` | Updates the briefing and queues a spoken alert for the Mac |
 | `headlinesBriefing`, `headlinesMarketOpen` | Schedule, 06:45 and 12:45 ET daily; 09:45 ET weekdays | News feeds and market data, chosen by `LIGHT_MODEL` |
-| `linkedinRefresh`, `linkedinDraft`, `linkedinApprovalRequest`, `linkedinPostReminder` | Schedule (daily; Thursday; Friday; Tuesday) | Reads the post queue from the `fractional-tech-advisory` repo, drafts, and texts Jack reminders |
+| `linkedinRefresh`, `linkedinDraft` | Schedule (daily; Thursday) | Reads the post queue from the `fractional-tech-advisory` repo and drafts next Tuesday's post |
 | `linkedinAction` | HTTPS | Dashboard card actions for the post |
 | `invoiceReminder` | Schedule, 09:00 ET, days 5–7 | Raises an alert when last month is not yet invoiced |
-| `receiveSms` | HTTPS (Twilio webhook) | Refuses any request without a valid Twilio signature (`twilio-signature.ts`) and any sender other than Jack. Turns a text into add, complete or list task with `LIGHT_MODEL`, and replies |
 
-Environment variable names: `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, `FINNHUB_API_KEY`, `LINKEDIN_QUEUE_PAT`, `MAISIE_PAT`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `JACK_PHONE_NUMBER`.
+Environment variable names: `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, `FINNHUB_API_KEY`, `LINKEDIN_QUEUE_PAT`, `MAISIE_PAT`.
 
 ### Tools
 
@@ -252,7 +249,6 @@ npm run test:all
 
 These were found when this document was written on 2026-10-27. Each needs a decision before it is changed.
 
-- **SMS does not use the shared tools.** `receiveSms` has its own parser with 3 actions and a fixed category list. The context map and README say it uses the tool loop.
 - **The docs give old timings for the desktop bridge.** The README and context map say it polls every 30 seconds and the cloud waits 40. The code polls every 10 seconds and waits 90.
 - **The tool counts in the docs are wrong.** The README and a comment in `definitions.ts` say 4 cloud tools are missing from VS Code; the real number is 11. The README tool table also leaves out `move_journal_items`.
 - **`npm start` uses the live project.** Function URLs are written into the code, and `useEmulators` is `false`.

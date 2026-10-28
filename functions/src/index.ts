@@ -2,7 +2,6 @@ import * as admin from "firebase-admin";
 import {onRequest} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {onDocumentWritten} from "firebase-functions/v2/firestore";
-import twilio from "twilio";
 import {getUnbilledEntries, getLastInvoice, getTimeEntriesForRange, getCustomers} from "./fta-client";
 import Anthropic from "@anthropic-ai/sdk";
 import {buildTools, WEB_TOOLS} from "./tools/definitions";
@@ -14,10 +13,9 @@ import {getMarketSnapshot} from "./markets";
 import {LIGHT_MODEL, MODEL} from "./model";
 import {runTimeEntriesAction} from "./time-entries-action";
 import {moveJournalItems} from "./tools/journal";
-import {refreshWeek, draftIfIdea, approvePost, markPosted, writeDraft, saveDraftText, describeWeek, textJack} from "./linkedin";
+import {refreshWeek, draftIfIdea, approvePost, markPosted, writeDraft, saveDraftText} from "./linkedin";
 // Every "what day is it" question here is "what day is it in Norwell" — see et-time.ts.
 import {ET_ZONE, etDateKey, etDayStart, etNextDayStart, etDayParts} from "./et-time";
-import {candidateUrls, isTwilioRequest} from "./twilio-signature";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -1401,8 +1399,8 @@ async function runHeadlines(): Promise<void> {
 // ─── LinkedIn: the weekly Tuesday post ─────────────────────────
 //
 // The queue lives in the fractional-tech-advisory repository; see linkedin.ts.
-// Thursday drafts next Tuesday's post if it is still an idea, Friday asks Jack
-// to approve it, Tuesday reminds him to post it. Jack posts it himself.
+// Thursday drafts next Tuesday's post if it is still an idea. Jack approves it
+// on the dashboard card and posts it himself.
 const LINKEDIN_OPTS = {
   timeZone: "America/New_York",
   region: "us-central1",
@@ -1410,13 +1408,12 @@ const LINKEDIN_OPTS = {
   timeoutSeconds: 300,
 } as const;
 
-/** Run a scheduled LinkedIn step, and tell Jack by text if it fails. */
+/** Run a scheduled LinkedIn step, and log it if it fails. */
 async function linkedinStep(name: string, step: () => Promise<unknown>): Promise<void> {
   try {
     await step();
   } catch (err) {
     console.error(`[linkedin] ${name} failed:`, err);
-    await textJack(`MAISIE could not complete the LinkedIn ${name} step: ${err instanceof Error ? err.message : err}`);
   }
 }
 
@@ -1429,21 +1426,6 @@ export const linkedinRefresh = onSchedule(
 export const linkedinDraft = onSchedule(
   {...LINKEDIN_OPTS, schedule: "0 9 * * 4"},
   () => linkedinStep("Thursday draft", () => draftIfIdea(db))
-);
-
-export const linkedinApprovalRequest = onSchedule(
-  {...LINKEDIN_OPTS, schedule: "0 9 * * 5"},
-  () => linkedinStep("Friday approval", async () => {
-    const week = await refreshWeek(db);
-    if (week.stage !== "approved") await textJack(describeWeek(week));
-  })
-);
-
-export const linkedinPostReminder = onSchedule(
-  {...LINKEDIN_OPTS, schedule: "45 7 * * 2"},
-  () => linkedinStep("Tuesday reminder", async () => {
-    await textJack(describeWeek(await refreshWeek(db)));
-  })
 );
 
 // Buttons on the dashboard card. Every action re-reads the queue from GitHub
@@ -1522,224 +1504,5 @@ export const invoiceReminder = onSchedule(
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     }
-  }
-);
-
-// ─── SMS: Receive inbound texts and act on them ─────────────────
-// Twilio sends form-encoded POST to this endpoint when Jack texts
-// the Twilio number. Claude Haiku parses the natural language command
-// into a structured action, executes it, and replies via TwiML.
-export const receiveSms = onRequest(
-  {region: "us-central1", memory: "256MiB", timeoutSeconds: 120},
-  async (req, res) => {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const jackPhone = process.env.JACK_PHONE_NUMBER;
-    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-
-    if (!accountSid || !authToken || !jackPhone || !anthropicApiKey) {
-      console.error("[receiveSms] Missing required environment variables");
-      res.status(500).send("Server misconfigured");
-      return;
-    }
-
-    // ── 1. Validate Twilio signature ───────────────────────────
-    // See twilio-signature.ts for why several URLs are tried.
-    const signature = req.headers["x-twilio-signature"] as string | undefined;
-    const urls = candidateUrls(req.headers.host, req.originalUrl);
-    if (!isTwilioRequest(authToken, signature, urls, req.body as Record<string, string>)) {
-      console.warn(`[receiveSms] Refused: invalid Twilio signature (signature present: ${!!signature}). URLs tried: ${urls.join(", ")}`);
-      res.status(403).send("Forbidden");
-      return;
-    }
-
-    // ── 2. Only accept messages from Jack's phone ──────────────
-    const fromNumber = req.body.From as string;
-    const messageBody = (req.body.Body as string || "").trim();
-
-    if (fromNumber !== jackPhone) {
-      console.warn(`[receiveSms] Rejected message from unknown number: ${fromNumber}`);
-      res.type("text/xml").send("<Response></Response>");
-      return;
-    }
-
-    if (!messageBody) {
-      res.type("text/xml").send("<Response><Message>I didn't catch that. Try: \"add task X\" or \"what are my tasks?\"</Message></Response>");
-      return;
-    }
-
-    // ── 3. Load active tasks for context (needed for complete/list) ─
-    console.log("[receiveSms] loading active tasks");
-    const activeTasks = await db.collection("tasks")
-      .where("completed", "==", false)
-      .get()
-      .then((s) => s.docs.map((d) => ({id: d.id, ...d.data()} as Record<string, unknown>)))
-      .catch((err) => {
-        console.error("[receiveSms] Firestore tasks load failed:", err);
-        return [] as Array<Record<string, unknown>>;
-      });
-    console.log(`[receiveSms] loaded ${activeTasks.length} tasks`);
-
-    const taskListStr = activeTasks.length > 0
-      ? activeTasks.map((t) => {
-        const due = t["dueDate"] ? ` (due: ${t["dueDate"]})` : "";
-        return `[${t["id"]}][${t["category"]}] ${t["title"]}${due}`;
-      }).join("\n")
-      : "No active tasks";
-
-    // ── 4. Parse intent with Claude Haiku ──────────────────────
-    const today = new Date().toLocaleDateString("en-US", {
-      weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "America/New_York",
-    });
-    const todayIso = new Date().toLocaleDateString("en-CA", {timeZone: "America/New_York"}); // YYYY-MM-DD
-
-    const systemPrompt = `You are a task parser for Maisie, Jack Notarangelo's personal assistant. Parse the SMS message into a JSON action.
-Respond ONLY with valid JSON — no markdown, no explanation, no extra text.
-
-Available actions:
-- add_task: {"action":"add_task","title":"string","category":"string","dueDate":"YYYY-MM-DD or null"}
-- complete_task: {"action":"complete_task","taskId":"string"}
-- list_tasks: {"action":"list_tasks"}
-- unknown: {"action":"unknown","clarification":"string"}
-
-Rules:
-- Default category is "general". Other categories: ihrdc, solomon, dial, ppk, church, embassy, cox (Cox Engineering), nta (NTA Business: Jack's own consulting business).
-- For complete_task, match the taskId from the active task list by fuzzy-matching the title. If ambiguous, use action "unknown".
-- For due dates, convert relative terms to absolute YYYY-MM-DD using today's date.
-- If the message is a list request ("tasks", "what's on my list", "show tasks"), use list_tasks.
-- If you cannot confidently parse the intent, use unknown with a helpful clarification.
-
-Today is ${today} (${todayIso}).
-
-Active tasks:
-${taskListStr}`;
-
-    let parsed: {
-      action: string;
-      title?: string;
-      category?: string;
-      dueDate?: string | null;
-      taskId?: string;
-      clarification?: string;
-    };
-
-    const anthropic = new Anthropic({apiKey: anthropicApiKey});
-
-    try {
-      console.log("[receiveSms] calling Haiku for intent parse");
-      const aiResponse = await anthropic.messages.create({
-        model: LIGHT_MODEL,
-        max_tokens: 1024,
-        // Low effort on both SMS calls: Twilio's webhook timeout is ~15s and
-        // this handler makes two sequential model calls. Haiku 5.5's default
-        // effort is medium, so set low explicitly. max_tokens leaves room for
-        // a short think.
-        thinking: {type: "adaptive"},
-        output_config: {effort: "low"},
-        system: systemPrompt,
-        messages: [{role: "user", content: messageBody}],
-      });
-
-      const rawJson = aiResponse.content
-        .filter((b) => b.type === "text")
-        .map((b) => (b.type === "text" ? b.text : ""))
-        .join("")
-        .trim()
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/\s*```$/, "");
-
-      parsed = JSON.parse(rawJson);
-      console.log(`[receiveSms] intent parsed: ${parsed.action}`);
-    } catch (err) {
-      console.error("[receiveSms] Claude parse error:", err);
-      const twiml = new twilio.twiml.MessagingResponse();
-      twiml.message("Sorry, I had trouble understanding that. Try: \"add task X\" or \"what are my tasks?\"");
-      res.type("text/xml").send(twiml.toString());
-      return;
-    }
-
-    // ── 5. Execute the action ──────────────────────────────────
-    let actionSummary: string;
-    const twiml = new twilio.twiml.MessagingResponse();
-
-    try {
-      if (parsed.action === "add_task") {
-        const title = parsed.title || messageBody;
-        const category = parsed.category || "general";
-        const dueDate = parsed.dueDate || null;
-        await db.collection("tasks").add({
-          title,
-          category,
-          completed: false,
-          dueDate,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        actionSummary = `Task added successfully: "${title}", category: ${category}${dueDate ? `, due: ${dueDate}` : ", no due date"}`;
-      } else if (parsed.action === "complete_task") {
-        if (!parsed.taskId) {
-          actionSummary = "Could not find a matching task to complete — the title was ambiguous";
-        } else {
-          await db.collection("tasks").doc(parsed.taskId).update({
-            completed: true,
-            completedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          const completedTask = activeTasks.find((t) => t["id"] === parsed.taskId);
-          const completedTitle = completedTask ? (completedTask["title"] as string) : parsed.taskId;
-          actionSummary = `Task completed: "${completedTitle}"`;
-        }
-      } else if (parsed.action === "list_tasks") {
-        if (activeTasks.length === 0) {
-          actionSummary = "Jack has no active tasks right now";
-        } else {
-          const lines = activeTasks.slice(0, 10).map((t) => {
-            const due = t["dueDate"] ? ` (due ${t["dueDate"]})` : "";
-            return `• [${t["category"]}] ${t["title"]}${due}`;
-          });
-          const more = activeTasks.length > 10 ? `\n...and ${activeTasks.length - 10} more` : "";
-          actionSummary = `Jack's active tasks (${activeTasks.length} total):\n${lines.join("\n")}${more}`;
-        }
-      } else {
-        actionSummary = `Could not parse the request: ${parsed.clarification || "unknown intent"}`;
-      }
-    } catch (err) {
-      console.error("[receiveSms] Action execution error:", err);
-      twiml.message("Something went wrong on my end. Please try again or check the app.");
-      res.type("text/xml").send(twiml.toString());
-      return;
-    }
-
-    // ── 6. Generate personalized reply via Claude Haiku ────────
-    let replyText: string;
-    try {
-      console.log("[receiveSms] calling Haiku for personalized reply");
-      const replyResponse = await anthropic.messages.create({
-        model: LIGHT_MODEL,
-        // The system prompt keeps the reply to 1-2 sentences; the headroom is
-        // for a short think, which counts toward max_tokens.
-        max_tokens: 1024,
-        thinking: {type: "adaptive"},
-        output_config: {effort: "low"},
-        system: `You are Maisie, Jack Notarangelo's personal executive assistant, replying to Jack via SMS.
-Be concise and personal — warm with a dry wit, like a trusted colleague who knows Jack well. Use his first name occasionally but not in every message. Never use emojis. Keep replies short (1-2 sentences max) — this is SMS. No markdown.
-Today is ${new Date().toLocaleDateString("en-US", {weekday: "long", month: "long", day: "numeric", timeZone: "America/New_York"})}.`,
-        messages: [{
-          role: "user",
-          content: `Jack texted: "${messageBody}"\n\nResult: ${actionSummary}\n\nWrite a short SMS reply confirming what was done (or listing tasks if that was requested).`,
-        }],
-      });
-      replyText = replyResponse.content
-        .filter((b) => b.type === "text")
-        .map((b) => (b.type === "text" ? b.text : ""))
-        .join("")
-        .trim();
-      console.log("[receiveSms] reply generated");
-    } catch (err) {
-      console.error("[receiveSms] Reply generation error:", err);
-      // Fall back to plain summary if Haiku fails
-      replyText = actionSummary;
-    }
-
-    twiml.message(replyText);
-    res.type("text/xml").send(twiml.toString());
   }
 );
