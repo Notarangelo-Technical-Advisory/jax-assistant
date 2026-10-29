@@ -38,6 +38,8 @@ export interface TimelineDay {
   minutes: number;
   blocks: TimelineBlock[];
   breaks: TimelineBreak[];
+  /** The longest break's minutes, whenever it fell; 0 when there was none. */
+  longestBreak: number;
 }
 
 export interface Timeline {
@@ -114,7 +116,8 @@ export function buildTimeline(start: string, end: string, summaries: JournalDay[
     const minutes = client
       ? summary?.clients.find((c) => c.client === client)?.minutes ?? 0
       : summary?.totalMinutes ?? 0;
-    return { day, minutes, blocks, breaks: breaksIn(blocks) };
+    const breaks = breaksIn(blocks);
+    return { day, minutes, blocks, breaks, longestBreak: Math.max(0, ...breaks.map((b) => b.minutes)) };
   });
   const earliest = Math.min(DEFAULT_AXIS_START, ...days.flatMap((d) => d.blocks.map((b) => b.start)));
   return { axisStart: Math.floor(earliest / 60) * 60, axisEnd: DAY_MINUTES, days };

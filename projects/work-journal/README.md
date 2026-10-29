@@ -125,10 +125,11 @@ The Timeline button on the `/journal` page shows the chosen dates as one line a 
 
 - Each work session is a block in its client's colour. With one client chosen, other clients' work is grey, so it is not taken for a break.
 - A break is a gap of more than 20 minutes with no work for any client, the same gap that ends a work session. Breaks are outlined, and a break of an hour or more shows its length.
+- On the right of each line are the hours worked and the day's longest break, whenever it fell. Jack is semi-retired and has no fixed hours off: what matters is that each day has enough long breaks for family and personal tasks, at any time. "None" means the day's work had no break of more than 20 minutes.
 - Clicking a day opens its details in the list.
 - It shows 62 days at most.
 
-`get_journal` gives MAISIE each day's `workedFrom`, `workedTo` and `breaks`, worked out in the same way (`dayBreaks` in `functions/src/tools/journal.ts`), so she can answer "Where were my breaks this week?" and point out work in times Jack meant to keep free. The breaks always count every client's work, even when one client is asked for.
+`get_journal` gives MAISIE each day's `workedFrom`, `workedTo`, `breaks` and `longestBreakHours`, worked out in the same way (`dayBreaks` in `functions/src/tools/journal.ts`), so she can answer "Where were my breaks this week?" and point out days where work was spread across the day with only short breaks. The breaks always count every client's work, even when one client is asked for.
 
 The page and the tool each have their own copy of the break rule: `timeline.ts` beside the page, and `dayBreaks` in the functions. Change both together.
 

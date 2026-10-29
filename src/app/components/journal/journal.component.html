@@ -47,7 +47,8 @@
       } @else if (timeline(); as t) {
         <p class="timeline-intro">
           Each line is one day in Eastern Time. The coloured blocks are work. Breaks of more than 20 minutes are outlined,
-          with their length when they are an hour or more. Click a day to see what you did.
+          with their length when they are an hour or more. On the right is each day's work and its longest break,
+          whenever it fell. Click a day to see what you did.
         </p>
         <div class="timeline-key">
           @for (c of timelineClients(); track c.key) {
@@ -64,11 +65,12 @@
               <span class="axis-mark" [class.minor]="odd" [style.left.%]="position(m)">{{ hourLabel(m) }}</span>
             }
           </span>
-          <span class="row-hours"></span>
+          <span class="row-hours">Worked</span>
+          <span class="row-break">Longest break</span>
         </div>
         @for (d of t.days; track d.day) {
           <button type="button" class="timeline-row" [class.weekend]="isWeekend(d.day)" (click)="openDay(d.day)"
-            [attr.aria-label]="dayLabel(d.day) + ': ' + (d.minutes ? hours(d.minutes) + ' of work, ' + d.breaks.length + (d.breaks.length === 1 ? ' break' : ' breaks') : 'no work')">
+            [attr.aria-label]="dayLabel(d.day) + ': ' + (d.minutes ? hours(d.minutes) + ' of work, ' + (d.longestBreak ? 'longest break ' + hours(d.longestBreak) : 'no break') : 'no work')">
             <span class="row-day">{{ shortDayLabel(d.day) }}</span>
             <span class="row-track">
               @for (m of timelineHours(); track m) {
@@ -87,6 +89,7 @@
               }
             </span>
             <span class="row-hours">{{ d.minutes ? hours(d.minutes) : 'No work' }}</span>
+            <span class="row-break" [class.none]="!d.longestBreak">{{ d.longestBreak ? hours(d.longestBreak) : d.blocks.length ? 'None' : '' }}</span>
           </button>
         }
       }
