@@ -48,7 +48,7 @@ MAISIE is Jack Notarangelo's personal assistant. It has one user. Jack reaches i
 
 `src/app/`:
 
-- `components/`: `dashboard` (tasks, chat, briefing, headlines, LinkedIn card, billing), `journal` (with the post-time panel), `contacts`, `login`.
+- `components/`: `dashboard` (tasks, chat, briefing, headlines, LinkedIn card, billing), `journal` (with the post-time panel and the timeline of work and breaks), `contacts`, `login`.
 - `services/`: one service per area (see [Key Services](#key-services)).
 - `models/`: 10 interface files.
 - `firebase.ts`: injection tokens for the Firebase SDK objects.

@@ -33,8 +33,65 @@
         <button type="button" class="preset" [class.active]="isPreset(p.key)" (click)="applyPreset(p.key)">{{ p.label }}</button>
       }
     </div>
+    <div class="views" role="group" aria-label="View">
+      <button type="button" class="preset" [class.active]="view() === 'list'" [attr.aria-pressed]="view() === 'list'" (click)="setView('list')">List</button>
+      <button type="button" class="preset" [class.active]="view() === 'timeline'" [attr.aria-pressed]="view() === 'timeline'" (click)="setView('timeline')">Timeline</button>
+    </div>
   </section>
 
+  @if (view() === 'timeline') {
+    <!-- Timeline: each day's work and the breaks between it -->
+    <section class="timeline" aria-label="Timeline of work and breaks">
+      @if (rangeError() ?? timelineError(); as error) {
+        <p class="filter-error">{{ error }}</p>
+      } @else if (timeline(); as t) {
+        <p class="timeline-intro">
+          Each line is one day in Eastern Time. The coloured blocks are work. Breaks of more than 20 minutes are outlined,
+          with their length when they are an hour or more. Click a day to see what you did.
+        </p>
+        <div class="timeline-key">
+          @for (c of timelineClients(); track c.key) {
+            <span class="key-item"><span class="swatch" [attr.data-colour]="colourOf(c.key)"></span>{{ c.label }}</span>
+          }
+          @if (clientFilter()) {
+            <span class="key-item"><span class="swatch other"></span>Other clients</span>
+          }
+        </div>
+        <div class="timeline-axis" aria-hidden="true">
+          <span class="row-day"></span>
+          <span class="row-track">
+            @for (m of timelineHours(); track m; let odd = $odd) {
+              <span class="axis-mark" [class.minor]="odd" [style.left.%]="position(m)">{{ hourLabel(m) }}</span>
+            }
+          </span>
+          <span class="row-hours"></span>
+        </div>
+        @for (d of t.days; track d.day) {
+          <button type="button" class="timeline-row" [class.weekend]="isWeekend(d.day)" (click)="openDay(d.day)"
+            [attr.aria-label]="dayLabel(d.day) + ': ' + (d.minutes ? hours(d.minutes) + ' of work, ' + d.breaks.length + (d.breaks.length === 1 ? ' break' : ' breaks') : 'no work')">
+            <span class="row-day">{{ shortDayLabel(d.day) }}</span>
+            <span class="row-track">
+              @for (m of timelineHours(); track m) {
+                <span class="grid" [style.left.%]="position(m)"></span>
+              }
+              @for (b of d.blocks; track $index) {
+                <span class="block" [class.other]="!b.chosen" [attr.data-colour]="colourOf(b.client)"
+                  [style.left.%]="position(b.start)" [style.width.%]="position(b.end) - position(b.start)"
+                  [title]="b.label + ', ' + clock(b.start) + '–' + clock(b.end)"></span>
+              }
+              @for (br of d.breaks; track br.start) {
+                <span class="break" [style.left.%]="position(br.start)" [style.width.%]="position(br.end) - position(br.start)"
+                  [title]="'Break, ' + clock(br.start) + '–' + clock(br.end) + ', ' + hours(br.minutes)">
+                  @if (br.minutes >= 60) {{{ hours(br.minutes) }}}
+                </span>
+              }
+            </span>
+            <span class="row-hours">{{ d.minutes ? hours(d.minutes) : 'No work' }}</span>
+          </button>
+        }
+      }
+    </section>
+  } @else {
   <div class="layout" [class.has-selection]="selection() !== null">
     <!-- Summary: weeks, days and clients -->
     <aside class="list">
@@ -201,4 +258,5 @@
       }
     </main>
   </div>
+  }
 </div>

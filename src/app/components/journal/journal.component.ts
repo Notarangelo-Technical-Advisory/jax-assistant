@@ -7,6 +7,7 @@ import { JournalService } from '../../services/journal.service';
 import { TaskCategoryService } from '../../services/task-category.service';
 import { JournalDay, JournalItem, JournalSource } from '../../models/journal.model';
 import { PostTimePanelComponent } from './post-time-panel.component';
+import { CLIENT_COLOURS, MAX_TIMELINE_DAYS, Timeline, buildTimeline, clock } from './timeline';
 
 const ET_ZONE = 'America/New_York';
 /** The page opens on the last 14 days, today included. */
@@ -93,6 +94,9 @@ export interface ItemGroup {
 
 type Selection = { day: string; client: string | null } | null;
 
+/** The list of weeks and days, or the timeline of each day's work and breaks. */
+export type JournalView = 'list' | 'timeline';
+
 const SOURCE_LABELS: Record<JournalSource, string> = {
   github: 'GitHub', jira: 'Jira', claude: 'Claude Code', meeting: 'Calendar', recording: 'Wispr Flow', email: 'Mail',
 };
@@ -130,8 +134,10 @@ export class JournalComponent implements OnDestroy {
   moving = signal(false);
   moveMessage = signal('');
   moveError = signal('');
+  view = signal<JournalView>('list');
 
   readonly hours = hours;
+  readonly clock = clock;
   readonly presets = RANGE_PRESETS;
 
   constructor() {
@@ -250,6 +256,59 @@ export class JournalComponent implements OnDestroy {
     for (const week of weeks.values()) week.clients.sort((a, b) => b.minutes - a.minutes);
     return [...weeks.values()];
   });
+
+  /** Why the chosen dates are too many for the timeline, or null. */
+  timelineError = computed<string | null>(() =>
+    addDays(this.rangeStart(), MAX_TIMELINE_DAYS) <= this.rangeEnd()
+      ? `The timeline shows ${MAX_TIMELINE_DAYS} days or fewer. Choose a shorter range.`
+      : null);
+
+  /** Every day between the chosen dates, oldest first, with its work sessions and breaks. */
+  timeline = computed<Timeline | null>(() =>
+    this.rangeError() || this.timelineError()
+      ? null
+      : buildTimeline(this.rangeStart(), this.rangeEnd(), this.days(), this.clientFilter()));
+
+  /** The hours marked on the timeline: every 3 hours from its start. */
+  timelineHours = computed<number[]>(() => {
+    const t = this.timeline();
+    if (!t) return [];
+    const marks: number[] = [];
+    for (let m = t.axisStart; m <= t.axisEnd; m += 180) marks.push(m);
+    return marks;
+  });
+
+  /** The clients with work on the timeline, for its key. */
+  timelineClients = computed(() => {
+    const keys = new Set(this.timeline()?.days.flatMap((d) => d.blocks.filter((b) => b.chosen).map((b) => b.client)));
+    return this.clientOptions().filter((c) => keys.has(c.key));
+  });
+
+  /**
+   * A client's colour, 0 to 9, by its place among the clients with work on the
+   * timeline, so it is the same on every day and no two clients share one.
+   * Other clients' work shows in grey when one client is chosen.
+   */
+  colourOf(client: string): number {
+    const index = this.timelineClients().findIndex((c) => c.key === client);
+    return (index < 0 ? 0 : index) % CLIENT_COLOURS;
+  }
+
+  /** Where a time falls on the timeline, as a percentage of its width. */
+  position(minutes: number): number {
+    const t = this.timeline();
+    return t ? ((minutes - t.axisStart) / (t.axisEnd - t.axisStart)) * 100 : 0;
+  }
+
+  setView(view: JournalView): void {
+    this.view.set(view);
+  }
+
+  /** From the timeline: open the day's details in the list. */
+  openDay(day: string): void {
+    this.view.set('list');
+    this.select(day, this.clientFilter());
+  }
 
   /** The selected day's summary. */
   selectedDay = computed(() => {
@@ -372,6 +431,20 @@ export class JournalComponent implements OnDestroy {
   /** "Tuesday, October 13". */
   dayLabel(day: string): string {
     return noon(day).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  /** "Tue, Oct 13". */
+  shortDayLabel(day: string): string {
+    return noon(day).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  isWeekend(day: string): boolean {
+    return [0, 6].includes(noon(day).getUTCDay());
+  }
+
+  /** "6 AM", "12 PM": an hour on the timeline. */
+  hourLabel(minutes: number): string {
+    return clock(minutes).replace(':00', '');
   }
 
   /** "October 1, 2026". */

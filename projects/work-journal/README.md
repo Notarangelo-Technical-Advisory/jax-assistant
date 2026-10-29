@@ -2,7 +2,7 @@
 
 MAISIE keeps a journal of what Jack did, when he did it, and for which client. Jack does many things for a few minutes at a time across a day, so the journal gives him the record he needs to fill in his time entries and to see where his time went.
 
-*Last updated: 2026-10-16*
+*Last updated: 2026-10-29*
 
 ## Status
 
@@ -15,6 +15,7 @@ MAISIE keeps a journal of what Jack did, when he did it, and for which client. J
 | NTA Business | Jack's own business repos have their own client, not General | Built 2026-10-16 |
 | `/journal` page | Summary by week, day and client, with a click through to each item. Filters for a date range and one client or all clients | Built 2026-10-13. Filters added 2026-10-14 |
 | `get_journal` tool | MAISIE answers "What did I do for IHRDC yesterday?" in chat and VS Code | Built 2026-10-13 |
+| Timeline | Each day as a line from morning to midnight, with the work in each client's colour and the breaks between it. `get_journal` gives MAISIE the same breaks | Built 2026-10-29 |
 
 ## What is collected
 
@@ -118,12 +119,25 @@ The rules are `emailItems` in `functions/src/tools/journal.ts`.
 - Each client's time is counted on its own. The day total counts overlapping work once, so client times can add up to more than the day total.
 - These are estimates to help fill in time entries. They are not logged time.
 
+## Timeline
+
+The Timeline button on the `/journal` page shows the chosen dates as one line a day, oldest first, from 6 AM (or earlier, when there was earlier work) to midnight in Eastern Time. Days with no work are shown too. It is for seeing when Jack was not working, so that he keeps long breaks in his day.
+
+- Each work session is a block in its client's colour. With one client chosen, other clients' work is grey, so it is not taken for a break.
+- A break is a gap of more than 20 minutes with no work for any client, the same gap that ends a work session. Breaks are outlined, and a break of an hour or more shows its length.
+- Clicking a day opens its details in the list.
+- It shows 62 days at most.
+
+`get_journal` gives MAISIE each day's `workedFrom`, `workedTo` and `breaks`, worked out in the same way (`dayBreaks` in `functions/src/tools/journal.ts`), so she can answer "Where were my breaks this week?" and point out work in times Jack meant to keep free. The breaks always count every client's work, even when one client is asked for.
+
+The page and the tool each have their own copy of the break rule: `timeline.ts` beside the page, and `dayBreaks` in the functions. Change both together.
+
 ## Where everything is
 
 - **Firestore:** `journal` (one document per item, with a fixed id from its source, so a second run adds nothing) and `journalDays` (one summary per day, rebuilt when the day's items change). The job's progress is in `metadata/journal`. The page can only read them; only the job writes.
 - **Rules and the tool:** `functions/src/tools/journal.ts`.
 - **Job and readers (Mac only):** `functions/src/mcp/collect-journal.ts`, with `github-activity.ts`, `jira-activity.ts`, `claude-sessions.ts` and `apple-meetings.ts` beside it. `apple-meetings.ts` and `apple-mail.ts` are shared with automatic contact linking. `wispr-recordings.ts` reads Wispr Flow. launchd runs it from `bridge/com.notarangelo.work-journal.plist`; the log is `/tmp/work-journal.log`.
-- **Web page:** `src/app/components/journal/`, with `JournalService` in `src/app/services/journal.service.ts`.
+- **Web page:** `src/app/components/journal/`, with `JournalService` in `src/app/services/journal.service.ts`. The timeline's rules are in `timeline.ts` there.
 - **Tests:** `tests/functions/journal.test.mjs`, `tests/mcp/journal.test.mjs`, the journal tests in `tests/rules/firestore.test.mjs` and `tests/mcp/maisie-server.test.mjs`, and `journal.component.spec.ts`.
 
 ## Setting it up on Jack's Mac
