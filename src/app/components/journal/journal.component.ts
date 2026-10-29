@@ -7,7 +7,7 @@ import { JournalService } from '../../services/journal.service';
 import { TaskCategoryService } from '../../services/task-category.service';
 import { JournalDay, JournalItem, JournalSource } from '../../models/journal.model';
 import { PostTimePanelComponent } from './post-time-panel.component';
-import { CLIENT_COLOURS, MAX_TIMELINE_DAYS, Timeline, buildTimeline, clock } from './timeline';
+import { CLIENT_COLOURS, MAX_TIMELINE_DAYS, RhythmTotals, Timeline, buildTimeline, clock, rhythmTotals } from './timeline';
 
 const ET_ZONE = 'America/New_York';
 /** The page opens on the last 14 days, today included. */
@@ -269,6 +269,24 @@ export class JournalComponent implements OnDestroy {
       ? null
       : buildTimeline(this.rangeStart(), this.rangeEnd(), this.days(), this.clientFilter()));
 
+  /** The chosen dates against Jack's rhythm: weekday mornings for work, the rest kept free. */
+  rhythm = computed<RhythmTotals | null>(() => {
+    const t = this.timeline();
+    return t ? rhythmTotals(t.days) : null;
+  });
+
+  /** A part of the rhythm's work as a percentage of all of it, for the bar above the timeline. */
+  share(minutes: number): number {
+    const r = this.rhythm();
+    const all = r ? r.morningMinutes + r.afternoonMinutes + r.weekendMinutes : 0;
+    return all ? Math.round((minutes / all) * 100) : 0;
+  }
+
+  /** "1 piece", "5 pieces". */
+  pieces(count: number): string {
+    return `${count} ${count === 1 ? 'piece' : 'pieces'}`;
+  }
+
   /** The hours marked on the timeline: every 3 hours from its start. */
   timelineHours = computed<number[]>(() => {
     const t = this.timeline();
@@ -298,6 +316,16 @@ export class JournalComponent implements OnDestroy {
   position(minutes: number): number {
     const t = this.timeline();
     return t ? ((minutes - t.axisStart) / (t.axisEnd - t.axisStart)) * 100 : 0;
+  }
+
+  /** Where a day's shaded free time starts on its line, as a percentage. */
+  freeZoneStart(freeFrom: number): number {
+    return Math.max(0, this.position(freeFrom));
+  }
+
+  /** The later of two times: where a block's part in free time starts. */
+  later(a: number, b: number): number {
+    return Math.max(a, b);
   }
 
   setView(view: JournalView): void {

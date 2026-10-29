@@ -329,6 +329,9 @@ a.subject { color: $accent; text-decoration: none; &:hover { text-decoration: un
 $client-colours: #3b82f6, #f59e0b, #22c55e, #a78bfa, #f472b6, #2dd4bf, #f87171, #94a3b8, #a3e635, #fb923c;
 $track: #162033;
 $other-client: #475569;
+$free-work: #f87171; // Work in the time Jack keeps free.
+$morning: #3b82f6;
+$weekend: #fb923c;
 
 .views { display: flex; gap: 0.4rem; margin-left: auto; }
 
@@ -361,11 +364,16 @@ $other-client: #475569;
 
 .timeline-axis, .timeline-row {
   display: grid;
-  grid-template-columns: 6.5rem 1fr 4.5rem 5.5rem;
+  grid-template-columns: 6.5rem 1fr 4.5rem 5.5rem 5.5rem;
   gap: 0.5rem;
   align-items: center;
 
-  @media (max-width: 560px) { grid-template-columns: 4.5rem 1fr 3rem 3.5rem; gap: 0.35rem; }
+  // On a phone the longest break makes way for the line itself.
+  @media (max-width: 560px) {
+    grid-template-columns: 4.5rem 1fr 3rem 3.5rem;
+    gap: 0.35rem;
+    .row-break { display: none; }
+  }
 }
 
 .row-track { position: relative; display: block; height: 100%; }
@@ -403,10 +411,42 @@ $other-client: #475569;
 }
 
 .row-day { font-size: 0.8rem; white-space: nowrap; }
-.row-hours, .row-break { font-size: 0.8rem; text-align: right; color: $text-secondary; font-variant-numeric: tabular-nums; }
-.timeline-axis .row-hours, .timeline-axis .row-break { font-size: 0.7rem; }
+.row-hours, .row-free, .row-break { font-size: 0.8rem; text-align: right; color: $text-secondary; font-variant-numeric: tabular-nums; }
+.timeline-axis .row-hours, .timeline-axis .row-free, .timeline-axis .row-break { font-size: 0.7rem; }
+// Work in free time is what Jack wants to see shrink; none at all is good.
+.timeline-row .row-free { color: $free-work; font-weight: 600; &.none { color: $meeting; font-weight: normal; } }
 // The longest break is what Jack looks for, so it stands out.
 .timeline-row .row-break { color: $meeting; font-weight: 600; &.none { color: $text-secondary; font-weight: normal; } }
+
+// Weekdays after noon and all of a weekend: the time Jack keeps free.
+.free-zone { position: absolute; top: 0; bottom: 0; right: 0; background: rgba($free-work, 0.11); border-left: 1px solid rgba($free-work, 0.5); }
+
+// The part of a block in free time: a red line under it.
+.free-mark { position: absolute; bottom: 3px; height: 3px; min-width: 3px; background: $free-work; }
+
+.rhythm { margin-bottom: 0.75rem; }
+.rhythm-bar {
+  display: flex;
+  height: 0.6rem;
+  margin-bottom: 0.6rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: $track;
+  .part.morning { background: $morning; }
+  .part.afternoon { background: $free-work; }
+  .part.weekend { background: $weekend; }
+}
+.stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+.stat {
+  display: flex;
+  flex-direction: column;
+  padding-left: 0.6rem;
+  border-left: 3px solid $morning;
+  &.afternoon { border-color: $free-work; }
+  &.weekend { border-color: $weekend; }
+}
+.stat-value { font-size: 1.05rem; font-weight: 600; font-variant-numeric: tabular-nums; small { color: $text-secondary; font-weight: normal; font-size: 0.8rem; } }
+.stat-label { color: $text-secondary; font-size: 0.75rem; }
 
 .grid { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba($border, 0.7); }
 

@@ -1,6 +1,6 @@
 import * as admin from "firebase-admin";
 import {createHash} from "crypto";
-import {ET_ZONE, addDaysToKey, etDateKey} from "../et-time";
+import {ET_ZONE, addDaysToKey, etDateKey, etOffsetAt} from "../et-time";
 import {DEFAULT_CATEGORIES} from "./definitions";
 
 // ─── Work journal ──────────────────────────────────────────────
@@ -33,6 +33,11 @@ import {DEFAULT_CATEGORIES} from "./definitions";
 
 export const GAP_MINUTES = 20;
 export const MIN_SESSION_MINUTES = 6;
+/**
+ * Jack's rhythm: weekday mornings, until this hour, are his work time. The
+ * rest of a weekday, and all of a weekend, he means to keep free.
+ */
+export const WORK_TIME_END_HOUR = 12;
 export const DEFAULT_CLIENT = "general";
 
 /** Repos whose client is not their owner's. Keys are lower case "owner/name". */
@@ -688,14 +693,7 @@ export interface WorkBreak {
  * MIN_SESSION_MINUTES from its start, as it does in the hours.
  */
 export function dayBreaks(day: Pick<JournalDay, "clients">): WorkBreak[] {
-  const spans = day.clients
-    .flatMap((c) => c.sessions)
-    .map((s) => {
-      const start = Date.parse(s.start);
-      return {start, end: Math.max(Date.parse(s.end), start + s.minutes * 60_000)};
-    })
-    .filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end))
-    .sort((a, b) => a.start - b.start);
+  const spans = daySpans(day);
 
   const breaks: WorkBreak[] = [];
   let workedTo: number | null = null;
@@ -710,6 +708,60 @@ export function dayBreaks(day: Pick<JournalDay, "clients">): WorkBreak[] {
     workedTo = Math.max(workedTo ?? span.end, span.end);
   }
   return breaks;
+}
+
+export interface DayRhythm {
+  weekend: boolean;
+  /** Work before noon on a weekday. */
+  morningMinutes: number;
+  /** Work in the free time: after noon on a weekday, any time at the weekend. */
+  freeMinutes: number;
+  /** The separate stretches of work in the free time, with more than GAP_MINUTES between them. */
+  freePieces: number;
+}
+
+/** Spans no more than `gapMs` apart, joined. With a gap of 0, overlapping work counts once. */
+function joinSpans(spans: Array<{start: number; end: number}>, gapMs: number): Array<{start: number; end: number}> {
+  const joined: Array<{start: number; end: number}> = [];
+  for (const s of spans) {
+    const last = joined[joined.length - 1];
+    if (last && s.start - last.end <= gapMs) last.end = Math.max(last.end, s.end);
+    else joined.push({...s});
+  }
+  return joined;
+}
+
+/**
+ * A day against Jack's rhythm, for any client. Many short pieces of work in
+ * the free time make a day feel like work all day, so the pieces are counted
+ * as well as the time.
+ */
+export function dayRhythm(day: Pick<JournalDay, "day" | "clients">): DayRhythm {
+  const noonUtc = new Date(`${day.day}T16:00:00Z`);
+  const weekend = [0, 6].includes(noonUtc.getUTCDay());
+  const hour = String(WORK_TIME_END_HOUR).padStart(2, "0");
+  const freeFrom = weekend ? -Infinity : Date.parse(`${day.day}T${hour}:00:00${etOffsetAt(noonUtc)}`);
+  const spans = daySpans(day);
+  const worked = (from: number, to: number) => joinSpans(spans, 0)
+    .reduce((n, s) => n + Math.max(0, Math.min(s.end, to) - Math.max(s.start, from)), 0);
+  return {
+    weekend,
+    morningMinutes: weekend ? 0 : Math.round(worked(-Infinity, freeFrom) / 60_000),
+    freeMinutes: Math.round(worked(freeFrom, Infinity) / 60_000),
+    freePieces: joinSpans(spans, GAP_MINUTES * 60_000).filter((s) => s.end > freeFrom).length,
+  };
+}
+
+/** A day's work sessions, for any client, as times in milliseconds, in time order. */
+function daySpans(day: Pick<JournalDay, "clients">): Array<{start: number; end: number}> {
+  return day.clients
+    .flatMap((c) => c.sessions)
+    .map((s) => {
+      const start = Date.parse(s.start);
+      return {start, end: Math.max(Date.parse(s.end), start + s.minutes * 60_000)};
+    })
+    .filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end))
+    .sort((a, b) => a.start - b.start);
 }
 
 /** One day's summary from that day's items. */
@@ -930,12 +982,17 @@ export async function getJournal(
       const starts = sessions.map((s) => s.start).sort();
       const ends = sessions.map((s) => s.end).sort();
       const breaks = dayBreaks(d);
+      const rhythm = dayRhythm(d);
       return {
         day: d.day,
         // When Jack was working, for any client, even when one client is asked for.
         ...(starts.length ? {workedFrom: etTime(starts[0]), workedTo: etTime(ends[ends.length - 1])} : {}),
         breaks: breaks.map((b) => `${etTime(b.start)}–${etTime(b.end)} (${hours(b.minutes)} h)`),
         longestBreakHours: hours(Math.max(0, ...breaks.map((b) => b.minutes))),
+        weekend: rhythm.weekend,
+        ...(rhythm.weekend ? {} : {morningHours: hours(rhythm.morningMinutes)}),
+        freeTimeHours: hours(rhythm.freeMinutes),
+        freeTimePieces: rhythm.freePieces,
         estimatedHours: client ? hours(clients.reduce((n, c) => n + c.minutes, 0)) : hours(d.totalMinutes),
         clients: clients.map((c) => ({
           client: c.client,

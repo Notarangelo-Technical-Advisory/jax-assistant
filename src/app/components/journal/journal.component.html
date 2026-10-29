@@ -45,10 +45,36 @@
       @if (rangeError() ?? timelineError(); as error) {
         <p class="filter-error">{{ error }}</p>
       } @else if (timeline(); as t) {
+        @let r = rhythm()!;
+        <!-- How much work fell in the time Jack means to keep free -->
+        <section class="rhythm" aria-label="Work against your rhythm">
+          <div class="rhythm-bar" aria-hidden="true">
+            <span class="part morning" [style.width.%]="share(r.morningMinutes)"></span>
+            <span class="part afternoon" [style.width.%]="share(r.afternoonMinutes)"></span>
+            <span class="part weekend" [style.width.%]="share(r.weekendMinutes)"></span>
+          </div>
+          <div class="stats">
+            <div class="stat morning">
+              <span class="stat-value">{{ hours(r.morningMinutes) }} <small>({{ share(r.morningMinutes) }}%)</small></span>
+              <span class="stat-label">Weekday mornings, until noon</span>
+            </div>
+            <div class="stat afternoon">
+              <span class="stat-value">{{ hours(r.afternoonMinutes) }} <small>({{ share(r.afternoonMinutes) }}%) in {{ pieces(r.afternoonPieces) }}</small></span>
+              <span class="stat-label">Weekday afternoons and evenings, on {{ r.afternoonDays }} of {{ r.weekdays }} weekdays</span>
+            </div>
+            @if (r.weekendDays) {
+              <div class="stat weekend">
+                <span class="stat-value">{{ hours(r.weekendMinutes) }} <small>({{ share(r.weekendMinutes) }}%) in {{ pieces(r.weekendPieces) }}</small></span>
+                <span class="stat-label">Weekends, on {{ r.weekendDaysWorked }} of {{ r.weekendDays }} days</span>
+              </div>
+            }
+          </div>
+        </section>
         <p class="timeline-intro">
-          Each line is one day in Eastern Time. The coloured blocks are work. Breaks of more than 20 minutes are outlined,
-          with their length when they are an hour or more. On the right is each day's work and its longest break,
-          whenever it fell. Click a day to see what you did.
+          Each line is one day in Eastern Time. The coloured blocks are work. The shaded part of each line is time you keep free:
+          weekdays after noon, and all of a weekend. Work in it is marked with a red line. Breaks of more than 20 minutes are
+          outlined, with their length when they are an hour or more. A piece is a stretch of work with no break of more than
+          20 minutes. Click a day to see what you did.
         </p>
         <div class="timeline-key">
           @for (c of timelineClients(); track c.key) {
@@ -66,13 +92,15 @@
             }
           </span>
           <span class="row-hours">Worked</span>
+          <span class="row-free">In free time</span>
           <span class="row-break">Longest break</span>
         </div>
         @for (d of t.days; track d.day) {
           <button type="button" class="timeline-row" [class.weekend]="isWeekend(d.day)" (click)="openDay(d.day)"
-            [attr.aria-label]="dayLabel(d.day) + ': ' + (d.minutes ? hours(d.minutes) + ' of work, ' + (d.longestBreak ? 'longest break ' + hours(d.longestBreak) : 'no break') : 'no work')">
+            [attr.aria-label]="dayLabel(d.day) + ': ' + (d.minutes ? hours(d.minutes) + ' of work, ' + (d.freePieces ? hours(d.freeMinutes) + ' in free time in ' + pieces(d.freePieces) + ', ' : 'none in free time, ') + (d.longestBreak ? 'longest break ' + hours(d.longestBreak) : 'no break') : 'no work')">
             <span class="row-day">{{ shortDayLabel(d.day) }}</span>
             <span class="row-track">
+              <span class="free-zone" [style.left.%]="freeZoneStart(d.freeFrom)"></span>
               @for (m of timelineHours(); track m) {
                 <span class="grid" [style.left.%]="position(m)"></span>
               }
@@ -80,6 +108,10 @@
                 <span class="block" [class.other]="!b.chosen" [attr.data-colour]="colourOf(b.client)"
                   [style.left.%]="position(b.start)" [style.width.%]="position(b.end) - position(b.start)"
                   [title]="b.label + ', ' + clock(b.start) + '–' + clock(b.end)"></span>
+                @if (b.end > d.freeFrom) {
+                  <span class="free-mark" [style.left.%]="position(later(b.start, d.freeFrom))"
+                    [style.width.%]="position(b.end) - position(later(b.start, d.freeFrom))"></span>
+                }
               }
               @for (br of d.breaks; track br.start) {
                 <span class="break" [style.left.%]="position(br.start)" [style.width.%]="position(br.end) - position(br.start)"
@@ -89,6 +121,9 @@
               }
             </span>
             <span class="row-hours">{{ d.minutes ? hours(d.minutes) : 'No work' }}</span>
+            <span class="row-free" [class.none]="!d.freePieces" [title]="d.freePieces ? hours(d.freeMinutes) + ' in ' + pieces(d.freePieces) : ''">
+              {{ d.freePieces ? hours(d.freeMinutes) + ' · ' + d.freePieces : d.blocks.length ? 'None' : '' }}
+            </span>
             <span class="row-break" [class.none]="!d.longestBreak">{{ d.longestBreak ? hours(d.longestBreak) : d.blocks.length ? 'None' : '' }}</span>
           </button>
         }

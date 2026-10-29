@@ -12,7 +12,7 @@ const fromFunctions = createRequire(new URL('../../functions/package.json', impo
 const admin = fromFunctions('firebase-admin');
 const {
   clientFor, ticketInBranch, workSessions, summarizeDay, saveJournalItems, summarizeDays, meetingClient, meetingItems,
-  recordingItems, reclassifyJournal, emailItems, moveJournalItems, dayBreaks,
+  recordingItems, reclassifyJournal, emailItems, moveJournalItems, dayBreaks, dayRhythm,
 } =fromFunctions('./lib/tools/journal.js');
 
 before(setUp);
@@ -354,6 +354,31 @@ describe('estimated time', () => {
     assert.deepEqual(dayBreaks({ clients: [] }), []);
   });
 
+  it('counts work after noon on a weekday, and all weekend work, as free time, in pieces split by breaks of more than 20 minutes', () => {
+    const s = (start, end) => ({ start, end, minutes: (Date.parse(end) - Date.parse(start)) / 60_000, itemCount: 1 });
+    // Wednesday 14 October 2026, Eastern Time is UTC-4.
+    const weekday = dayRhythm({ day: '2026-10-14', clients: [
+      { client: 'ihrdc', sessions: [s('2026-10-14T15:00:00.000Z', '2026-10-14T16:30:00.000Z'), s('2026-10-14T19:00:00.000Z', '2026-10-14T19:15:00.000Z')] },
+      // Overlaps the 3:00 PM IHRDC work and ends 10 minutes after it: the same piece, counted once.
+      { client: 'church', sessions: [s('2026-10-14T19:05:00.000Z', '2026-10-14T19:25:00.000Z'), s('2026-10-15T00:00:00.000Z', '2026-10-15T00:30:00.000Z')] },
+    ] });
+    // 11:00 AM–12:30 PM: 60 minutes before noon and 30 after; then 3:00–3:25 PM and 8:00–8:30 PM.
+    assert.deepEqual(weekday, { weekend: false, morningMinutes: 60, freeMinutes: 85, freePieces: 3 });
+
+    // Saturday 17 October: a morning counts too.
+    const weekend = dayRhythm({ day: '2026-10-17', clients: [
+      { client: 'general', sessions: [s('2026-10-17T13:00:00.000Z', '2026-10-17T13:30:00.000Z')] },
+    ] });
+    assert.deepEqual(weekend, { weekend: true, morningMinutes: 0, freeMinutes: 30, freePieces: 1 });
+  });
+
+  it('starts the free time at noon Eastern Time on the day daylight saving time ends', () => {
+    // Monday 2 November 2026 is the first weekday in Eastern Standard Time (UTC-5): noon is 17:00 UTC.
+    const s = { start: '2026-11-02T16:30:00.000Z', end: '2026-11-02T17:30:00.000Z', minutes: 60, itemCount: 1 };
+    assert.deepEqual(dayRhythm({ day: '2026-11-02', clients: [{ client: 'ihrdc', sessions: [s] }] }),
+      { weekend: false, morningMinutes: 30, freeMinutes: 30, freePieces: 1 });
+  });
+
   it('counts a single item as 6 minutes, and a Claude Code session for its whole length', () => {
     assert.deepEqual(workSessions([{ at: '2026-10-13T13:00:00Z' }]).map(s => s.minutes), [6]);
     assert.deepEqual(workSessions([{ at: '2026-10-13T13:00:00Z', endAt: '2026-10-13T13:45:00Z' }]).map(s => s.minutes), [45]);
@@ -466,6 +491,15 @@ describe('get_journal', () => {
     assert.deepEqual([r.days[0].workedFrom, r.days[0].workedTo], ['9:21 AM', '3:00 PM']);
     assert.deepEqual(r.days[0].breaks, ['9:38 AM–12:32 PM (2.9 h)', '1:02 PM–3:00 PM (2 h)']);
     assert.equal(r.days[0].longestBreakHours, 2.9);
+  });
+
+  it("measures each day against Jack's rhythm: weekday work before noon, and work after noon in pieces", async () => {
+    const r = await tool('get_journal', { start_date: '2026-10-13' });
+
+    // Tuesday: IHRDC 9:21–9:38 AM before noon; IHRDC 12:32–1:02 PM and NTA Business at 3:00 PM after noon.
+    assert.deepEqual(
+      [r.days[0].weekend, r.days[0].morningHours, r.days[0].freeTimeHours, r.days[0].freeTimePieces],
+      [false, 0.3, 0.6, 2]);
   });
 
   it("keeps the breaks of the whole day when one client is asked for, so another client's work is not a break", async () => {
