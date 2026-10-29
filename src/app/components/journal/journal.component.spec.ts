@@ -3,7 +3,7 @@ import { provideRouter } from '@angular/router';
 import { provideHttpClient, withXhr } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { JOURNAL_NOW, JournalComponent, addDays, hours, presetRange, weekStart } from './journal.component';
-import { breaksIn, buildTimeline, clock, minuteOfDay } from './timeline';
+import { breaksIn, buildTimeline, clock, freeTimeWork, minuteOfDay, rhythmTotals } from './timeline';
 import {
   EmulatorApp, clearEmulators, createEmulatorApp, nextRequest, provideEmulator, seedDocument, signInAsJack, waitFor
 } from '../../../testing/emulator-testing';
@@ -360,6 +360,34 @@ describe('JournalComponent', () => {
         expect(parseFloat(day.querySelector<HTMLElement>('.block')!.style.left)).toBeCloseTo((201 / 1080) * 100, 3);
       });
 
+      it('shades the time kept free, marks the work in it, and counts that work in pieces', () => {
+        openTimeline();
+
+        const day = row('Tue, Oct 13');
+        // Noon is 6 hours into the 18-hour line.
+        expect(parseFloat(day.querySelector<HTMLElement>('.free-zone')!.style.left)).toBeCloseTo((6 / 18) * 100, 3);
+        expect(parseFloat(row('Sat, Oct 10').querySelector<HTMLElement>('.free-zone')!.style.left)).toBe(0);
+        // The 9:21 AM work is in the morning; the 12:32 PM and 3:00 PM work is in free time.
+        const marks = [...day.querySelectorAll<HTMLElement>('.free-mark')];
+        expect(marks.length).toBe(2);
+        // The mark starts where the 12:32 PM work starts, 6 h 32 min into the line.
+        expect(parseFloat(marks[0].style.left)).toBeCloseTo((392 / 1080) * 100, 3);
+        expect(day.querySelector('.row-free')?.textContent?.trim()).toBe('2.1 h · 2');
+        expect(row('Wed, Oct 14').querySelector('.row-free')?.textContent?.trim()).toBe('');
+      });
+
+      it('sums the dates against the rhythm: weekday mornings, weekday afternoons and evenings in pieces, and weekends', () => {
+        openTimeline();
+
+        const stats = [...root().querySelectorAll('.rhythm .stat')].map((stat) =>
+          [...stat.querySelectorAll(':scope > span')].map((span) => span.textContent?.replace(/\s+/g, ' ').trim()));
+        expect(stats).toEqual([
+          ['0.3 h (12%)', 'Weekday mornings, until noon'],
+          ['2.1 h (88%) in 2 pieces', 'Weekday afternoons and evenings, on 1 of 10 weekdays'],
+          ['0.0 h (0%) in 0 pieces', 'Weekends, on 0 of 4 days'],
+        ]);
+      });
+
       it("greys out other clients' work when one client is chosen, and keeps the same breaks", () => {
         page.setClient('ihrdc');
         openTimeline();
@@ -529,6 +557,35 @@ describe('journal helpers', () => {
       { start: 700, end: 760 },
     ])).toEqual([{ start: 650, end: 700, minutes: 50 }]);
     expect(breaksIn([])).toEqual([]);
+  });
+
+  it('counts free-time work once where clients overlap, and splits it into pieces only at breaks of more than 20 minutes', () => {
+    expect(freeTimeWork([
+      { start: 660, end: 750 }, // 11:00 AM–12:30 PM: 30 minutes after noon.
+      { start: 900, end: 915 }, // 3:00–3:15 PM
+      { start: 905, end: 925 }, // Overlaps: the same piece, counted once.
+      { start: 940, end: 950 }, // 15 minutes later: still the same piece.
+      { start: 1200, end: 1230 }, // 8:00 PM
+    ], 720)).toEqual({ minutes: 30 + 25 + 10 + 30, pieces: 3 });
+    expect(freeTimeWork([{ start: 540, end: 600 }], 720)).toEqual({ minutes: 0, pieces: 0 });
+  });
+
+  it('counts all of a weekend as free time, and only weekday mornings as work time', () => {
+    const day = (date: string, start: string, minutes: number) => ({
+      day: date, totalMinutes: minutes, itemCount: 1,
+      clients: [{ client: 'ihrdc', label: 'IHRDC', minutes, itemCount: 1, sessions: [{ start, end: start, minutes, itemCount: 1 }] }],
+    });
+    // Friday 9 October 9:00 AM for an hour; Saturday 10 October 10:00 AM for half an hour.
+    const t = buildTimeline('2026-10-09', '2026-10-11', [
+      day('2026-10-09', '2026-10-09T13:00:00.000Z', 60), day('2026-10-10', '2026-10-10T14:00:00.000Z', 30),
+    ], null);
+    expect(t.days.map((d) => [d.weekend, d.freeFrom, d.morningMinutes, d.freeMinutes, d.freePieces])).toEqual([
+      [false, 720, 60, 0, 0], [true, 0, 0, 30, 1], [true, 0, 0, 0, 0],
+    ]);
+    expect(rhythmTotals(t.days)).toEqual({
+      morningMinutes: 60, weekdays: 1, afternoonMinutes: 0, afternoonPieces: 0, afternoonDays: 0,
+      weekendDays: 2, weekendMinutes: 30, weekendPieces: 1, weekendDaysWorked: 1,
+    });
   });
 
   it('starts the timeline before 6 AM only when there was work before 6 AM', () => {

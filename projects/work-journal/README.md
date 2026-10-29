@@ -125,13 +125,17 @@ The Timeline button on the `/journal` page shows the chosen dates as one line a 
 
 - Each work session is a block in its client's colour. With one client chosen, other clients' work is grey, so it is not taken for a break.
 - A break is a gap of more than 20 minutes with no work for any client, the same gap that ends a work session. Breaks are outlined, and a break of an hour or more shows its length.
-- On the right of each line are the hours worked and the day's longest break, whenever it fell. Jack is semi-retired and has no fixed hours off: what matters is that each day has enough long breaks for family and personal tasks, at any time. "None" means the day's work had no break of more than 20 minutes.
+- Jack's rhythm: weekday mornings until noon are his work time. The rest of a weekday, and all of a weekend, he keeps free for family and personal tasks. His problem is many short pieces of work scattered through the afternoon and evening, which make a day feel like work all day.
+- The free time is shaded on each line, and the part of any work that falls in it has a red line under it.
+- Above the lines, a bar and three figures show the size of the problem over the chosen dates: weekday mornings, weekday afternoons and evenings (in hours and pieces, and on how many weekdays), and weekends.
+- A piece is a stretch of work with no break of more than 20 minutes. Overlapping work for two clients counts once.
+- On the right of each line are the hours worked, the work in free time ("1.9 h · 4" is 1.9 hours in 4 pieces), and the day's longest break. "None" means no work in free time, or no break of more than 20 minutes. On a phone the longest break is hidden.
 - Clicking a day opens its details in the list.
 - It shows 62 days at most.
 
-`get_journal` gives MAISIE each day's `workedFrom`, `workedTo`, `breaks` and `longestBreakHours`, worked out in the same way (`dayBreaks` in `functions/src/tools/journal.ts`), so she can answer "Where were my breaks this week?" and point out days where work was spread across the day with only short breaks. The breaks always count every client's work, even when one client is asked for.
+`get_journal` gives MAISIE each day's `workedFrom`, `workedTo`, `breaks`, `longestBreakHours`, `weekend`, `morningHours`, `freeTimeHours` and `freeTimePieces`, worked out in the same way (`dayBreaks` and `dayRhythm` in `functions/src/tools/journal.ts`), so she can answer "How much did I work in my free time this week?" and point out the days and the pattern behind them. The breaks always count every client's work, even when one client is asked for.
 
-The page and the tool each have their own copy of the break rule: `timeline.ts` beside the page, and `dayBreaks` in the functions. Change both together.
+The page and the tool each have their own copy of the break and rhythm rules: `timeline.ts` beside the page (`BREAK_MINUTES`, `WORK_TIME_END`), and `dayBreaks` and `dayRhythm` in the functions (`GAP_MINUTES`, `WORK_TIME_END_HOUR`). Change both together.
 
 ## Where everything is
 
