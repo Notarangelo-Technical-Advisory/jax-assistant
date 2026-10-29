@@ -12,8 +12,8 @@ const fromFunctions = createRequire(new URL('../../functions/package.json', impo
 const admin = fromFunctions('firebase-admin');
 const {
   clientFor, ticketInBranch, workSessions, summarizeDay, saveJournalItems, summarizeDays, meetingClient, meetingItems,
-  recordingItems, reclassifyJournal, emailItems, moveJournalItems,
-} = fromFunctions('./lib/tools/journal.js');
+  recordingItems, reclassifyJournal, emailItems, moveJournalItems, dayBreaks,
+} =fromFunctions('./lib/tools/journal.js');
 
 before(setUp);
 beforeEach(reset);
@@ -339,6 +339,21 @@ describe('estimated time', () => {
     assert.deepEqual(sessions.map(s => s.minutes), [6, 6]);
   });
 
+  it('finds the breaks between work for any client, ignoring gaps of 20 minutes or less and overlapping work', () => {
+    const s = (start, end, minutes) => ({ start, end, minutes, itemCount: 1 });
+    const breaks = dayBreaks({ clients: [
+      { client: 'ihrdc', sessions: [s('2026-10-13T13:00:00.000Z', '2026-10-13T14:00:00.000Z', 60), s('2026-10-13T17:00:00.000Z', '2026-10-13T17:00:00.000Z', 6)] },
+      // Overlaps the first IHRDC session and runs 10 minutes past it: no break.
+      { client: 'church', sessions: [s('2026-10-13T13:30:00.000Z', '2026-10-13T14:10:00.000Z', 40)] },
+      // 20 minutes after the church session: not a break either.
+      { client: 'general', sessions: [s('2026-10-13T14:30:00.000Z', '2026-10-13T14:30:00.000Z', 6)] },
+    ] });
+
+    // The lone item at 10:30 AM counts until 10:36 AM, as in the hours.
+    assert.deepEqual(breaks, [{ start: '2026-10-13T14:36:00.000Z', end: '2026-10-13T17:00:00.000Z', minutes: 144 }]);
+    assert.deepEqual(dayBreaks({ clients: [] }), []);
+  });
+
   it('counts a single item as 6 minutes, and a Claude Code session for its whole length', () => {
     assert.deepEqual(workSessions([{ at: '2026-10-13T13:00:00Z' }]).map(s => s.minutes), [6]);
     assert.deepEqual(workSessions([{ at: '2026-10-13T13:00:00Z', endAt: '2026-10-13T13:45:00Z' }]).map(s => s.minutes), [45]);
@@ -442,6 +457,21 @@ describe('get_journal', () => {
       ['3:00 PM', 'NTA Business', 'Pushed to main'],
     ]);
     assert.match(r.note, /estimates/);
+  });
+
+  it('gives when Jack first and last worked each day, and the breaks of more than 20 minutes with no work for any client', async () => {
+    const r = await tool('get_journal', { start_date: '2026-10-13' });
+
+    // IHRDC 9:21–9:38 AM and 12:32–1:02 PM; NTA Business 3:00 PM, which counts for 6 minutes.
+    assert.deepEqual([r.days[0].workedFrom, r.days[0].workedTo], ['9:21 AM', '3:00 PM']);
+    assert.deepEqual(r.days[0].breaks, ['9:38 AM–12:32 PM (2.9 h)', '1:02 PM–3:00 PM (2 h)']);
+  });
+
+  it("keeps the breaks of the whole day when one client is asked for, so another client's work is not a break", async () => {
+    const r = await tool('get_journal', { start_date: '2026-10-13', client: 'ihrdc' });
+
+    assert.deepEqual([r.days[0].workedFrom, r.days[0].workedTo], ['9:21 AM', '3:00 PM']);
+    assert.deepEqual(r.days[0].breaks, ['9:38 AM–12:32 PM (2.9 h)', '1:02 PM–3:00 PM (2 h)']);
   });
 
   it("can show one client's work only", async () => {

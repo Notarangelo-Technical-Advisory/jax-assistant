@@ -676,6 +676,42 @@ export function workSessions(items: Array<{at: string; endAt?: string | null}>):
 
 const sumMinutes = (sessions: WorkSession[]): number => sessions.reduce((n, s) => n + s.minutes, 0);
 
+export interface WorkBreak {
+  start: string;
+  end: string;
+  minutes: number;
+}
+
+/**
+ * The breaks in a day: each gap of more than GAP_MINUTES between one stretch
+ * of work, for any client, and the next. A session counts for at least
+ * MIN_SESSION_MINUTES from its start, as it does in the hours.
+ */
+export function dayBreaks(day: Pick<JournalDay, "clients">): WorkBreak[] {
+  const spans = day.clients
+    .flatMap((c) => c.sessions)
+    .map((s) => {
+      const start = Date.parse(s.start);
+      return {start, end: Math.max(Date.parse(s.end), start + s.minutes * 60_000)};
+    })
+    .filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end))
+    .sort((a, b) => a.start - b.start);
+
+  const breaks: WorkBreak[] = [];
+  let workedTo: number | null = null;
+  for (const span of spans) {
+    if (workedTo !== null && span.start - workedTo > GAP_MINUTES * 60_000) {
+      breaks.push({
+        start: new Date(workedTo).toISOString(),
+        end: new Date(span.start).toISOString(),
+        minutes: Math.round((span.start - workedTo) / 60_000),
+      });
+    }
+    workedTo = Math.max(workedTo ?? span.end, span.end);
+  }
+  return breaks;
+}
+
 /** One day's summary from that day's items. */
 export function summarizeDay(
   day: string,
@@ -890,8 +926,14 @@ export async function getJournal(
     .sort((a, b) => a.day.localeCompare(b.day))
     .map((d) => {
       const clients = d.clients.filter((c) => !client || c.client === client);
+      const sessions = d.clients.flatMap((c) => c.sessions);
+      const starts = sessions.map((s) => s.start).sort();
+      const ends = sessions.map((s) => s.end).sort();
       return {
         day: d.day,
+        // When Jack was working, for any client, even when one client is asked for.
+        ...(starts.length ? {workedFrom: etTime(starts[0]), workedTo: etTime(ends[ends.length - 1])} : {}),
+        breaks: dayBreaks(d).map((b) => `${etTime(b.start)}–${etTime(b.end)} (${hours(b.minutes)} h)`),
         estimatedHours: client ? hours(clients.reduce((n, c) => n + c.minutes, 0)) : hours(d.totalMinutes),
         clients: clients.map((c) => ({
           client: c.client,

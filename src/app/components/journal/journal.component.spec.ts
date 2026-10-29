@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 import { provideHttpClient, withXhr } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { JOURNAL_NOW, JournalComponent, addDays, hours, presetRange, weekStart } from './journal.component';
+import { breaksIn, buildTimeline, clock, minuteOfDay } from './timeline';
 import {
   EmulatorApp, clearEmulators, createEmulatorApp, nextRequest, provideEmulator, seedDocument, signInAsJack, waitFor
 } from '../../../testing/emulator-testing';
@@ -319,6 +320,73 @@ describe('JournalComponent', () => {
       expect(shown).toContain('Pushed to main General');
     });
 
+    describe('the timeline', () => {
+      const root = () => fixture.nativeElement as HTMLElement;
+      const rows = () => [...root().querySelectorAll<HTMLElement>('.timeline-row')];
+      const row = (label: string) => rows().find((r) => r.querySelector('.row-day')?.textContent?.trim() === label)!;
+      const openTimeline = () => {
+        [...root().querySelectorAll<HTMLButtonElement>('.views button')].find((b) => b.textContent?.trim() === 'Timeline')!.click();
+        fixture.detectChanges();
+      };
+
+      it('shows every day of the dates chosen as one line, oldest first, including the days with no work', () => {
+        openTimeline();
+
+        expect(rows().length).toBe(14);
+        expect(rows()[0].querySelector('.row-day')?.textContent?.trim()).toBe('Thu, Oct 1');
+        expect(row('Wed, Oct 14').querySelector('.row-hours')?.textContent?.trim()).toBe('No work');
+        expect(row('Tue, Oct 13').querySelector('.row-hours')?.textContent?.trim()).toBe('2.4 h');
+        expect(text('.timeline-key')).toContain('IHRDC');
+        expect(text('.timeline-key')).toContain('General');
+      });
+
+      it("shows each work session in its client's colour at its time of day, and the breaks between them", () => {
+        openTimeline();
+
+        const day = row('Tue, Oct 13');
+        const blocks = [...day.querySelectorAll<HTMLElement>('.block')].map((b) => b.title);
+        expect(blocks).toEqual(['IHRDC, 9:21 AM–9:38 AM', 'IHRDC, 12:32 PM–2:32 PM', 'General, 3:00 PM–3:06 PM']);
+        const colours = [...day.querySelectorAll<HTMLElement>('.block')].map((b) => b.dataset['colour']);
+        expect(colours[0]).toBe(colours[1]);
+        expect(colours[2]).not.toBe(colours[0]);
+        const breaks = [...day.querySelectorAll<HTMLElement>('.break')];
+        expect(breaks.map((b) => b.title)).toEqual(['Break, 9:38 AM–12:32 PM, 2.9 h', 'Break, 2:32 PM–3:00 PM, 0.5 h']);
+        // Only a break of an hour or more is long enough to carry its length.
+        expect(breaks.map((b) => b.textContent?.trim())).toEqual(['2.9 h', '']);
+        // The line runs from 6 AM to midnight, so 9:21 AM is 3 h 21 min into 18 hours.
+        expect(parseFloat(day.querySelector<HTMLElement>('.block')!.style.left)).toBeCloseTo((201 / 1080) * 100, 3);
+      });
+
+      it("greys out other clients' work when one client is chosen, and keeps the same breaks", () => {
+        page.setClient('ihrdc');
+        openTimeline();
+
+        const day = row('Tue, Oct 13');
+        expect(day.querySelectorAll('.block.other').length).toBe(1);
+        expect(day.querySelectorAll('.break').length).toBe(2);
+        expect(day.querySelector('.row-hours')?.textContent?.trim()).toBe('2.3 h');
+        expect(text('.timeline-key')).toContain('Other clients');
+      });
+
+      it("opens a day's details in the list when its line is clicked", () => {
+        openTimeline();
+        row('Tue, Oct 13').click();
+        fixture.detectChanges();
+
+        expect(page.view()).toBe('list');
+        expect(page.selection()).toEqual({ day: '2026-10-13', client: null });
+        expect(text('.detail-head')).toContain('All clients · Tuesday, October 13');
+      });
+
+      it('asks for a shorter range when more than 62 days are chosen', () => {
+        page.setRange('2026-08-01', '2026-10-14');
+        openTimeline();
+
+        expect(rows().length).toBe(0);
+        expect(text('.timeline')).toContain('The timeline shows 62 days or fewer');
+      });
+    });
+
     describe('moving items to another client', () => {
       let http: HttpTestingController;
       const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
@@ -432,6 +500,47 @@ describe('journal helpers', () => {
     expect(presetRange('this-month', '2026-03-04')).toEqual({ start: '2026-03-01', end: '2026-03-04' });
     expect(presetRange('last-month', '2026-03-04')).toEqual({ start: '2026-02-01', end: '2026-02-28' });
     expect(presetRange('last-month', '2026-01-15')).toEqual({ start: '2025-12-01', end: '2025-12-31' });
+  });
+
+  it('places a time on its day in Eastern Time, through the change back from daylight saving time', () => {
+    // Sunday 1 November 2026: Eastern Time changes from UTC-4 to UTC-5 at 2 AM.
+    expect(minuteOfDay('2026-11-01T13:30:00Z', '2026-11-01')).toBe(8 * 60 + 30);
+    expect(minuteOfDay('2026-11-02T03:30:00Z', '2026-11-01')).toBe(22 * 60 + 30);
+    // Work running past midnight stops at the end of its day, and work from the day before starts at its beginning.
+    expect(minuteOfDay('2026-11-02T05:30:00Z', '2026-11-01')).toBe(24 * 60);
+    expect(minuteOfDay('2026-11-01T03:30:00Z', '2026-11-01')).toBe(0);
+  });
+
+  it('shows a time of day on a 12-hour clock, with midnight at both ends of the day', () => {
+    expect(clock(0)).toBe('12:00 AM');
+    expect(clock(9 * 60 + 5)).toBe('9:05 AM');
+    expect(clock(13 * 60 + 30)).toBe('1:30 PM');
+    expect(clock(24 * 60)).toBe('12:00 AM');
+  });
+
+  it('counts a break only after more than 20 minutes with no work for any client', () => {
+    expect(breaksIn([
+      { start: 540, end: 600 },
+      { start: 590, end: 620 }, // Overlaps: no break.
+      { start: 640, end: 650 }, // 20 minutes later: no break.
+      { start: 700, end: 760 },
+    ])).toEqual([{ start: 650, end: 700, minutes: 50 }]);
+    expect(breaksIn([])).toEqual([]);
+  });
+
+  it('starts the timeline before 6 AM only when there was work before 6 AM', () => {
+    const day = (start: string) => ({
+      day: '2026-10-13', totalMinutes: 30, itemCount: 1,
+      clients: [{ client: 'ihrdc', label: 'IHRDC', minutes: 30, itemCount: 1,
+        sessions: [{ start, end: start, minutes: 30, itemCount: 1 }] }],
+    });
+    expect(buildTimeline('2026-10-13', '2026-10-13', [day('2026-10-13T13:00:00.000Z')], null).axisStart).toBe(6 * 60);
+    // 4:40 AM Eastern Time: the line starts at 4 AM.
+    const early = buildTimeline('2026-10-12', '2026-10-13', [day('2026-10-13T08:40:00.000Z')], null);
+    expect(early.axisStart).toBe(4 * 60);
+    expect(early.days.map((d) => d.day)).toEqual(['2026-10-12', '2026-10-13']);
+    // A single item counts for its minutes from its start, as in the hours.
+    expect(early.days[1].blocks.map((b) => [b.start, b.end])).toEqual([[280, 310]]);
   });
 
   it('shows minutes as hours to one decimal place', () => {

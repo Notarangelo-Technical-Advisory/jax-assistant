@@ -324,5 +324,113 @@ a.subject { color: $accent; text-decoration: none; &:hover { text-decoration: un
   font-size: 0.7rem;
 }
 
+// Timeline: one line a day, with each client's work in its colour.
+// A client's colour is its place among the clients shown, 0 to 9 (CLIENT_COLOURS in timeline.ts).
+$client-colours: #3b82f6, #f59e0b, #22c55e, #a78bfa, #f472b6, #2dd4bf, #f87171, #94a3b8, #a3e635, #fb923c;
+$track: #162033;
+$other-client: #475569;
+
+.views { display: flex; gap: 0.4rem; margin-left: auto; }
+
+.timeline {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: $bg-card;
+  border: 1px solid $border;
+  border-radius: 10px;
+}
+
+.timeline-intro { margin: 0 0 0.5rem; color: $text-secondary; font-size: 0.8rem; }
+
+.timeline-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
+}
+.key-item { display: flex; align-items: center; gap: 0.35rem; }
+
+.swatch, .block {
+  @for $i from 1 through length($client-colours) {
+    &[data-colour='#{$i - 1}'] { background: nth($client-colours, $i); }
+  }
+  &.other { background: $other-client; }
+}
+.swatch { width: 0.8rem; height: 0.8rem; border-radius: 3px; }
+
+.timeline-axis, .timeline-row {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr 4.5rem;
+  gap: 0.5rem;
+  align-items: center;
+
+  @media (max-width: 560px) { grid-template-columns: 4.5rem 1fr 3rem; gap: 0.35rem; }
+}
+
+.row-track { position: relative; display: block; height: 100%; }
+
+.timeline-axis {
+  height: 1.2rem;
+  color: $text-secondary;
+  font-size: 0.7rem;
+}
+.axis-mark {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  // On a phone, every 6 hours only.
+  &.minor { @media (max-width: 560px) { display: none; } }
+}
+
+.timeline-row {
+  width: 100%;
+  height: 1.9rem;
+  padding: 0.2rem 0;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: $text-primary;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  &:hover { background: rgba(255, 255, 255, 0.04); }
+  &.weekend .row-day { color: $text-secondary; }
+
+  .row-track { background: $track; border-radius: 4px; overflow: hidden; }
+}
+
+.row-day { font-size: 0.8rem; white-space: nowrap; }
+.row-hours { font-size: 0.8rem; text-align: right; color: $text-secondary; font-variant-numeric: tabular-nums; }
+
+.grid { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba($border, 0.7); }
+
+.block {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  min-width: 3px;
+  border-radius: 2px;
+  opacity: 0.9;
+}
+
+.break {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px dashed rgba($meeting, 0.55);
+  border-radius: 3px;
+  color: $meeting;
+  font-size: 0.68rem;
+  white-space: nowrap;
+  // On a phone a break is too narrow to hold its length, so only its outline shows.
+  @media (max-width: 560px) { font-size: 0; }
+}
+
 .empty { color: $text-secondary; font-size: 0.9rem; }
 .hint { margin-top: 2rem; text-align: center; }
