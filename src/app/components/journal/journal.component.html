@@ -48,6 +48,7 @@
         @let r = rhythm()!;
         <!-- How much work fell in the time Jack means to keep free -->
         <section class="rhythm" aria-label="Work against your rhythm">
+          <h3 class="rhythm-head">{{ clientFilterLabel() ?? 'All clients' }}</h3>
           <div class="rhythm-bar" aria-hidden="true">
             <span class="part morning" [style.width.%]="share(r.morningMinutes)"></span>
             <span class="part afternoon" [style.width.%]="share(r.afternoonMinutes)"></span>
@@ -72,7 +73,8 @@
         </section>
         <p class="timeline-intro">
           Each line is one day in Eastern Time. The coloured blocks are work. The shaded part of each line is time you keep free:
-          weekdays after noon, and all of a weekend. Work in it is marked with a red line. Breaks of more than 20 minutes are
+          weekdays after noon, and all of a weekend. Work in it is marked with a red line. With one client chosen, the figures
+          above and the In free time column count that client's work only. Breaks of more than 20 minutes are
           outlined, with their length when they are an hour or more. A piece is a stretch of work with no break of more than
           20 minutes. Click a day to see what you did.
         </p>
@@ -108,7 +110,7 @@
                 <span class="block" [class.other]="!b.chosen" [attr.data-colour]="colourOf(b.client)"
                   [style.left.%]="position(b.start)" [style.width.%]="position(b.end) - position(b.start)"
                   [title]="b.label + ', ' + clock(b.start) + '–' + clock(b.end)"></span>
-                @if (b.end > d.freeFrom) {
+                @if (b.chosen && b.end > d.freeFrom) {
                   <span class="free-mark" [style.left.%]="position(later(b.start, d.freeFrom))"
                     [style.width.%]="position(b.end) - position(later(b.start, d.freeFrom))"></span>
                 }

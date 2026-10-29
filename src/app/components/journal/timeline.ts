@@ -50,15 +50,15 @@ export interface TimelineDay {
   weekend: boolean;
   /** Where the day's free time starts: noon on a weekday, the start of the day at the weekend. */
   freeFrom: number;
-  /** Work in the free time, for any client, counting overlapping work once. */
+  /** Work in the free time, for the chosen client or any client, counting overlapping work once. */
   freeMinutes: number;
   /** The separate stretches of work in the free time. */
   freePieces: number;
-  /** Work before noon on a weekday, for any client. */
+  /** Work before noon on a weekday, for the chosen client or any client. */
   morningMinutes: number;
 }
 
-/** The chosen dates against Jack's rhythm, for any client. */
+/** The chosen dates against Jack's rhythm, for the chosen client or any client. */
 export interface RhythmTotals {
   morningMinutes: number;
   weekdays: number;
@@ -180,8 +180,8 @@ function daysBetween(start: string, end: string): string[] {
 
 /**
  * The timeline of the days from `start` to `end`. With a client chosen, the
- * breaks and the free time are still those of all work, because a break is
- * time with no work at all.
+ * morning and free-time work are that client's only, but the breaks are still
+ * those of all work, because a break is time with no work at all.
  */
 export function buildTimeline(start: string, end: string, summaries: JournalDay[], client: string | null): Timeline {
   const byDay = new Map(summaries.map((d) => [d.day, d]));
@@ -203,11 +203,13 @@ export function buildTimeline(start: string, end: string, summaries: JournalDay[
     const breaks = breaksIn(blocks);
     const weekend = [0, 6].includes(new Date(`${day}T12:00:00Z`).getUTCDay());
     const freeFrom = weekend ? 0 : WORK_TIME_END;
-    const free = freeTimeWork(blocks, freeFrom);
+    // The rhythm counts the chosen client's work only; with no client chosen, every block is chosen.
+    const counted = blocks.filter((b) => b.chosen);
+    const free = freeTimeWork(counted, freeFrom);
     return {
       day, minutes, blocks, breaks, longestBreak: Math.max(0, ...breaks.map((b) => b.minutes)),
       weekend, freeFrom, freeMinutes: free.minutes, freePieces: free.pieces,
-      morningMinutes: weekend ? 0 : workedBetween(blocks, 0, WORK_TIME_END),
+      morningMinutes: weekend ? 0 : workedBetween(counted, 0, WORK_TIME_END),
     };
   });
   const earliest = Math.min(DEFAULT_AXIS_START, ...days.flatMap((d) => d.blocks.map((b) => b.start)));
