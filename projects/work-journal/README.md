@@ -129,6 +129,7 @@ The Timeline button on the `/journal` page shows the chosen dates as one line a 
 - The free time is shaded on each line, and the part of any work that falls in it has a red line under it.
 - Above the lines, a bar and three figures show the size of the problem over the chosen dates: weekday mornings, weekday afternoons and evenings (in hours and pieces, and on how many weekdays), and weekends.
 - A piece is a stretch of work with no break of more than 20 minutes. Overlapping work for two clients counts once.
+- With one client chosen, the figures and the "In free time" column count that client's work only, and only that client's work has a red line. The breaks and the longest break still count every client's work, because a break is time with no work at all. `get_journal` does the same when MAISIE asks for one client.
 - On the right of each line are the hours worked, the work in free time ("1.9 h · 4" is 1.9 hours in 4 pieces), and the day's longest break. "None" means no work in free time, or no break of more than 20 minutes. On a phone the longest break is hidden.
 - Clicking a day opens its details in the list.
 - It shows 62 days at most.

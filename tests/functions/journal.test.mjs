@@ -502,6 +502,14 @@ describe('get_journal', () => {
       [false, 0.3, 0.6, 2]);
   });
 
+  it("measures one client's work only against the rhythm when that client is asked for, but keeps the breaks of all work", async () => {
+    const r = await tool('get_journal', { start_date: '2026-10-13', client: 'ihrdc' });
+
+    // IHRDC only: 9:21–9:38 AM, and 12:32–1:02 PM. The NTA Business work at 3:00 PM is left out.
+    assert.deepEqual([r.days[0].morningHours, r.days[0].freeTimeHours, r.days[0].freeTimePieces], [0.3, 0.5, 1]);
+    assert.deepEqual(r.days[0].breaks, ['9:38 AM–12:32 PM (2.9 h)', '1:02 PM–3:00 PM (2 h)']);
+  });
+
   it("keeps the breaks of the whole day when one client is asked for, so another client's work is not a break", async () => {
     const r = await tool('get_journal', { start_date: '2026-10-13', client: 'ihrdc' });
 

@@ -732,16 +732,16 @@ function joinSpans(spans: Array<{start: number; end: number}>, gapMs: number): A
 }
 
 /**
- * A day against Jack's rhythm, for any client. Many short pieces of work in
+ * A day against Jack's rhythm, for one client or, with none given, any client. Many short pieces of work in
  * the free time make a day feel like work all day, so the pieces are counted
  * as well as the time.
  */
-export function dayRhythm(day: Pick<JournalDay, "day" | "clients">): DayRhythm {
+export function dayRhythm(day: Pick<JournalDay, "day" | "clients">, client: string | null = null): DayRhythm {
   const noonUtc = new Date(`${day.day}T16:00:00Z`);
   const weekend = [0, 6].includes(noonUtc.getUTCDay());
   const hour = String(WORK_TIME_END_HOUR).padStart(2, "0");
   const freeFrom = weekend ? -Infinity : Date.parse(`${day.day}T${hour}:00:00${etOffsetAt(noonUtc)}`);
-  const spans = daySpans(day);
+  const spans = daySpans(client ? {clients: day.clients.filter((c) => c.client === client)} : day);
   const worked = (from: number, to: number) => joinSpans(spans, 0)
     .reduce((n, s) => n + Math.max(0, Math.min(s.end, to) - Math.max(s.start, from)), 0);
   return {
@@ -982,7 +982,7 @@ export async function getJournal(
       const starts = sessions.map((s) => s.start).sort();
       const ends = sessions.map((s) => s.end).sort();
       const breaks = dayBreaks(d);
-      const rhythm = dayRhythm(d);
+      const rhythm = dayRhythm(d, client);
       return {
         day: d.day,
         // When Jack was working, for any client, even when one client is asked for.

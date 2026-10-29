@@ -399,6 +399,28 @@ describe('JournalComponent', () => {
         expect(text('.timeline-key')).toContain('Other clients');
       });
 
+      it("counts only the chosen client's work in the summary and the In free time column", () => {
+        page.setClient('ihrdc');
+        openTimeline();
+
+        // IHRDC: 9:21–9:38 AM, and 12:32–2:32 PM. The General work at 3:00 PM is left out.
+        const day = row('Tue, Oct 13');
+        expect(day.querySelector('.row-free')?.textContent?.trim()).toBe('2.0 h · 1');
+        expect(day.querySelectorAll('.free-mark').length).toBe(1);
+        expect(text('.rhythm-head')).toBe('IHRDC');
+        const stats = [...root().querySelectorAll('.rhythm .stat')].map((stat) =>
+          [...stat.querySelectorAll(':scope > span')].map((span) => span.textContent?.replace(/\s+/g, ' ').trim()));
+        expect(stats.slice(0, 2)).toEqual([
+          ['0.3 h (12%)', 'Weekday mornings, until noon'],
+          ['2.0 h (88%) in 1 piece', 'Weekday afternoons and evenings, on 1 of 10 weekdays'],
+        ]);
+
+        page.setClient(null);
+        fixture.detectChanges();
+        expect(text('.rhythm-head')).toBe('All clients');
+        expect(row('Tue, Oct 13').querySelector('.row-free')?.textContent?.trim()).toBe('2.1 h · 2');
+      });
+
       it("opens a day's details in the list when its line is clicked", () => {
         openTimeline();
         row('Tue, Oct 13').click();
