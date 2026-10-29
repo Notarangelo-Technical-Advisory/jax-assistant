@@ -353,6 +353,9 @@ describe('JournalComponent', () => {
         expect(breaks.map((b) => b.title)).toEqual(['Break, 9:38 AM–12:32 PM, 2.9 h', 'Break, 2:32 PM–3:00 PM, 0.5 h']);
         // Only a break of an hour or more is long enough to carry its length.
         expect(breaks.map((b) => b.textContent?.trim())).toEqual(['2.9 h', '']);
+        // The longest break of the day, whenever it fell, beside the hours worked.
+        expect(day.querySelector('.row-break')?.textContent?.trim()).toBe('2.9 h');
+        expect(row('Wed, Oct 14').querySelector('.row-break')?.textContent?.trim()).toBe('');
         // The line runs from 6 AM to midnight, so 9:21 AM is 3 h 21 min into 18 hours.
         expect(parseFloat(day.querySelector<HTMLElement>('.block')!.style.left)).toBeCloseTo((201 / 1080) * 100, 3);
       });
@@ -541,6 +544,8 @@ describe('journal helpers', () => {
     expect(early.days.map((d) => d.day)).toEqual(['2026-10-12', '2026-10-13']);
     // A single item counts for its minutes from its start, as in the hours.
     expect(early.days[1].blocks.map((b) => [b.start, b.end])).toEqual([[280, 310]]);
+    // One stretch of work and no break: the longest break is 0, shown as None.
+    expect(early.days[1].longestBreak).toBe(0);
   });
 
   it('shows minutes as hours to one decimal place', () => {

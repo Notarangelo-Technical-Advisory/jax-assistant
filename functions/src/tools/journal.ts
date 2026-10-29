@@ -929,11 +929,13 @@ export async function getJournal(
       const sessions = d.clients.flatMap((c) => c.sessions);
       const starts = sessions.map((s) => s.start).sort();
       const ends = sessions.map((s) => s.end).sort();
+      const breaks = dayBreaks(d);
       return {
         day: d.day,
         // When Jack was working, for any client, even when one client is asked for.
         ...(starts.length ? {workedFrom: etTime(starts[0]), workedTo: etTime(ends[ends.length - 1])} : {}),
-        breaks: dayBreaks(d).map((b) => `${etTime(b.start)}–${etTime(b.end)} (${hours(b.minutes)} h)`),
+        breaks: breaks.map((b) => `${etTime(b.start)}–${etTime(b.end)} (${hours(b.minutes)} h)`),
+        longestBreakHours: hours(Math.max(0, ...breaks.map((b) => b.minutes))),
         estimatedHours: client ? hours(clients.reduce((n, c) => n + c.minutes, 0)) : hours(d.totalMinutes),
         clients: clients.map((c) => ({
           client: c.client,

@@ -465,6 +465,7 @@ describe('get_journal', () => {
     // IHRDC 9:21–9:38 AM and 12:32–1:02 PM; NTA Business 3:00 PM, which counts for 6 minutes.
     assert.deepEqual([r.days[0].workedFrom, r.days[0].workedTo], ['9:21 AM', '3:00 PM']);
     assert.deepEqual(r.days[0].breaks, ['9:38 AM–12:32 PM (2.9 h)', '1:02 PM–3:00 PM (2 h)']);
+    assert.equal(r.days[0].longestBreakHours, 2.9);
   });
 
   it("keeps the breaks of the whole day when one client is asked for, so another client's work is not a break", async () => {
