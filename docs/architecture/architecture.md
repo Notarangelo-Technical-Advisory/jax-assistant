@@ -182,7 +182,7 @@ The Mac programs run under launchd with `npx tsx`. They sign in to Firebase with
 | Project | `jax-assistant-cb47f` |
 | App URL | https://jax-assistant-cb47f.web.app |
 | Build output | `dist/jax-assistant-app/browser` |
-| Hosting | All paths rewrite to `/index.html`. `index.html` is `no-cache`; JS and CSS are cached for a year (`immutable`). |
+| Hosting | All paths rewrite to `/index.html`. `index.html` is `no-cache`; JS and CSS are cached for a year (`immutable`). A tab opened before a deploy asks for page scripts that no longer exist and gets `index.html` back, so `src/app/stale-chunk.ts` reloads the page the user asked for (at most once per 10 seconds per address). |
 | Functions runtime | Node.js 22, region `us-central1` |
 | Emulators | Auth 9099, Firestore 8080, single project mode, UI off |
 
