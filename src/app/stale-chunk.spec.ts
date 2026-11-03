@@ -9,10 +9,11 @@ function memoryStorage() {
 const staleError = new TypeError('Failed to fetch dynamically imported module: https://x/chunk-ABC.js');
 
 describe('isStaleChunkError', () => {
-  it('recognises the Chrome, Safari and Firefox wording', () => {
+  it('recognises the Chrome, Safari, iPhone Safari and Firefox wording', () => {
     expect(isStaleChunkError(staleError)).toBeTrue();
     expect(isStaleChunkError(new TypeError('Importing a module script failed.'))).toBeTrue();
     expect(isStaleChunkError(new TypeError('error loading dynamically imported module'))).toBeTrue();
+    expect(isStaleChunkError(new TypeError("'text/html' is not a valid JavaScript MIME type."))).toBeTrue();
   });
 
   it('ignores other errors', () => {

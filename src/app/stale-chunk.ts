@@ -5,8 +5,11 @@ import { NavigationError } from '@angular/router';
 // before a deploy still asks for the old names, so moving to another page fails
 // and the click seems to do nothing. Loading the page again fetches the new files.
 
-/** Each browser words this error differently. */
-const STALE_CHUNK = /dynamically imported module|Importing a module script failed|module script/i;
+/**
+ * Each browser words this error differently. Safari on the iPhone reports the
+ * index.html it got back: "'text/html' is not a valid JavaScript MIME type."
+ */
+const STALE_CHUNK = /dynamically imported module|Importing a module script failed|module script|not a valid JavaScript MIME type/i;
 
 /** Remembers the last reload, so a page that is really broken is not reloaded forever. */
 const LAST_RELOAD_KEY = 'staleChunkReload';
