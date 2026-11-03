@@ -155,10 +155,27 @@
           @for (n of notes(); track n.id) {
             <div class="note">
               <div class="note-head">
-                <span class="note-date">{{ noteDate(n) | date: 'MMM d, y, h:mm a' }}</span>
-                <button class="btn-link" (click)="deleteNote(n)">Delete</button>
+                <span class="note-date">
+                  {{ noteDate(n) | date: 'MMM d, y, h:mm a' }}@if (n.updatedAt) { · edited }
+                </span>
+                @if (editingNoteId() !== n.id) {
+                  <span class="note-actions">
+                    <button class="btn-link btn-link-edit" (click)="startNoteEdit(n)">Edit</button>
+                    <button class="btn-link" (click)="deleteNote(n)">Delete</button>
+                  </span>
+                }
               </div>
-              <p class="note-body">{{ n.body }}</p>
+              @if (editingNoteId() === n.id) {
+                <div class="note-new note-edit">
+                  <textarea [(ngModel)]="noteDraft" rows="3" aria-label="Edit note"></textarea>
+                  <div class="note-actions">
+                    <button class="btn-secondary" (click)="cancelNoteEdit()">Cancel</button>
+                    <button class="btn-primary" (click)="saveNote()" [disabled]="!noteDraft.trim()">Save</button>
+                  </div>
+                </div>
+              } @else {
+                <p class="note-body">{{ n.body }}</p>
+              }
             </div>
           } @empty {
             <p class="empty">No notes yet.</p>

@@ -132,6 +132,39 @@ describe('ContactsComponent', () => {
     expect((await listDocuments('contactNotes')).length).toBe(0);
   });
 
+  it('edits a note in place and marks it as edited', async () => {
+    await addContact({ firstName: 'Brad', lastName: 'Donohue' });
+    await waitFor(() => page.selectedContact() !== null);
+    page.newNote = 'Prefers Teams to email.';
+    await page.addNote();
+    await waitFor(() => page.notes().length === 1);
+
+    page.startNoteEdit(page.notes()[0]);
+    expect(page.noteDraft).toBe('Prefers Teams to email.');
+    page.noteDraft = '  Prefers Teams to email, except on Fridays.  ';
+    await page.saveNote();
+    await waitFor(() => !!page.notes()[0]?.updatedAt);
+
+    expect(page.editingNoteId()).toBeNull();
+    expect(page.notes()[0].body).toBe('Prefers Teams to email, except on Fridays.');
+    expect(page.notes().length).toBe(1);
+  });
+
+  it('leaves a note unchanged when its edit is cancelled', async () => {
+    await addContact({ firstName: 'Brad', lastName: 'Donohue' });
+    await waitFor(() => page.selectedContact() !== null);
+    page.newNote = 'Lunch on Friday.';
+    await page.addNote();
+    await waitFor(() => page.notes().length === 1);
+
+    page.startNoteEdit(page.notes()[0]);
+    page.noteDraft = 'Something else';
+    page.cancelNoteEdit();
+
+    expect(page.editingNoteId()).toBeNull();
+    expect((await listDocuments('contactNotes'))[0]).toEqual(jasmine.objectContaining({ body: { stringValue: 'Lunch on Friday.' } }));
+  });
+
   it('opens a company with its people and edits its website', async () => {
     await addContact({ firstName: 'Brad', company: 'IHRDC' });
     await waitFor(() => page.companies().length === 1 && page.contacts().length === 1);

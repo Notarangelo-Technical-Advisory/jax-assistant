@@ -73,6 +73,9 @@ export class ContactsComponent implements OnDestroy {
   form: ContactForm = emptyForm();
   companyForm = { name: '', website: '', tags: '' };
   newNote = '';
+  /** The note being edited in place, and its text while it is edited. */
+  editingNoteId = signal<string | null>(null);
+  noteDraft = '';
   linkForm = { type: 'url' as 'url' | 'meeting', title: '', url: '', date: '', note: '' };
   linkError = signal<string | null>(null);
 
@@ -145,6 +148,7 @@ export class ContactsComponent implements OnDestroy {
     this.recordSub?.unsubscribe();
     this.recordSub = null;
     this.notes.set([]);
+    this.cancelNoteEdit();
     this.links.set([]);
     this.linkError.set(null);
   }
@@ -296,6 +300,24 @@ export class ContactsComponent implements OnDestroy {
       body,
     );
     this.newNote = '';
+  }
+
+  startNoteEdit(note: ContactNote): void {
+    this.editingNoteId.set(note.id ?? null);
+    this.noteDraft = note.body;
+  }
+
+  cancelNoteEdit(): void {
+    this.editingNoteId.set(null);
+    this.noteDraft = '';
+  }
+
+  async saveNote(): Promise<void> {
+    const id = this.editingNoteId();
+    const body = this.noteDraft.trim();
+    if (!id || !body) return;
+    await this.contactService.updateNote(id, body);
+    this.cancelNoteEdit();
   }
 
   async deleteNote(note: ContactNote): Promise<void> {

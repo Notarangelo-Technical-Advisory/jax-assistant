@@ -205,6 +205,9 @@ dl {
 
 .note-head { display: flex; justify-content: space-between; align-items: center; }
 .note-date { color: $text-secondary; font-size: 0.75rem; }
+.note-actions { display: flex; gap: 0.75rem; }
+.note-edit { margin: 0.4rem 0 0; }
+.btn-link-edit:hover { color: $accent; }
 .note-body { margin: 0.3rem 0 0; white-space: pre-wrap; font-size: 0.9rem; line-height: 1.45; }
 
 .empty { color: $text-secondary; font-size: 0.85rem; }
