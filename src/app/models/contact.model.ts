@@ -34,6 +34,8 @@ export interface ContactNote {
   companyId: string | null;
   body: string;
   createdAt?: { toDate(): Date } | null;
+  /** Set when the note was edited after it was added. */
+  updatedAt?: { toDate(): Date } | null;
 }
 
 export type ContactLinkType = 'email' | 'meeting' | 'url' | 'text' | 'call';

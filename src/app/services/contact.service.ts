@@ -96,6 +96,10 @@ export class ContactService {
     });
   }
 
+  async updateNote(id: string, body: string): Promise<void> {
+    await updateDoc(doc(this.firestore, 'contactNotes', id), { body: body.trim(), updatedAt: serverTimestamp() });
+  }
+
   async deleteNote(id: string): Promise<void> {
     await deleteDoc(doc(this.firestore, 'contactNotes', id));
   }
