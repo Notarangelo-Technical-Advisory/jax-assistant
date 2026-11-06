@@ -62,6 +62,17 @@ describe('ChatService', () => {
     expect(service.latestAssistantMessage()).toBe('The IHRDC demo at 10.');
   });
 
+  it('forgets the new answer when it stops watching, so a later dashboard does not speak it again', async () => {
+    await message('a', { sessionId: 's1', role: 'assistant', content: 'Earlier answer', sequence: 1 });
+    service.watchSession('s1');
+    await waitFor(() => service.messages().length === 1);
+    await message('b', { sessionId: 's1', role: 'assistant', content: 'The IHRDC demo at 10.', sequence: 2 });
+    await waitFor(() => service.latestAssistantMessage() !== null);
+
+    service.stopWatching();
+    expect(service.latestAssistantMessage()).toBeNull();
+  });
+
   it('shows the step MAISIE is working on, live', async () => {
     // Wait for the first step to arrive, so the listener is live before the
     // step changes. A write made while the listener is still starting can be
