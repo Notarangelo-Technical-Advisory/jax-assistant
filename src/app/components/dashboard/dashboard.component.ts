@@ -218,6 +218,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private sttEffect = effect(() => {
     const transcript = this.sttService.transcript();
     if (transcript && !this.sttService.isListening() && this.featureFlags.enableVoiceInput()) {
+      // Clear it once sent: SttService outlives the dashboard, and the next
+      // dashboard would otherwise send the same words to Maisie again.
+      this.sttService.transcript.set('');
       this.chatInput = transcript;
       this.sendChat();
     }

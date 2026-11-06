@@ -104,6 +104,10 @@ export class ChatService {
     this.activeSessionId = null;
     this.messages.set([]);
     this.thinkingStep.set(null);
+    // This service outlives the dashboard. A reply left here would be spoken
+    // again by the next dashboard, for example on the way back from Contacts.
+    this.latestAssistantMessage.set(null);
+    this.lastSeenAssistantSeq = null;
   }
 
   async sendMessage(text: string, sessionId: string): Promise<string> {
