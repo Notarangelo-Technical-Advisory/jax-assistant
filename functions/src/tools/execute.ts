@@ -24,6 +24,7 @@ import {
 import {getJournal, GetJournalInput, moveJournalItems} from "./journal";
 import {loadMemories, saveMemory, forgetMemory} from "./memories";
 import {addTimeEntries, deleteTimeEntry, TimeEntryInput} from "./time-entries";
+import {draftStory, StoryDraftInput} from "./story-draft";
 
 export interface CustomerInfo {
   name: string;
@@ -616,42 +617,8 @@ export async function executeTool(
 
   // ─── Coding delegation ───────────────────────────────────────
   case "code_with_github": {
-    const input = rawInput as {task: string};
-    const githubPat = process.env.MAISIE_PAT;
-    if (!githubPat) {
-      return {success: false, error: "MAISIE_PAT is not configured in the Cloud Functions environment. Ask Jack to add it via Firebase secrets."};
-    }
-
-    const issueTitle = input.task.split("\n")[0].substring(0, 100);
-    const issueBody = `@claude\n\n${input.task}`;
-
-    await ctx.onStep?.("Submitting task to cloud coding agent...", "code_with_github");
-
-    const ghResponse = await fetch(
-      "https://api.github.com/repos/Notarangelo-Technical-Advisory/jax-assistant/issues",
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${githubPat}`,
-          "Accept": "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({title: issueTitle, body: issueBody, labels: ["coding-task"]}),
-      }
-    );
-
-    if (!ghResponse.ok) {
-      const errText = await ghResponse.text();
-      return {success: false, error: `GitHub API error ${ghResponse.status}: ${errText}`};
-    }
-    const issue = await ghResponse.json() as {html_url: string; number: number};
-    return {
-      success: true,
-      issue_url: issue.html_url,
-      issue_number: issue.number,
-      message: "Task submitted to cloud coding agent. Jack will get a GitHub notification when the PR is ready.",
-    };
+    await ctx.onStep?.("Drafting a story and a subtask for the story agent...", "code_with_github");
+    return await draftStory(rawInput as Partial<StoryDraftInput>, process.env.MAISIE_PAT);
   }
 
   default:
@@ -696,7 +663,7 @@ export const toolLabel = (name: string, input: Record<string, unknown>): string 
   case "approve_linkedin_post": return "Approving the LinkedIn post...";
   case "mark_linkedin_posted": return "Marking the LinkedIn post as posted...";
   case "write_linkedin_draft": return "Writing the LinkedIn draft...";
-  case "code_with_github": return "Sending task to coding agent...";
+  case "code_with_github": return "Drafting a story for the story agent...";
   default: return `Running ${name}...`;
   }
 };

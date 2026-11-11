@@ -51,8 +51,9 @@ macOS permissions; see "Permissions" below.
 
 MAISIE's four other cloud tools are deliberately absent from VS Code:
 `get_calendar` / `create_calendar_event` / `move_calendar_event` because
-AppleScript reads fresher and writes instantly; `code_with_github` because in
-VS Code you are already in the repo.
+AppleScript reads fresher and writes instantly; `code_with_github` (which drafts a
+story and subtask for the NTA story agent) because in VS Code you are already in
+the repo.
 
 ### Setup
 

@@ -250,7 +250,7 @@ Environment variable names: `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, `FINNHUB_
   - Calendar create and move go to `pendingCalendarActions`.
   - Mail search, read and draft go to `pendingDesktopActions`. The tool then waits up to 90 seconds for the Mac to answer.
   - The cloud never sends mail.
-- **`code_with_github`** opens a GitHub issue for the `claude.yml` workflow.
+- **`code_with_github`** drafts a story and one subtask, with the brief headings, for the NTA story agent (`functions/src/tools/story-draft.ts`). It never adds `story-ready`: Jack reads the subtask and adds it to start the agent.
 
 ---
 
@@ -292,7 +292,6 @@ The Mac programs run under launchd with `npx tsx`. They sign in to Firebase with
 |---|---|---|
 | `deploy-and-release.yml` | Push to `main` (every `git ship`), or run by hand | `version` → `test` (calls `tests.yml`) and `build` at the same time → `deploy` → `release-notes` → `create-release`. `deploy` waits for both. One deploy at a time. |
 | `tests.yml` | Every pull request, and before every deploy | Runs `test:ci`, `test:site`, `test:rules`, `test:functions`, `test:mcp` (after type-checking the MCP code) and `test:bridge`, each in its own job at the same time. A last job, `Run tests`, passes only when all six pass; the `main` ruleset and the story agent require it by that name. |
-| `claude.yml` | Issue and pull request comments and reviews | Claude Code on GitHub; the target of `code_with_github` |
 | `run-headlines.yml` | By hand only | Runs the headlines schedule job now |
 
 - **Deploy job.** It installs `firebase-tools@15.6.0` and signs in with Workload Identity Federation (`WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`). It then writes every function secret into `functions/.env` and runs `firebase deploy --only hosting,firestore,functions`.
