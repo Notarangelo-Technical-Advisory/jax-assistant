@@ -6,7 +6,9 @@ This file holds only the development rules that belong to this app. `CLAUDE.md` 
 
 ## Git and deployment
 
-- Use a branch and `git ship`, as in [`docs/standards/git-and-commits.md`](docs/standards/git-and-commits.md). The pull request needs no review. commitlint checks the commit type in a Husky `commit-msg` hook.
+- Use a branch and `git ship`, as in [`docs/standards/git-and-commits.md`](docs/standards/git-and-commits.md). commitlint checks the commit type in a Husky `commit-msg` hook.
+- `main` requires one approval from a code owner. `.github/CODEOWNERS` names only `@jacknota`. `git ship` merges Jack's own pull requests with `--admin`, so they still need no review.
+- Pull requests from the story agent's bot, `nta-story-agent[bot]`, need Jack's approval and a passing `Run tests` check. A push after the approval cancels it. See [section 8 of the story agent plan](https://github.com/Notarangelo-Technical-Advisory/nta-story-agent/blob/main/docs/Story-Agent.md#8-rules-on-each-repository).
 - Every merge to `main` deploys through `.github/workflows/deploy-and-release.yml`. It runs `tests.yml` first, then deploys hosting, Firestore rules and indexes, and Cloud Functions to the Firebase project `jax-assistant-cb47f`.
 - Never run `firebase deploy`, `firebase login` or `firebase login --reauth` on a laptop.
 - CI signs in with Workload Identity Federation (`WIF_PROVIDER` and `WIF_SERVICE_ACCOUNT` secrets). It writes every Cloud Function secret into `functions/.env` before the deploy.
