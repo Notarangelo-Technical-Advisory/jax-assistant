@@ -640,16 +640,31 @@ export const buildTools = (
     },
     {
       name: "code_with_github",
-      description: "Delegate ANY coding task — bug fix, feature, refactor, or file change — to the cloud coding agent. Use this whenever Jack asks to fix a bug, add a feature, or change any code. The agent creates a branch, makes the changes, and opens a PR. Returns the GitHub issue URL immediately; Jack gets a notification when the PR is ready.",
+      description: "Draft a coding change in jax-assistant for the NTA story agent: a story issue and one subtask " +
+        "issue under it, whose body is the agent's brief. Use it when Jack asks to fix a bug, add a feature, or " +
+        "change MAISIE's code. Nothing starts until Jack reads the subtask and adds the story-ready label; the " +
+        "agent then opens a pull request for him to review. Fill every field precisely: a vague brief makes a " +
+        "poor pull request, and Jack has to rewrite it.",
       input_schema: {
         type: "object" as const,
         properties: {
-          task: {
-            type: "string",
-            description: "Complete description of what needs to be done. Include: the bug/feature, expected behavior, and all relevant context Jack provided.",
-          },
+          story_title: {type: "string", description: "Short title of the story: the outcome Jack wants."},
+          story_summary: {type: "string", description: "Why Jack wants this, in two or three plain sentences."},
+          subtask_title: {type: "string", description: "Short title of the one subtask, starting with a verb."},
+          goal: {type: "string", description: "What the change achieves, in one or two sentences."},
+          files: {type: "array", items: {type: "string"},
+            description: "Each file to change or create, as its path from the repository root, then what changes."},
+          interfaces: {type: "string",
+            description: "Function signatures, data shapes or APIs the change adds or must keep. 'None' if none."},
+          conventions: {type: "string",
+            description: "Rules to follow, such as the repository's AGENTS.md, naming or style. 'AGENTS.md' at least."},
+          acceptance_criteria: {type: "array", items: {type: "string"},
+            description: "Each observable result that shows the change is done."},
+          out_of_scope: {type: "string", description: "What the agent must not change. 'None' if nothing."},
+          test_expectations: {type: "string", description: "Which tests to add or change, and in which test file."},
         },
-        required: ["task"],
+        required: ["story_title", "story_summary", "subtask_title", "goal", "files", "interfaces", "conventions",
+          "acceptance_criteria", "out_of_scope", "test_expectations"],
       },
     },
   ];
