@@ -2,6 +2,11 @@ name: Tests
 
 # Runs on every pull request, and is called by deploy-and-release.yml so a
 # push to main cannot deploy until every suite passes.
+#
+# Each suite runs in its own job, at the same time as the others, so a run
+# waits only for the slowest suite. Each job runs on its own machine with its
+# own emulators, and installs only what its suite needs. See
+# docs/standards/testing.md.
 on:
   pull_request:
   workflow_call:
@@ -11,8 +16,33 @@ env:
 
 jobs:
   test:
-    name: Run tests
+    name: Test (${{ matrix.name }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false  # report every failing suite, not only the first
+      matrix:
+        include:
+          - name: browser
+            script: test:ci
+            emulators: true
+          - name: site icons
+            script: test:site
+          - name: security rules
+            script: test:rules
+            emulators: true
+          - name: MAISIE tools
+            script: test:functions
+            emulators: true
+            functions: true
+          - name: MCP server
+            script: test:mcp
+            emulators: true
+            functions: true
+            typecheck-mcp: true
+          # The tests that run AppleScript skip on Linux; the rest still run.
+          - name: desktop bridge
+            script: test:bridge
+            bridge: true
     steps:
       - uses: actions/checkout@v4
 
@@ -24,39 +54,46 @@ jobs:
       - run: npm install
 
       - name: Install Cloud Functions dependencies
+        if: matrix.functions
         run: npm install --prefix functions
 
       - name: Install desktop bridge dependencies
+        if: matrix.bridge
         run: npm install --prefix bridge
 
-      # Every test suite runs on the Firebase emulators. The Firestore emulator
-      # needs Java 21 with this Firebase CLI version.
+      # The Firestore emulator needs Java 21 with this Firebase CLI version.
       - uses: actions/setup-java@v4
+        if: matrix.emulators
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Install Firebase CLI for the emulators
+        if: matrix.emulators
         run: npm install -g firebase-tools@15.6.0
 
       - name: Type-check the MCP server
+        if: matrix.typecheck-mcp
         run: npm --prefix functions run typecheck:mcp
 
-      - name: Run browser tests
-        run: npm run test:ci
+      - name: Run ${{ matrix.name }} tests
+        run: npm run ${{ matrix.script }}
 
-      - name: Run site icon tests
-        run: npm run test:site
-
-      - name: Run security rules tests
-        run: npm run test:rules
-
-      - name: Run MAISIE tool tests
-        run: npm run test:functions
-
-      - name: Run MCP server tests
-        run: npm run test:mcp
-
-      # The tests that run AppleScript skip on Linux; the rest still run.
-      - name: Run desktop bridge tests
-        run: npm run test:bridge
+  # The one check that the main branch ruleset and the NTA story agent
+  # (repos/jax-assistant.yml) require, by this name. It passes only when every
+  # suite above passed. It must run even when a suite fails, because GitHub
+  # counts a skipped required check as passed.
+  run-tests:
+    name: Run tests
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that every suite passed
+        env:
+          RESULT: ${{ needs.test.result }}
+        run: |
+          if [ "$RESULT" != "success" ]; then
+            echo "::error::One or more test suites did not pass (result: $RESULT)."
+            exit 1
+          fi

@@ -41,7 +41,7 @@ Follow [`docs/standards/testing.md`](docs/standards/testing.md). In this app, ad
 - A new or changed AppleScript that the desktop bridge runs (`bridge/applescript/`) → `bridge/tests/`
 - A new or changed web page or service → a `*.spec.ts` file next to it, run against the emulators (`src/testing/emulator-testing.ts`)
 
-`npm run test:all` runs `test:ci`, `test:site`, `test:rules`, `test:functions`, `test:mcp` and `test:bridge`. `tests.yml` runs the same suites on every pull request and before every deploy. See the Tests section of `README.md` for what each suite covers.
+`npm run test:all` runs `test:ci`, `test:site`, `test:rules`, `test:functions`, `test:mcp` and `test:bridge`. `tests.yml` runs the same suites on every pull request and before every deploy, each in its own job at the same time. Its last job, `Run tests`, passes only when every suite passes. The `main` ruleset and the story agent require that check by name, so do not rename it. See the Tests section of `README.md` for what each suite covers.
 
 ## Context map
 
