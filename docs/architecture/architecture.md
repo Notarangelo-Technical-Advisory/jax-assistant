@@ -290,8 +290,8 @@ The Mac programs run under launchd with `npx tsx`. They sign in to Firebase with
 
 | Workflow | When | What it does |
 |---|---|---|
-| `deploy-and-release.yml` | Push to `main` (every `git ship`), or run by hand | `version` → `test` (calls `tests.yml`) → `build` → `deploy` → `release-notes` → `create-release`. One deploy at a time. |
-| `tests.yml` | Every pull request, and before every deploy | Type-checks the MCP code, then runs `test:ci`, `test:site`, `test:rules`, `test:functions`, `test:mcp`, `test:bridge` |
+| `deploy-and-release.yml` | Push to `main` (every `git ship`), or run by hand | `version` → `test` (calls `tests.yml`) and `build` at the same time → `deploy` → `release-notes` → `create-release`. `deploy` waits for both. One deploy at a time. |
+| `tests.yml` | Every pull request, and before every deploy | Runs `test:ci`, `test:site`, `test:rules`, `test:functions`, `test:mcp` (after type-checking the MCP code) and `test:bridge`, each in its own job at the same time. A last job, `Run tests`, passes only when all six pass; the `main` ruleset and the story agent require it by that name. |
 | `claude.yml` | Issue and pull request comments and reviews | Claude Code on GitHub; the target of `code_with_github` |
 | `run-headlines.yml` | By hand only | Runs the headlines schedule job now |
 

@@ -94,7 +94,7 @@ jobs:
   build:
     name: Build Application
     runs-on: ubuntu-latest
-    needs: [version, test]
+    needs: version  # runs at the same time as the tests
     steps:
       - uses: actions/checkout@v4
 
@@ -119,7 +119,7 @@ jobs:
   deploy:
     name: Deploy to Firebase
     runs-on: ubuntu-latest
-    needs: [build, version]
+    needs: [test, build, version]  # every test job must pass before a deploy
     permissions:
       contents: read
       id-token: write
