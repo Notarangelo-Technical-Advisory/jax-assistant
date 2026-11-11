@@ -1,6 +1,6 @@
 # Maisie (jax-assistant) — Development Rules
 
-This app follows the shared engineering standards in [`docs/standards/`](docs/standards/README.md), copied from [`engineering-standards`](https://github.com/Notarangelo-Technical-Advisory/engineering-standards) `v1.1.1`. Do not edit `docs/standards/` in this repo. Change the standards repo instead.
+This app follows the shared engineering standards in [`docs/standards/`](docs/standards/README.md), copied from [`engineering-standards`](https://github.com/Notarangelo-Technical-Advisory/engineering-standards) `v1.2.1`. Do not edit `docs/standards/` in this repo. Change the standards repo instead.
 
 This file holds only the development rules that belong to this app. `CLAUDE.md` describes Maisie's work as Jack's assistant.
 
