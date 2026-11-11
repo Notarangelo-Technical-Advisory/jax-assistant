@@ -40,6 +40,8 @@ These rules apply to every Notarangelo Technical Advisory app. Each section link
 ## Documentation ([detail](documentation.md))
 
 - Update `docs/architecture/architecture.md` in the same pull request when the stack, data model, rules, functions or CI change.
+- `architecture.md` starts with a C4 Context diagram and a C4 Container diagram, written as Mermaid flowcharts with C4 labels. Update them in the same pull request when users, outside systems or containers change.
+- Every app has a domain-driven design context map in `docs/architecture/context-map.html`, modelled on Maisie's. Update it in the same pull request when an area, a Firestore collection, an outside system or a connection between areas changes.
 - Write in plain English for readers whose first language is not English.
 
 ## AI features ([detail](ai-features.md))

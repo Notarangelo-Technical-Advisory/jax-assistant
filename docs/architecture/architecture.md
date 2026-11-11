@@ -5,7 +5,111 @@
 
 MAISIE is Jack Notarangelo's personal assistant. It has one user. Jack reaches it three ways: the web dashboard, VS Code (through two local MCP servers), and schedules that run on their own. SMS was removed on 2026-10-27. It manages tasks, contacts, the calendar, a work journal, daily briefings, LinkedIn posts, and billing against the NTA Time Tracker.
 
-**For the domain view**, see the [context map](context-map.html): the nine areas, the outside systems, and how each pair connects. This document covers the technical view: stack, structure, data, functions, Mac programs, CI and local setup. It does not repeat the context map.
+**For the domain view**, see the [context map](context-map.html): the nine areas, the outside systems, and how each pair connects. This document covers the technical view: the C4 diagrams, stack, structure, data, functions, Mac programs, CI and local setup. It does not repeat the context map.
+
+---
+
+## C4 Diagrams
+
+These are the C4 Context and Container views (see `docs/standards/documentation.md`). Navy is a person, blue is MAISIE, and grey is an outside system.
+
+### System Context
+
+```mermaid
+flowchart TB
+  jack(["<b>Jack Notarangelo</b><br/>[Person]<br/>MAISIE's only user"])
+  cc["<b>Claude Code in VS Code</b><br/>[Outside system]<br/>Jack's coding assistant"]
+  maisie["<b>MAISIE</b><br/>[Software system]<br/>Tasks, contacts, calendar, work journal,<br/>briefings, LinkedIn posts, billing"]
+  mac["<b>Apple apps on Jack's Mac</b><br/>[Outside system]<br/>Mail, Calendar, Contacts,<br/>Messages, call history"]
+  fta["<b>NTA Time Tracker</b><br/>[Outside system]<br/>Firestore project fta-invoice-tracking"]
+  claude["<b>Claude API</b><br/>[Outside system]"]
+  eleven["<b>ElevenLabs</b><br/>[Outside system]<br/>Text to speech"]
+  github["<b>GitHub</b><br/>[Outside system]<br/>Activity, LinkedIn post queue, issues"]
+  other["<b>Jira, Wispr Flow</b><br/>[Outside systems]<br/>Work activity for the journal"]
+  news["<b>News feeds, Finnhub</b><br/>[Outside systems]<br/>Headlines and market data"]
+
+  jack -- "Chats, manages tasks and contacts,<br/>reads briefings [web dashboard]" --> maisie
+  jack -- "Works with" --> cc
+  cc -- "Calls MAISIE's tools [MCP]" --> maisie
+  maisie -- "Reads mail, calendar, contacts, texts, calls;<br/>drafts mail; changes events [AppleScript, EventKit, sqlite3]" --> mac
+  maisie -- "Reads entries and invoices;<br/>posts unbilled time [Admin SDK]" --> fta
+  maisie -- "Sends prompts [HTTPS]" --> claude
+  maisie -- "Gets speech [HTTPS]" --> eleven
+  maisie -- "Reads activity; reads and writes the<br/>post queue; opens issues [gh, REST]" --> github
+  maisie -- "Reads activity [REST, sqlite3]" --> other
+  maisie -- "Reads headlines and quotes [RSS, HTTPS]" --> news
+
+  classDef person fill:#1E3A8A,stroke:#0F172A,color:#FFFFFF
+  classDef system fill:#3B82F6,stroke:#1E3A8A,color:#FFFFFF
+  classDef external fill:#64748B,stroke:#334155,color:#FFFFFF
+  class jack person
+  class maisie system
+  class cc,mac,fta,claude,eleven,github,other,news external
+```
+
+### Containers
+
+The Mac containers sign in with `bridge/service-account.json` (see [Known Gaps](#known-gaps)). Schedules run inside Cloud Functions, triggered by Cloud Scheduler.
+
+```mermaid
+flowchart LR
+  jack(["<b>Jack Notarangelo</b><br/>[Person]"])
+  cc["<b>Claude Code in VS Code</b><br/>[Outside system]"]
+
+  subgraph cloud ["MAISIE in Firebase (jax-assistant-cb47f)"]
+    web["<b>Web dashboard</b><br/>[Angular 22, Firebase Hosting]<br/>Tasks, chat with voice, briefing,<br/>journal, contacts, billing"]
+    auth["<b>Auth and Remote Config</b><br/>[Firebase]<br/>Sign-in; feature flags"]
+    fn["<b>Cloud Functions</b><br/>[Node 22, us-central1]<br/>Chat tool loop, speech, time posting,<br/>briefings, headlines, LinkedIn drafts"]
+    db[("<b>Firestore</b><br/>[Firebase]<br/>All records, and the<br/>queues for the Mac")]
+  end
+
+  subgraph macside ["MAISIE on Jack's Mac"]
+    mcp["<b>maisie MCP server</b><br/>[Node, tsx]<br/>26 shared tools"]
+    desk["<b>desktop MCP server</b><br/>[Node, tsx]<br/>Live mail and calendar tools"]
+    queue["<b>Queue programs</b><br/>[launchd]<br/>desktop-bridge every 10 s,<br/>calendar-sync every 120 s"]
+    jobs["<b>Collection jobs</b><br/>[launchd]<br/>work-journal, contact-autolink<br/>every 15 min; contacts-import daily"]
+  end
+
+  fta["<b>NTA Time Tracker</b><br/>[Outside system]<br/>fta-invoice-tracking"]
+  claude["<b>Claude API</b><br/>[Outside system]"]
+  eleven["<b>ElevenLabs</b><br/>[Outside system]"]
+  news["<b>News feeds, Finnhub</b><br/>[Outside systems]"]
+  github["<b>GitHub</b><br/>[Outside system]"]
+  other["<b>Jira, Wispr Flow</b><br/>[Outside systems]"]
+  mac["<b>Apple apps on Jack's Mac</b><br/>[Outside system]<br/>Mail, Calendar, Contacts,<br/>Messages, call history"]
+
+  jack -- "Uses" --> web
+  jack -- "Works with" --> cc
+  web -- "Signs in" --> auth
+  web -- "Reads live, writes<br/>[rxfire]" --> db
+  web -- "Calls<br/>[HTTPS, ID token]" --> fn
+  fn -- "Reads, writes" --> db
+  fn -- "Reads entries,<br/>posts time" --> fta
+  fn -- "Prompts" --> claude
+  fn -- "Speech" --> eleven
+  fn -- "Headlines, quotes" --> news
+  fn -- "Post queue, issues" --> github
+  cc -- "MCP, stdio" --> mcp
+  cc -- "MCP, stdio" --> desk
+  mcp -- "Reads, writes<br/>[key file]" --> db
+  mcp -- "Posts time" --> fta
+  queue -- "Takes requests,<br/>writes results" --> db
+  jobs -- "Journal, contact links" --> db
+  desk -- "Mail, calendar<br/>[AppleScript, EventKit]" --> mac
+  queue -- "Runs requests,<br/>reads calendars" --> mac
+  jobs -- "Reads mail, meetings,<br/>texts, calls, contacts" --> mac
+  jobs -- "Activity [gh]" --> github
+  jobs -- "Activity" --> other
+
+  classDef person fill:#1E3A8A,stroke:#0F172A,color:#FFFFFF
+  classDef container fill:#3B82F6,stroke:#1E3A8A,color:#FFFFFF
+  classDef external fill:#64748B,stroke:#334155,color:#FFFFFF
+  class jack person
+  class web,auth,fn,db,mcp,desk,queue,jobs container
+  class cc,mac,fta,claude,eleven,github,other,news external
+  style cloud fill:none,stroke:#64748B,stroke-dasharray:5 5
+  style macside fill:none,stroke:#64748B,stroke-dasharray:5 5
+```
 
 ---
 
@@ -59,13 +163,7 @@ MAISIE is Jack Notarangelo's personal assistant. It has one user. Jack reaches i
 
 ### How the parts connect
 
-```
-Web dashboard ──HTTPS + ID token──▶ Cloud Functions ──▶ Firestore ◀── Mac programs (bridge/)
-Schedules ──Cloud Scheduler──▶ briefing, headlines, LinkedIn │              ▼
-VS Code ──stdio──▶ maisie MCP server (shared tools) ─────────┘     Apple Mail, Calendar,
-VS Code ──stdio──▶ desktop MCP server ──────────────────────────▶  Contacts, Messages
-Cloud Functions ──cross-project read/write──▶ NTA Time Tracker (fta-invoice-tracking)
-```
+See the [Containers](#containers) diagram.
 
 ### Routing
 
@@ -292,6 +390,8 @@ Update this document in the same pull request as any of these changes (see `docs
 | The Firebase or hosting setup changed | Firebase Configuration |
 | A workflow changed | CI/CD Pipeline |
 | A test suite added | Testing |
+| A type of user or an outside system added or removed | C4 Diagrams: System Context and Containers |
+| A container added or removed, or a connection between containers changed | C4 Diagrams: Containers |
 | A known gap fixed | Known Gaps |
 
 Change the "Last checked against the code" date at the top when you check the whole document.
