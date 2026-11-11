@@ -78,4 +78,10 @@ describe('parseCallRows', () => {
     const calls = parseCallRows(JSON.stringify([row({ id: null }), row({ id: '' }), row({ id: 'call-2' })]));
     assert.deepEqual(calls.map((call) => call.callId), ['call-2']);
   });
+
+  it('drops a call that has no start time and keeps the others', () => {
+    const { seconds: _missing, ...noSeconds } = row({ id: 'call-3' });
+    const calls = parseCallRows(JSON.stringify([row({ id: 'call-1', seconds: null }), noSeconds, row({ id: 'call-2' })]));
+    assert.deepEqual(calls.map((call) => call.callId), ['call-2']);
+  });
 });
