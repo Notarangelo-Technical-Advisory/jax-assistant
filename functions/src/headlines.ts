@@ -30,7 +30,6 @@ export const HEADLINE_FEEDS: Array<{section: SectionKey; name: string; url: stri
   {section: "people", name: "The Product Compass (Paweł Huryn)", url: "https://www.productcompass.pm/feed"},
   {section: "people", name: "All-In podcast", url: "https://rss.libsyn.com/shows/254861/destinations/1928300.xml"},
   {section: "people", name: "Chamath Palihapitiya (Substack)", url: "https://chamath.substack.com/feed"},
-  {section: "people", name: "The Benny Show", url: "https://feeds.megaphone.fm/BENNYMED7549931483"},
   {section: "ai", name: "OpenAI", url: "https://openai.com/news/rss.xml"},
   {section: "ai", name: "Google DeepMind", url: "https://deepmind.google/blog/rss.xml"},
   {section: "ai", name: "Google AI blog", url: "https://blog.google/technology/ai/rss/"},
@@ -52,7 +51,8 @@ export const HEADLINE_FEEDS: Array<{section: SectionKey; name: string; url: stri
 export const HEADLINE_NEWS_QUERIES: Array<{section: SectionKey; query: string}> = [
   {section: "people", query: "\"David Sacks\""},
   {section: "people", query: "\"Chamath Palihapitiya\""},
-  {section: "people", query: "\"Benny Johnson\""},
+  // Townhall.com's own feed could not be confirmed, so its stories come from Bing.
+  {section: "people", query: "site:townhall.com"},
   {section: "people", query: "\"Paweł Huryn\" OR \"Pawel Huryn\""},
   {section: "ai", query: "Anthropic Claude"},
   {section: "ai", query: "OpenAI"},
@@ -164,7 +164,7 @@ interface FeedEntry {
 function parseFeed(body: string): FeedEntry[] {
   const doc = xml.parse(body) as Record<string, any>;
   const rssItems: any[] = doc.rss?.channel?.item ?? [];
-  // Some podcast feeds, such as The Benny Show's, give episodes no web link;
+  // Some podcast feeds give episodes no web link;
   // those link to the show's page instead.
   const channelLink = textOf(doc.rss?.channel?.link).trim();
   const atomEntries: any[] = doc.feed?.entry ?? [];
@@ -349,7 +349,7 @@ function buildSystemPrompt(todayLabel: string): string {
 
 Jack is a technical advisor on AI adoption. The user message lists candidate stories from news feeds and news searches, all from the last ${WINDOW_HOURS} hours. Choose the ones Jack should see, in three sections:
 
-1. people — what David Sacks, Chamath Palihapitiya, Benny Johnson (the US political commentator) and Paweł Huryn (AI for product managers) have said, published or done. Skip stories about other people with the same name.
+1. people — what David Sacks, Chamath Palihapitiya and Paweł Huryn (AI for product managers) have said, published or done, and the most important stories published by Townhall.com (the US conservative news and opinion site). Skip stories about other people with the same name.
 2. ai — significant news from Anthropic, OpenAI, Google DeepMind / Gemini, Meta AI, xAI, Microsoft AI and NVIDIA: model releases, major product launches, pricing changes, policy or legal news. Skip minor feature updates.
 3. markets — only events that moved, or are expected to move, the S&P 500: a move of more than 1% in a day, a Federal Reserve decision, a CPI or jobs report, or earnings from one of the largest companies in the index. The user message may include marketData with the latest prices and a list of reasons the day is significant; when it does, use the candidates to explain the cause of each move it lists. Take every number from marketData, never from a headline, and do not repeat prices the dashboard already shows. If nothing significant happened, choose no markets items.
 
