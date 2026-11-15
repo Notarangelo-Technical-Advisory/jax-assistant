@@ -71,6 +71,18 @@ describe('news searches', () => {
   });
 });
 
+describe('people you follow', () => {
+  it('Townhall.com stories are searched, and Benny Johnson is no longer followed', async () => {
+    const requested = serve();
+    await gatherCandidates(null, false, NOW);
+
+    const searches = requested.map(u => decodeURIComponent(u));
+    assert.ok(searches.some(u => u.includes('q=site:townhall.com')));
+    assert.equal(searches.filter(u => /benny/i.test(u)).length, 0);
+  });
+
+});
+
 describe('publisher feeds', () => {
   const CNBC = 'https://www.cnbc.com/id/100003114/device/rss/rss.html';
   const TECHCRUNCH = 'https://techcrunch.com/category/artificial-intelligence/feed/';

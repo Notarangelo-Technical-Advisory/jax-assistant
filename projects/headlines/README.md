@@ -25,10 +25,10 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
 
 ## Sources (kept in code, `HEADLINE_FEEDS` and `HEADLINE_NEWS_QUERIES`)
 
-- **People:** Paweł Huryn, David Sacks, Chamath Palihapitiya, Benny Johnson.
-  - **Feeds:** The Product Compass, the All-In podcast, Chamath's Substack and The Benny Show.
+- **People:** Paweł Huryn, David Sacks, Chamath Palihapitiya, and the news site Townhall.com.
+  - **Feeds:** The Product Compass, the All-In podcast and Chamath's Substack.
   - **Bing News searches** for each name. These also catch posts on X that the press reports.
-  - **The Benny Show gives its episodes no web link**, so they link to the show's page.
+  - **Townhall.com comes from a Bing News search, `site:townhall.com`.** Townhall's own feed address could not be confirmed. Townhall replaced Benny Johnson and The Benny Show on 2026-11-15.
 - **AI companies:** Anthropic, OpenAI, Google DeepMind / Gemini, Meta AI, xAI, Microsoft AI, NVIDIA.
   - **Feeds:** OpenAI, Google DeepMind, Google's AI blog, NVIDIA's blog, and the AI sections of TechCrunch and The Verge.
   - **Bing News searches** for all seven. Anthropic has no feed, and Microsoft's blog refuses automated readers.
@@ -48,8 +48,8 @@ A second tab on the MAISIE briefing that shows what the people and companies Jac
 
 ## X (Twitter)
 
-- **Three of the four people post mainly on X**: David Sacks, Chamath Palihapitiya and Benny Johnson. X has no free feed.
-- **The headlines use their other channels**: the All-In podcast, Chamath's Substack, The Benny Show, and The Product Compass. They also use news coverage of what they post.
+- **Two of the three people post mainly on X**: David Sacks and Chamath Palihapitiya. X has no free feed.
+- **The headlines use their other channels**: the All-In podcast, Chamath's Substack, and The Product Compass. They also use news coverage of what they post.
 - **Recommendation:** run Phase 1 for two weeks. If important posts are missing, add the X API in Phase 2. The X API is paid, so confirm the current price first.
 
 ## Why feeds, not web search
