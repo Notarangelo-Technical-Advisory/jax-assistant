@@ -147,6 +147,27 @@ describe('draft request', () => {
       [[1, 'IHRDC', '09:12-10:05'], [2, 'Cox Engineering', '11:00-11:20']]);
   });
 
+  it('asks for every meeting to be named, and sends each item with its time', () => {
+    const meeting = { source: 'meeting', time: '10:00-11:25', action: 'Meeting with 70 others', subject: 'Company-Wide Meeting' };
+    const { system, user } = buildDraftRequest([{ ...ROW, items: [meeting] }], []);
+    assert.match(system, /Name every meeting/);
+    assert.deepEqual(JSON.parse(user.slice(user.indexOf('[')))[0].items[0], meeting);
+  });
+
+  it('keeps every meeting and recording when a long session is cut to 60 items', () => {
+    const change = (n) => ({ source: 'claude', time: `09:${String(n % 60).padStart(2, '0')}`, action: 'Claude Code in cmsonline', subject: `Part ${n}` });
+    const items = [
+      ...Array.from({ length: 70 }, (_, n) => change(n)),
+      { source: 'meeting', time: '11:00-11:30', action: 'Meeting with 3 others', subject: 'QA agents and process' },
+      { source: 'recording', time: '11:02-11:28', action: 'Recorded meeting', subject: 'QA process' },
+    ];
+    const { user } = buildDraftRequest([{ ...ROW, items }], []);
+    const sent = JSON.parse(user.slice(user.indexOf('[')))[0].items;
+    assert.equal(sent.length, 60);
+    assert.deepEqual(sent.slice(-2).map(i => i.subject), ['QA agents and process', 'QA process']);
+    assert.equal(sent[57].subject, 'Part 57');
+  });
+
   it('reads the descriptions only when there is one per row', () => {
     assert.deepEqual(readDrafts('{"descriptions":["a"," b "]}', 2), ['a', 'b']);
     assert.throws(() => readDrafts('{"descriptions":["a"]}', 2), /Expected 2/);

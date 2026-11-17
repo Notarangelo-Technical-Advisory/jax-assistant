@@ -224,7 +224,10 @@ project `fta-invoice-tracking`) in two ways. Both use the same checks.
   line in Jack's saved style for invoice descriptions; Jack edits the times and
   text, then presses Post. The page calls the `timeEntries` Cloud Function
   (`functions/src/time-entries-action.ts`), with the actions `day`, `draft`
-  and `post`. Drafts use `MODEL` with structured output.
+  and `post`. Drafts use `MODEL` with structured output. Each item is sent
+  with its Eastern time, so MAISIE can see how long a meeting took, and every
+  meeting or recording in the entry must be named in its line. A session is
+  cut to 60 items, but meetings and recordings are always kept.
 - **Chat.** Jack says, for example, "post yesterday's IHRDC time". MAISIE
   proposes the entries, shows him the list, and posts only after he says yes.
 

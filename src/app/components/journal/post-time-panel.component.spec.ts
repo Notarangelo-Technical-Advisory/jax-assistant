@@ -180,6 +180,8 @@ describe('PostTimePanelComponent', () => {
       ['IHRDC', '09:21', '09:38', ['Opened PR #674', 'Moved CNG-7039 to Code Review']],
       ['IHRDC', '12:32', '14:32', ['Claude Code in cmsonline']],
     ]);
+    // Each item's Eastern time, so Maisie can see how long a meeting took.
+    expect(sent.rows[0].items.map((i: { time: string }) => i.time)).toEqual(['09:21', '09:38']);
     expect(panel.rows().map((r) => r.description)).toEqual(['CNG-7039: Fixed the saved grid layout.', 'Story agent run in CMS Online.']);
   });
 
