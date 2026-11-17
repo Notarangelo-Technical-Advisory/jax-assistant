@@ -164,7 +164,10 @@ export class PostTimePanelComponent {
       end: r.end,
       items: this.items()
         .filter((i) => i.client === client.client && r.sessionStart <= i.at && i.at <= r.sessionEnd)
-        .map((i) => ({ source: i.source, action: i.action, subject: i.subject, ticket: i.ticket, repo: i.repo })),
+        .map((i) => ({
+          time: i.endAt ? `${etClock(i.at)}-${etClock(i.endAt)}` : etClock(i.at),
+          source: i.source, action: i.action, subject: i.subject, ticket: i.ticket, repo: i.repo,
+        })),
     }));
     this.busy.set('draft');
     this.message.set(null);

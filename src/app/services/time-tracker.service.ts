@@ -37,7 +37,8 @@ export interface DraftRow {
   date: string;
   start: string;
   end: string;
-  items: Array<{ source: string; action: string; subject: string; ticket?: string | null; repo?: string | null }>;
+  /** `time` is "08:00-08:30" or "08:31", Eastern Time, so Maisie can tell a long meeting from a quick change. */
+  items: Array<{ time?: string; source: string; action: string; subject: string; ticket?: string | null; repo?: string | null }>;
 }
 
 /** One entry to post, in the shape add_time_entries takes. */

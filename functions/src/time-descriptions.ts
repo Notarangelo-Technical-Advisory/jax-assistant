@@ -19,6 +19,8 @@ export interface DraftItem {
   subject: string;
   ticket?: string | null;
   repo?: string | null;
+  /** "08:00-08:30" for an item with a length (a meeting, a recording, a Claude Code part), or "08:31"; Eastern Time. */
+  time?: string | null;
 }
 
 export interface DraftRow {
@@ -39,7 +41,22 @@ const SYSTEM = `You write the description lines on Jack Notarangelo's consulting
 
 Follow Jack's standing instructions below wherever they say how invoice descriptions should be written; they take priority over the defaults here. Default style when they say nothing: one plain-English line, past tense, naming the ticket keys and the work done, at most 20 words.
 
-Describe only what the items show. Never invent work, outcomes, people or ticket numbers. Write for the client, who reads English as a second language: no jargon, no internal tool names unless the client would know them.`;
+Describe only what the items show. Never invent work, outcomes, people or ticket numbers. Write for the client, who reads English as a second language: no jargon, no internal tool names unless the client would know them.
+
+Meetings are billable time, often most of an entry, even though each is only one item beside many small code and Jira items. Each item's time shows how long it took. Name every meeting (source "meeting") in the entry by its title, for example "Attended the Product Review Meeting." A recording (source "recording") made during a meeting is that meeting: do not name it twice. A recording with no meeting is a meeting too; name it by its title. When meetings took most of the entry's time, put them first. Keep every meeting even when the line must be short.`;
+
+const MEETING_SOURCES = new Set(["meeting", "recording"]);
+
+/**
+ * The items to send for one entry, in time order. A long session can hold
+ * hundreds of items, so the list is cut at MAX_ITEMS_PER_ROW, but meetings and
+ * recordings are always kept: each is one item that can be most of the time.
+ */
+export function draftItems(items: DraftItem[]): DraftItem[] {
+  const meetings = items.filter((it) => MEETING_SOURCES.has(it.source)).length;
+  let room = Math.max(0, MAX_ITEMS_PER_ROW - meetings);
+  return items.filter((it) => MEETING_SOURCES.has(it.source) || room-- > 0);
+}
 
 /** The system prompt and the user message for one request. Pure, so it can be tested. */
 export function buildDraftRequest(rows: DraftRow[], memories: Memory[]): {system: string; user: string} {
@@ -50,7 +67,8 @@ export function buildDraftRequest(rows: DraftRow[], memories: Memory[]): {system
     client: r.client,
     date: r.date,
     time: `${r.start}-${r.end}`,
-    items: r.items.slice(0, MAX_ITEMS_PER_ROW).map((it) => ({
+    items: draftItems(r.items).map((it) => ({
+      ...(it.time ? {time: it.time} : {}),
       source: it.source,
       action: it.action,
       subject: it.subject,
