@@ -59,6 +59,19 @@ const OWNER_CLIENTS: Record<string, string> = {
   "notarangelo-technical-advisory": "nta",
 };
 
+/**
+ * Repos that hold work for more than one client, and the words that give an
+ * item in them another client. The Cox Engineering engagement lives in the NTA
+ * repo fractional-tech-advisory, under operations/, so its work there is Cox
+ * Engineering when its title, action or branch says "Cox". Keys are lower case
+ * "owner/name"; words are matched as whole words, ignoring case and punctuation.
+ */
+const REPO_WORD_CLIENTS: Record<string, Array<{words: string; client: string}>> = {
+  "notarangelo-technical-advisory/fractional-tech-advisory": [
+    {words: "Cox", client: "cox"},
+  ],
+};
+
 /** Jira sites and their client. */
 export const JIRA_SITE_CLIENTS: Record<string, string> = {
   "ihrdcdev.atlassian.net": "ihrdc",
@@ -325,13 +338,20 @@ export function clientFromText(...texts: Array<string | null | undefined>): stri
 }
 
 /**
- * The client of a GitHub, Jira or Claude Code item: from where the work
- * happened, and when that gives only General, from the item's own words.
+ * The client of a GitHub, Jira or Claude Code item: a word from REPO_WORD_CLIENTS
+ * for its repo, then where the work happened, and when that gives only General,
+ * the item's own words.
  */
 export function itemClient(item: {
   repo?: string | null; site?: string | null; subject?: string | null; action?: string | null;
   detail?: string | null; ticket?: string | null;
 }): string {
+  const repoWords = REPO_WORD_CLIENTS[item.repo?.trim().toLowerCase() ?? ""];
+  if (repoWords) {
+    const words = wordsOf([item.subject, item.action, item.detail].filter(Boolean).join(" "));
+    const match = repoWords.find((w) => words.includes(wordsOf(w.words)));
+    if (match) return match.client;
+  }
   const client = clientFor(item);
   if (client !== DEFAULT_CLIENT) return client;
   return clientFromText(item.ticket, item.subject, item.action, item.detail) ?? client;
@@ -821,7 +841,7 @@ export interface ReclassifySummary {
 
 /**
  * Apply the current rules for where work happened and for its words
- * (REPO_CLIENTS, OWNER_CLIENTS, JIRA_PROJECT_CLIENTS, TEXT_CLIENTS) to the
+ * (REPO_CLIENTS, OWNER_CLIENTS, REPO_WORD_CLIENTS, JIRA_PROJECT_CLIENTS, TEXT_CLIENTS) to the
  * GitHub and Claude Code items already in the journal, and rebuild the days
  * that changed. Run it after changing those rules: the job reads GitHub's last
  * 300 events only, so older items would otherwise keep their old client. Jira items,
