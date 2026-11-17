@@ -42,7 +42,9 @@ Each item gets a client from where the work happened. The clients are MAISIE's t
 | `embassy-book-series` | Embassy Series |
 | Everything else (Jack's personal repos under `jacknota`, such as `JaxPersonal`), and work outside any repo | General, unless its words name IHRDC (below) |
 
-The table is `REPO_CLIENTS`, `OWNER_CLIENTS` and `JIRA_SITE_CLIENTS` in `functions/src/tools/journal.ts`. A Claude Code session in a scratch folder counts for the repo of the session that made the folder.
+The table is `REPO_CLIENTS`, `OWNER_CLIENTS` and `JIRA_SITE_CLIENTS` in `functions/src/tools/journal.ts`.
+
+One repo holds work for two clients. The Cox Engineering engagement lives in `fractional-tech-advisory`, under `operations/`. So a GitHub or Claude Code item there is Cox Engineering when its title, action or detail (which holds the branch) has the word "Cox", and NTA Business otherwise. This rule comes before the repo's own client. It is `REPO_WORD_CLIENTS` in `functions/src/tools/journal.ts`. Added 2026-11-17, after Cox check-in work on that day was counted as NTA Business. A Claude Code session in a scratch folder counts for the repo of the session that made the folder.
 
 A Claude Code session often moves to a folder that is in no repo, such as `~/Documents/GitHub` (the folder above the repos) or Claude Code's own `memory` folder. Until 2026-10-15 that work had no repo and became General: 604 items, 27.7 hours, in the 30 days to 2026-10-15, most of it IHRDC. Now such a span takes, in order:
 

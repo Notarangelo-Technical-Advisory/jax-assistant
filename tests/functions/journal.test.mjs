@@ -61,6 +61,22 @@ describe('clients', () => {
     assert.equal(day.clients[0].label, 'NTA Business');
   });
 
+  it('puts Cox work in the NTA repo fractional-tech-advisory under Cox Engineering, by its title or its branch, and the rest of that repo under NTA Business', async () => {
+    const repo = 'Notarangelo-Technical-Advisory/fractional-tech-advisory';
+    const nta = (sourceId, fields) => session({ sourceId, repo, action: 'Claude Code in fractional-tech-advisory', ...fields });
+    await save([
+      nta('a', { subject: 'Cox-Engineering-Standards PR #3', detail: 'main · 4 prompts' }),
+      nta('b', { subject: 'Check-in location', detail: 'cox-check-in-wispr-transcript' }),
+      pr({ sourceId: 'c', repo, action: 'Merged PR #101', subject: "Cox check-in 2: Jack's changes", ticket: null }),
+      nta('d', { subject: 'Hero section styles', detail: 'update-hero-styles' }),
+      nta('e', { subject: 'Coxswain photo for the about page', detail: 'main' }),
+      session({ sourceId: 'f', repo: 'Notarangelo-Technical-Advisory/engineering-standards', subject: 'Cox standards review' }),
+    ]);
+
+    const clients = Object.fromEntries((await all('journal')).map(i => [i.sourceId, i.client]));
+    assert.deepEqual(clients, { a: 'cox', b: 'cox', c: 'cox', d: 'nta', e: 'nta', f: 'nta' });
+  });
+
   it('puts work outside any repo under IHRDC when it names an IHRDC Jira key, Jira, Aishwarya or the QA test agent', async () => {
     const outside = (sourceId, subject) => session({ sourceId, subject, repo: null });
     await save([
