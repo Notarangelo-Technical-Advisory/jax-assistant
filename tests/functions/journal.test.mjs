@@ -12,7 +12,7 @@ const fromFunctions = createRequire(new URL('../../functions/package.json', impo
 const admin = fromFunctions('firebase-admin');
 const {
   clientFor, ticketInBranch, workSessions, summarizeDay, saveJournalItems, summarizeDays, meetingClient, meetingItems,
-  recordingItems, reclassifyJournal, emailItems, moveJournalItems, dayBreaks, dayRhythm,
+  recordingItems, reclassifyJournal, emailItems, moveJournalItems, dayBreaks, dayRhythm, itemClient,
 } =fromFunctions('./lib/tools/journal.js');
 
 before(setUp);
@@ -40,6 +40,14 @@ describe('clients', () => {
     assert.equal(clientFor({ repo: 'IHRDC/cmsonline' }), 'ihrdc');
     assert.equal(clientFor({ repo: 'ihrdc/ai-toolkit' }), 'ihrdc');
     assert.equal(clientFor({ site: 'ihrdcdev.atlassian.net' }), 'ihrdc');
+  });
+
+  it('puts every repo in the CoxEng GitHub org under Cox Engineering', () => {
+    assert.equal(clientFor({ repo: 'CoxEng/cox-engineering-standards' }), 'cox');
+    assert.equal(clientFor({ repo: 'CoxEng/agent-story' }), 'cox');
+    assert.equal(clientFor({ repo: 'coxeng/cas-guardian-selector' }), 'cox');
+    // The org rule wins over words that would otherwise give another client.
+    assert.equal(itemClient({ repo: 'CoxEng/agent-story', action: 'Opened issue #5', subject: 'Move the Jira stories to GitHub' }), 'cox');
   });
 
   it('gives each product and church repo, and Maisie\'s own repo, its own client, and the rest of the business NTA Business', () => {

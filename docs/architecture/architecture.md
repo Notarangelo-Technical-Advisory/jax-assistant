@@ -307,7 +307,7 @@ The Mac programs run under launchd with `npx tsx`. They sign in to Firebase with
 | `test` / `test:ci` | Karma on the Auth and Firestore emulators | `demo-jax-browser` | 115 |
 | `test:site` | Static checks of templates, SCSS and icons | none | 16 |
 | `test:rules` | Firestore rules | `demo-jax-rules` | 18 |
-| `test:functions` | The shared tools and functions code | `demo-jax-test` | 203 |
+| `test:functions` | The shared tools and functions code | `demo-jax-test` | 272 |
 | `test:mcp` | The `maisie` MCP server as a VS Code client sees it | `demo-jax-mcp` | 62 |
 | `test:bridge` | AppleScript helpers (3 skip off macOS) | none | 6 |
 | `test:all` | All of the above. Run before `git ship`. | | about 420 |
