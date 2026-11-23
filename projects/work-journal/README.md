@@ -2,7 +2,7 @@
 
 MAISIE keeps a journal of what Jack did, when he did it, and for which client. Jack does many things for a few minutes at a time across a day, so the journal gives him the record he needs to fill in his time entries and to see where his time went.
 
-*Last updated: 2026-10-29*
+*Last updated: 2026-11-23*
 
 ## Status
 
@@ -33,7 +33,7 @@ Each item gets a client from where the work happened. The clients are MAISIE's t
 | Where | Client |
 | --- | --- |
 | Any repo in the IHRDC GitHub org, and the ihrdcdev Jira site | IHRDC |
-| Any repo in the CoxEng GitHub org, such as `cox-engineering-standards`, `agent-story` and `cas-guardian-selector` (added 2026-11-23; before then this work was General) | Cox Engineering |
+| Any repo in the CoxEng GitHub org, such as `cox-engineering-standards`, `agent-story` and `cas-guardian-selector` | Cox Engineering |
 | Any other repo in the Notarangelo-Technical-Advisory GitHub org, such as `nta-time-tracker`, `engineering-standards` and `fractional-tech-advisory` | NTA Business |
 | `jax-assistant` (Maisie) | Executive Assistant |
 | `solomon` | Solomon |
@@ -73,6 +73,8 @@ When the rules give an item the wrong client, for example IHRDC work kept in the
 Jack can also ask MAISIE, in the chat or in VS Code: "move the IHRDC work under NTA Business on October 27 to IHRDC". She finds the items with `get_journal`, which gives each item's `id` and marks moved items `movedByHand`, and moves them with `move_journal_items`, the same code the page uses. When she chose the items herself from his description, she lists them and asks before moving.
 
 NTA Business (`nta`) is a built-in task category, added 2026-10-16. Work in those repos that was journaled before then is still under General until `npm run journal:reclassify` is run on the Mac.
+
+The CoxEng rule was added 2026-11-23. Work in CoxEng repos journaled before then was under General, and `npm run journal:reclassify` moves it to Cox Engineering.
 
 ### Meetings
 

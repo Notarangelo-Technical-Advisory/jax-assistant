@@ -46,7 +46,8 @@ describe('clients', () => {
     assert.equal(clientFor({ repo: 'CoxEng/cox-engineering-standards' }), 'cox');
     assert.equal(clientFor({ repo: 'CoxEng/agent-story' }), 'cox');
     assert.equal(clientFor({ repo: 'coxeng/cas-guardian-selector' }), 'cox');
-    assert.equal(itemClient({ repo: 'CoxEng/ShippingLog', action: 'Opened issue #12', subject: 'Shipping Log on Postgres' }), 'cox');
+    // The org rule wins over words that would otherwise give another client.
+    assert.equal(itemClient({ repo: 'CoxEng/agent-story', action: 'Opened issue #5', subject: 'Move the Jira stories to GitHub' }), 'cox');
   });
 
   it('gives each product and church repo, and Maisie\'s own repo, its own client, and the rest of the business NTA Business', () => {
