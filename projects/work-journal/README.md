@@ -33,6 +33,7 @@ Each item gets a client from where the work happened. The clients are MAISIE's t
 | Where | Client |
 | --- | --- |
 | Any repo in the IHRDC GitHub org, and the ihrdcdev Jira site | IHRDC |
+| Any repo in the CoxEng GitHub org, such as `cox-engineering-standards`, `agent-story` and `cas-guardian-selector` (added 2026-11-23; before then this work was General) | Cox Engineering |
 | Any other repo in the Notarangelo-Technical-Advisory GitHub org, such as `nta-time-tracker`, `engineering-standards` and `fractional-tech-advisory` | NTA Business |
 | `jax-assistant` (Maisie) | Executive Assistant |
 | `solomon` | Solomon |

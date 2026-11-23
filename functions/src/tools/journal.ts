@@ -55,6 +55,8 @@ const REPO_CLIENTS: Record<string, string> = {
 /** Every other repo of these owners belongs to the owner's client. Keys are lower case. */
 const OWNER_CLIENTS: Record<string, string> = {
   "ihrdc": "ihrdc",
+  // Cox Engineering's own GitHub org: cox-engineering-standards, agent-story, cas-guardian-selector and so on.
+  "coxeng": "cox",
   // Jack's own business: nta-time-tracker, engineering-standards, fractional-tech-advisory and so on.
   "notarangelo-technical-advisory": "nta",
 };
