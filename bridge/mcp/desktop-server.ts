@@ -33,7 +33,7 @@ const server = new Server(
 const TOOLS = [
   {
     name: "calendar_read",
-    description: `Read events across all of Jack's tracked Apple Calendars, live: ${READ_CALENDARS.map((c) => c.label).join(", ")}. Recurring series are expanded into real occurrences, so a standing weekly meeting shows up on the day it actually falls. Every event carries the calendar it came from, so say which one when it matters — "IHRDC" is client work, "Grace Pres" is church. Prefer this over MAISIE's get_calendar: it reflects the calendars right now, whereas the Firestore mirror can be up to a minute stale (or much staler if the launchd sync is not running).
+    description: `Read events across all of Jack's tracked Apple Calendars, live: ${READ_CALENDARS.map((c) => c.label).join(", ")}. Recurring series are expanded into real occurrences, so a standing weekly meeting shows up on the day it actually falls. Every event carries the calendar it came from, so say which one when it matters — "IHRDC" is client work, "Grace Pres (email)" is church. Prefer this over MAISIE's get_calendar: it reflects the calendars right now, whereas the Firestore mirror can be up to a minute stale (or much staler if the launchd sync is not running).
 
 The reply states the window it actually read as window_start/window_end — trust that, not the days_ahead you asked for, before telling Jack a day is clear. An all_day event has no meaningful clock time; present it as all day. A non-empty warnings array means part of the calendar could not be read, so the list is incomplete — say so rather than reporting what came back as complete.`,
     inputSchema: {

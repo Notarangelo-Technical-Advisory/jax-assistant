@@ -6,7 +6,7 @@ export interface CalendarEvent {
   endTime: Date;
   location?: string;
   /**
-   * Which calendar the event came from ("Jax", "IHRDC", "Grace Pres", ...).
+   * Which calendar the event came from ("Jax", "IHRDC", "Grace Pres (email)", ...).
    * Undefined for docs written before multi-calendar sync landed.
    */
   calendarName?: string;

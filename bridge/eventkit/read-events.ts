@@ -54,7 +54,6 @@ export const READ_CALENDARS: Array<{name: string; label: string}> = [
   {name: "Calendar", label: "IHRDC"},
   {name: "Home", label: "Home"},
   {name: "Family", label: "Family"},
-  {name: "Grace Presbyterian Church: Jack Notarangelo", label: "Grace Pres"},
   {name: "jack@gracesouthshore.org", label: "Grace Pres (email)"},
   {name: "jacknota1964@gmail.com", label: "Gmail"},
 ];
